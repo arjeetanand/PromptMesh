@@ -1,0 +1,66 @@
+# ============================
+# Python
+# ============================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# ============================
+# Virtual Environments
+# ============================
+venv/
+.venv/
+env/
+ENV/
+
+# ============================
+# Environment / Secrets
+# ============================
+.env
+.env.*
+*.key
+*.pem
+*.crt
+
+# ============================
+# OCI / Cloud Config (IMPORTANT)
+# ============================
+ociConfig/
+**/ociConfig/
+~/.oci/
+oci_config*
+oci*.json
+
+# ============================
+# Local model / cache artifacts
+# ============================
+.ollama/
+ollama/
+model_cache/
+
+# ============================
+# Logs & Runtime Files
+# ============================
+*.log
+logs/
+tmp/
+.cache/
+
+# ============================
+# OS / Editor
+# ============================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ============================
+# Generated artifacts
+# ============================
+project_dump.txt
+
+combine_project_to_txt.py

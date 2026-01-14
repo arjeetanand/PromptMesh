@@ -1,0 +1,28 @@
+prompt_id: summarization_base
+version: "1.0.0"
+task: summarization
+
+description: >
+  Summarizes input text while preserving factual accuracy.
+
+input_variables:
+  - text
+
+constraints:
+  max_tokens: 150
+  temperature: 0.0
+  output_format: paragraph
+  tone: neutral
+
+template: |
+  You are an expert analyst.
+
+  Summarize the following text concisely.
+  Do not add new facts.
+  Preserve key numbers and names.
+
+  Text:
+  {{text}}
+
+expected_output:
+  type: string
