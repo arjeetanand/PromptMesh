@@ -12,24 +12,29 @@ MODEL_DEFINITIONS = {
     # --------------------
     "llama3": {
     "type": "ollama",
-    "model": "llama3:latest"
+    "model": "llama3"
     },
+
     "llama3-8b": {
         "type": "ollama",
         "model": "llama3:8b"
     },
+
     "llama3.2": {
         "type": "ollama",
         "model": "llama3.2:latest"
     },
+
     "qwen2.5": {
         "type": "ollama",
         "model": "qwen2.5:latest"
     },
+
     "llava": {
         "type": "ollama",
         "model": "llava:latest"
     },
+    
     # "mistral": {"type": "ollama", "model": "mistral"}
 
 

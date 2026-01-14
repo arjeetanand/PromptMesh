@@ -14,6 +14,15 @@ def evaluate(output: str, prompt_constraints: dict) -> EvaluationResult:
 
     judge_scores = judge_output(output)
 
+    if judge_scores is None:
+        return EvaluationResult(
+            score=0.0,
+            breakdown={"reason": "judge_failed"},
+            passed=False
+        )
+
+
+
     final_score = (
         0.4 * judge_scores["accuracy"]
         + 0.3 * judge_scores["completeness"]

@@ -8,6 +8,7 @@ def evolve_prompt(
     base_output: str,
     constraints: dict,
     optimizer_model,
+    eval_model,   # NEW
     max_iters: int = 5,
     min_delta: float = 0.3,
     variants_per_iter: int = 5
@@ -19,7 +20,10 @@ def evolve_prompt(
     history = []
 
     current_prompt = initial_prompt
-    current_eval = evaluate(base_output, constraints)
+    # current_eval = evaluate(base_output, constraints)
+    initial_result = eval_model.run(initial_prompt, constraints)
+    current_eval = evaluate(initial_result["output"], constraints)
+
 
     history.append({
         "iteration": 0,
@@ -69,6 +73,8 @@ def evolve_prompt(
 
         # Accept new prompt
         current_prompt = best_candidate["prompt"]
+        # current_eval = evaluate(best_candidate["output"], constraints)
         current_eval = evaluate(best_candidate["output"], constraints)
+
 
     return history

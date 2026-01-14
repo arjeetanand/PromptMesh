@@ -1,6 +1,17 @@
 from models.registry import get_model
 import json
 from models.constants import DEFAULT_JUDGE_MODEL
+
+import re
+import json
+
+def _extract_json(text: str) -> dict:
+    # Remove markdown fences if present
+    text = re.sub(r"```json|```", "", text).strip()
+    return json.loads(text)
+
+
+
 judge = get_model(DEFAULT_JUDGE_MODEL)
 
 JUDGE_PROMPT = """
@@ -28,11 +39,10 @@ def judge_output(output: str) -> dict:
     )
 
     try:
-        return json.loads(response["output"])
-    except Exception:
-        return {
-            "accuracy": 0,
-            "completeness": 0,
-            "adherence": 0,
-            "hallucination": 10
-        }
+        return _extract_json(response["output"])
+    except Exception as e:
+        print("⚠️ JUDGE PARSE FAILED:", e)
+        print("RAW OUTPUT:", response["output"])
+        return None
+
+

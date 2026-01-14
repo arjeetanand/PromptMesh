@@ -11,26 +11,59 @@ from comparison.runner import run_prompt_comparison
 from comparison.ranker import rank_prompts
 
 from optimization.failure_analysis import analyze_failure
-from optimization.mutator import generate_prompt_variants
-from optimization.selector import select_best_prompt
 from optimization.evolver import evolve_prompt
 
 from models.registry import get_model
-
+from storage.repository import (
+    save_prompt,
+    save_run,
+    save_evaluation
+)
 
 # -------------------------------
 # CONFIG
 # -------------------------------
 TASK = "summarization"
 PROMPT_VERSIONS = ["v1", "v2"]
-INPUT_TEXT = (
-    "OpenAI released a new model in 2025 that significantly improved reasoning "
-    "and reduced hallucinations."
-)
+
+
+
+TEST_CASES = {
+    "baseline": (
+        "OpenAI released a new language model in 2025. "
+        "The model improved reasoning performance and reduced hallucinations "
+        "compared to earlier versions."
+    ),
+
+    "hallucination_trap": (
+        "In 2025, OpenAI released a new model. "
+        "The announcement mentioned improvements over previous systems "
+        "but did not provide specific metrics or comparisons."
+    ),
+
+    "completeness_failure": (
+        "OpenAI announced a new AI model in 2025."
+    ),
+
+    "instruction_conflict": (
+        "OpenAI released a new model in 2025. "
+        "The release emphasized that the model should not be described as more "
+        "intelligent than previous systems, only more reliable."
+    ),
+}
+
+
+TEST_NAME = "hallucination_trap"
+INPUT_TEXT = TEST_CASES[TEST_NAME]
+
+# TEST_NAME = "baseline"
+# TEST_NAME = "hallucination_trap"
+# TEST_NAME = "completeness_failure"
+# TEST_NAME = "instruction_conflict"
+
 
 EVAL_MODELS = [
     "llama3",
-    # "mistral",
     "qwen2.5",
     "command-a-03-2025"
 ]
@@ -41,14 +74,17 @@ FINAL_RUN_MODELS = [
 
 OPTIMIZER_MODEL_NAME = "command-a-03-2025"
 
+MAX_EVOLUTION_ITERS = 3
+VARIANTS_PER_ITER = 3
+MIN_DELTA = 0.25
+
 
 # -------------------------------
-# STEP 1: LOAD PROMPTS
+# STEP 1: INITIAL PROMPT COMPARISON
 # -------------------------------
+print("\n==== INITIAL PROMPT COMPARISON ====")
+
 registry = PromptRegistry()
-
-print("\n==== LOADING PROMPTS ====")
-
 executor = PromptExecutor()
 
 results = run_prompt_comparison(
@@ -59,8 +95,9 @@ results = run_prompt_comparison(
 )
 
 ranked = rank_prompts(results)
-
 best_run = ranked[0]
+
+base_prompt_def = registry.load(TASK, best_run.prompt_version)
 
 print("\n==== BEST INITIAL PROMPT ====")
 print("Prompt version:", best_run.prompt_version)
@@ -71,23 +108,33 @@ print("Output:\n", best_run.output)
 
 
 # -------------------------------
-# STEP 2: FAILURE ANALYSIS
+# STEP 2: SAVE BASE PROMPT
+# -------------------------------
+prompt_id = save_prompt(
+    task=TASK,
+    version=best_run.prompt_version,
+    prompt_text=base_prompt_def["template"]
+)
+
+
+# -------------------------------
+# STEP 3: FAILURE ANALYSIS
 # -------------------------------
 failure_type = analyze_failure(best_run.evaluation.breakdown)
 
 print("\nDetected failure type:", failure_type)
 
 if failure_type == "none":
-    print("Prompt is already optimal. Skipping evolution.")
-    final_prompt = registry.load(TASK, best_run.prompt_version)["template"]
+    print("Prompt already optimal. Skipping evolution.")
+    final_prompt = base_prompt_def["template"]
+    evolution_history = []
 
 else:
     # -------------------------------
-    # STEP 3: PROMPT EVOLUTION
+    # STEP 4: PROMPT EVOLUTION
     # -------------------------------
     print("\n==== STARTING PROMPT EVOLUTION ====")
 
-    base_prompt_def = registry.load(TASK, best_run.prompt_version)
     optimizer_model = get_model(OPTIMIZER_MODEL_NAME)
 
     evolution_history = evolve_prompt(
@@ -95,9 +142,10 @@ else:
         base_output=best_run.output,
         constraints=base_prompt_def["constraints"],
         optimizer_model=optimizer_model,
-        max_iters=3,
-        min_delta=0.25,
-        variants_per_iter=3
+        eval_model=optimizer_model,
+        max_iters=MAX_EVOLUTION_ITERS,
+        variants_per_iter=VARIANTS_PER_ITER,
+        min_delta=MIN_DELTA
     )
 
     print("\n==== PROMPT EVOLUTION TRACE ====")
@@ -112,7 +160,7 @@ else:
 
 
 # -------------------------------
-# STEP 4: FINAL MULTI-MODEL RUN
+# STEP 5: FINAL MULTI-MODEL EVALUATION
 # -------------------------------
 print("\n==== FINAL PROMPT EVALUATION ====")
 
@@ -127,8 +175,22 @@ final_results = executor.run(
     models=FINAL_RUN_MODELS
 )
 
-for r in final_results:
+for iteration, r in enumerate(final_results, start=1):
     eval_result = evaluate(r.output, base_prompt_def["constraints"])
+
+    run_id = save_run(
+        prompt_id=prompt_id,
+        iteration=iteration,
+        failure_type=failure_type
+    )
+
+    save_evaluation(
+        run_id=run_id,
+        model=r.model,
+        eval_result=eval_result,
+        latency_ms=r.latency_ms,
+        output=r.output
+    )
 
     print("\nMODEL:", r.model)
     print("SCORE:", eval_result.score)

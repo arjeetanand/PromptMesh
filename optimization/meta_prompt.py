@@ -11,6 +11,13 @@ Problematic model output:
 {bad_output}
 
 Rewrite the prompt to fix ONLY the failure.
+
+Rules:
+- Preserve structure
+- Do NOT add new instructions
+- Do NOT repeat constraints
+- Modify the minimum necessary text
+
 Do NOT:
 - Add verbosity
 - Change task scope
