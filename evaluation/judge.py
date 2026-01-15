@@ -1,27 +1,27 @@
+# evaluation/judge.py
+
 from models.registry import get_model
-import json
 from models.constants import DEFAULT_JUDGE_MODEL
-
-import re
 import json
-
-def _extract_json(text: str) -> dict:
-    # Remove markdown fences if present
-    text = re.sub(r"```json|```", "", text).strip()
-    return json.loads(text)
-
-
+import re
 
 judge = get_model(DEFAULT_JUDGE_MODEL)
 
 JUDGE_PROMPT = """
 You are a strict evaluator.
 
-Score the assistant output from 0 to 10 on:
-1. Accuracy
-2. Completeness
-3. Instruction adherence
-4. Hallucination risk (higher is worse)
+You are given:
+1. SOURCE TEXT
+2. MODEL OUTPUT
+
+Score the output from 0 to 10 on:
+- Accuracy (faithfulness to source)
+- Completeness (covers key info)
+- Instruction adherence
+- Hallucination risk (penalize new facts NOT in source)
+
+If the output introduces facts or interpretations NOT present in the source,
+hallucination MUST be high.
 
 Return ONLY valid JSON:
 {
@@ -32,17 +32,24 @@ Return ONLY valid JSON:
 }
 """
 
-def judge_output(output: str) -> dict:
-    response = judge.run(
-        prompt=f"{JUDGE_PROMPT}\n\nOUTPUT:\n{output}",
-        params={"temperature": 0.0, "max_tokens": 300}
-    )
 
-    try:
-        return _extract_json(response["output"])
-    except Exception as e:
-        print("⚠️ JUDGE PARSE FAILED:", e)
-        print("RAW OUTPUT:", response["output"])
-        return None
+def extract_json(text: str) -> dict:
+    text = re.sub(r"```json|```", "", text).strip()
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        raise ValueError("No JSON found")
+    return json.loads(match.group(0))
 
 
+def judge_output(output: str, source_text: str) -> dict | None:
+    for attempt in range(3):
+        response = judge.run(
+                prompt=f"{JUDGE_PROMPT}\n\nSOURCE TEXT:\n{source_text}\n\nMODEL OUTPUT:\n{output}",
+                params={"temperature": 0.0, "max_tokens": 300}
+            )
+
+        try:
+            return extract_json(response["output"])
+        except Exception:
+            if attempt == 2:
+                return None

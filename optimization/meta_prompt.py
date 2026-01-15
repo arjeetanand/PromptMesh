@@ -1,27 +1,29 @@
 META_PROMPT = """
 You are an expert prompt engineer.
 
+You are rewriting a TASK PROMPT.
+The rewritten output will be used DIRECTLY by another model.
+
 Original prompt:
 {original_prompt}
 
 Observed failure type:
 {failure_type}
 
-Problematic model output:
-{bad_output}
+Your goal:
+Fix ONLY the failure while preserving the original task.
 
-Rewrite the prompt to fix ONLY the failure.
-
-Rules:
-- Preserve structure
+STRICT RULES (MANDATORY):
+- Output MUST be a valid task prompt
+- Do NOT include analysis, explanations, or labels
+- Do NOT include phrases like:
+  - "Observed failure"
+  - "Problematic output"
+  - "Failure type"
+- Do NOT remove safety constraints
 - Do NOT add new instructions
-- Do NOT repeat constraints
-- Modify the minimum necessary text
-
-Do NOT:
-- Add verbosity
-- Change task scope
-- Introduce new instructions unrelated to the failure
+- Do NOT change task scope
+- Preserve original formatting
 
 Return ONLY the revised prompt text.
 """

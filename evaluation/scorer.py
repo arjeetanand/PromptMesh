@@ -2,7 +2,11 @@ from evaluation.rules import rule_checks
 from evaluation.judge import judge_output
 from evaluation.types import EvaluationResult
 
-def evaluate(output: str, prompt_constraints: dict) -> EvaluationResult:
+def evaluate(
+    output: str,
+    prompt_constraints: dict,
+    source_text: str
+):
     rules = rule_checks(output, prompt_constraints)
 
     if not rules["non_empty"]:
@@ -12,7 +16,10 @@ def evaluate(output: str, prompt_constraints: dict) -> EvaluationResult:
             passed=False
         )
 
-    judge_scores = judge_output(output)
+    # judge_scores = judge_output(output)
+    source_text = prompt_constraints.get("_source_text", "")
+    judge_scores = judge_output(output, source_text)
+
 
     if judge_scores is None:
         return EvaluationResult(

@@ -59,25 +59,47 @@ MODEL_DEFINITIONS = {
     },
 }
 
+
 def get_model(model_name: str):
-    if model_name not in MODEL_DEFINITIONS:
-        raise ValueError(f"Model not registered: {model_name}")
+    """
+    Returns a model adapter instance.
 
-    cfg = MODEL_DEFINITIONS[model_name]
+    Behavior:
+    1. If model_name is defined in MODEL_DEFINITIONS, use that mapping.
+    2. If model_name contains ':' (e.g. 'llama3:8b' or 'qwen2.5:latest'),
+       treat it as a direct Ollama model identifier and return OllamaModel(model_name).
+    3. Otherwise raise a clear ValueError.
+    """
+    # 1) registered mapping
+    if model_name in MODEL_DEFINITIONS:
+        cfg = MODEL_DEFINITIONS[model_name]
 
-    if cfg["type"] == "ollama":
-        return OllamaModel(cfg["model"])
+        if cfg["type"] == "ollama":
+            return OllamaModel(cfg["model"])
 
-    if cfg["type"] == "cohere_public":
-        return CohereModel(cfg["model"])
+        if cfg["type"] == "cohere_public":
+            return CohereModel(cfg["model"])
 
-    if cfg["type"] == "oci_chat":
-        return OCIChatModel(
-            model_id=cfg["model_id"],
-            provider=cfg["provider"],
-            compartment_id=OCI_COMPARTMENT_ID,
-            endpoint=OCI_ENDPOINT,
-            config_path=OCI_CONFIG_PATH,
-        )
+        if cfg["type"] == "oci_chat":
+            return OCIChatModel(
+                model_id=cfg["model_id"],
+                provider=cfg["provider"],
+                compartment_id=OCI_COMPARTMENT_ID,
+                endpoint=OCI_ENDPOINT,
+                config_path=OCI_CONFIG_PATH,
+            )
 
-    raise ValueError("Invalid model type")
+        raise ValueError(f"Invalid model type for registered model: {model_name}")
+
+    # 2) accept direct Ollama model identifiers (common form: "model:tag")
+    if ":" in model_name:
+        # treat as Ollama locally served model id
+        return OllamaModel(model_name)
+
+    # 3) helpful error
+    available = ", ".join(sorted(list(MODEL_DEFINITIONS.keys())))
+    raise ValueError(
+        f"Model not registered: {model_name}. "
+        f"Known aliases: {available}. "
+        f"Or pass a direct Ollama model id like 'llama3:8b'."
+    )

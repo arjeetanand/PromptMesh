@@ -1,0 +1,11 @@
+# Existing packages
+ollama
+oci
+cohere
+jinja2
+pyyaml
+
+# New for RAG
+PyPDF2
+sentence-transformers  # For vector search
+numpy
