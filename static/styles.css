@@ -684,3 +684,106 @@ body {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* Custom Prompt Editor */
+#evalCustomPromptSection,
+#evolveCustomPromptSection {
+    background: var(--light-gray);
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border: 2px dashed var(--border);
+}
+
+#evalCustomPrompt,
+#evolveCustomPrompt {
+    font-size: 14px;
+    line-height: 1.6;
+    border: 2px solid var(--border);
+    padding: 16px;
+    border-radius: 8px;
+    background: white;
+    resize: vertical;
+}
+
+#evalCustomPrompt:focus,
+#evolveCustomPrompt:focus {
+    border-color: var(--primary);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.stat-box {
+    background: var(--light-gray);
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: var(--gray);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--dark);
+}
+
+.winner-badge {
+    background: linear-gradient(135deg, #10B981, #059669);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 6px;
+    text-align: center;
+    font-weight: 600;
+    margin-bottom: 16px;
+    font-size: 14px;
+}
+
+.step-improvement {
+    background: var(--white);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--secondary);
+}
+
+
+.custom-prompt-container {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    padding: 24px;
+    border-radius: 12px;
+    border: 2px solid var(--border);
+    margin-bottom: 24px;
+}
+
+.test-inputs-section {
+    background: var(--light-gray);
+    padding: 24px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    border: 2px solid var(--primary);
+    border-style: dashed;
+}
+
+.test-inputs-section textarea {
+    background: white;
+}
+
+#evalTestInputs:focus,
+#evolveTestInputs:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
