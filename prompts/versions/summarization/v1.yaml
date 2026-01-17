@@ -1,27 +1,24 @@
-prompt_id: summarization_strict
+prompt_id: news_summarization
 version: "1.0.0"
 task: summarization
+task_type: summarization
 
 description: >
-  Summarizes text with strict factual accuracy and no stylistic padding.
+  Summarizes long news articles into concise factual summaries.
 
 input_variables:
   - text
 
 constraints:
-  max_tokens: 100
-  temperature: 0.0
+  max_tokens: 150
+  temperature: 0.2
   output_format: paragraph
-  tone: neutral
 
 template: |
-  You are a senior analyst.
+  You are a professional news summarizer.
 
-  Summarize the following text in one paragraph.
-  Preserve all key facts, dates, and numbers.
-  Do not rephrase names.
-  Do not add interpretations.
-  Do not include introductions or phrases like "Here is a summary".
+  Summarize the following text clearly and concisely.
+  Do not add new information.
 
   Text:
   {{text}}

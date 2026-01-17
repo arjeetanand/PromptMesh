@@ -26,7 +26,14 @@ sys.path.append(os.getcwd())
 COMPARE_PROMPTS = False
 
 TASK = "summarization"
-PRIMARY_PROMPT_VERSION = "v5"
+# TASK = "extraction"
+# TASK = "verification"
+# TASK = "classification"
+# TASK = "reasoning"
+# TASK = "generation"
+
+
+PRIMARY_PROMPT_VERSION = "v1"
 PROMPT_VERSIONS = ["v1", "v2"]
 
 BASE_INPUTS = [
@@ -117,7 +124,6 @@ except FileNotFoundError as e:
     print(f"\n❌ ERROR: {e}")
     print(f"\nCreate this file: prompts/versions/{TASK}/{PRIMARY_PROMPT_VERSION}.yaml")
     exit(1)
-
 
 
 task_type = prompt_meta["task_type"]

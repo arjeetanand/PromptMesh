@@ -1,0 +1,29 @@
+prompt_id: sentiment_classifier
+version: "1.0.0"
+task: classification
+task_type: classification
+
+description: >
+  Classifies sentiment of text.
+
+input_variables:
+  - text
+
+constraints:
+  max_tokens: 50
+  temperature: 0.0
+  output_format: string
+
+template: |
+  You are a sentiment classifier.
+
+  Classify the sentiment as:
+  Positive
+  Negative
+  Neutral
+
+  Text:
+  {{text}}
+
+expected_output:
+  type: string

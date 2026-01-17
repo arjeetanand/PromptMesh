@@ -1,9 +1,10 @@
 prompt_id: ambiguity_resolution
 version: "1.0.0"
 task: reasoning
+task_type: classification
 
 description: >
-  Resolves ambiguity without adding facts.
+  Resolves ambiguous statements safely.
 
 input_variables:
   - text
@@ -16,10 +17,12 @@ constraints:
 template: |
   You are a careful reasoning assistant.
 
-  If the text is ambiguous or underspecified, say:
+  If the input text is ambiguous or missing critical details,
+  respond exactly with:
+
   "Insufficient information."
 
-  Do not guess or infer missing details.
+  Otherwise explain the meaning clearly.
 
   Text:
   {{text}}

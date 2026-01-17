@@ -12,6 +12,24 @@ __all__ = [
 ]
 
 
+# -------------------------------
+# TASK NORMALIZATION
+# -------------------------------
+
+TASK_NORMALIZATION_MAP = {
+    "reasoning": "classification",
+    "entity_extraction": "structured_output",
+    "json_extraction": "structured_output",
+    "extraction": "structured_output",
+    "qa": "verification",
+    "question_answering": "verification",
+}
+
+
+# -------------------------------
+# GENERATOR TEMPLATES
+# -------------------------------
+
 GENERATOR_TEMPLATES = {
 
 "structured_output": """
@@ -94,79 +112,31 @@ Return ONLY JSON array.
 }
 
 
-
+# -------------------------------
+# JSON ARRAY EXTRACTOR
+# -------------------------------
 
 def extract_json_list(text: str) -> list:
-    """Extract JSON list from model output."""
-    # Remove markdown code blocks
+
     text = re.sub(r"```json\s*|\s*```", "", text, flags=re.IGNORECASE).strip()
-    
-    # Try to find JSON array
+
     match = re.search(r"\[.*\]", text, re.DOTALL)
+
     if match:
         try:
             return json.loads(match.group(0))
         except json.JSONDecodeError:
             pass
-    
-    # Try parsing entire text
+
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        pass
-    
-    return []
+        return []
 
 
-def generate_test_cases(
-    task_type: str,
-    input_variables: list[str],
-    base_inputs: list[str],
-    schema_fields: list[str] | None = None,
-    n: int = 6,
-    model_name: str = "qwen2.5:latest"
-):
-
-    if task_type not in GENERATOR_TEMPLATES:
-        raise ValueError(
-            f"No generator registered for task_type={task_type}. "
-            f"Available: {list(GENERATOR_TEMPLATES.keys())}"
-        )
-
-    model = get_model(model_name)
-
-    template = GENERATOR_TEMPLATES[task_type]
-
-    field_block = ""
-    if schema_fields:
-        field_block = "\n".join(f"- {f}" for f in schema_fields)
-
-    prompt = template.format(
-        n=n,
-        fields=field_block
-    )
-
-    prompt += "\n\nBase examples:\n"
-    prompt += "\n".join(f"- {t}" for t in base_inputs)
-
-    prompt += f"\n\nGenerate {n} NEW diverse examples as JSON array:"
-
-    generated = parallel_generate(
-        model=model,
-        prompt=prompt,
-        workers=3
-    )
-
-    generated = list(set([
-    x for x in generated
-    if isinstance(x, str) and len(x) > 10
-]))
-
-    print(f"[INFO] Base inputs: {len(base_inputs)}")
-    print(f"[INFO] Generated inputs: {len(generated)}")
-
-    return base_inputs + generated
-
+# -------------------------------
+# TASK TYPE DETECTOR (CACHED)
+# -------------------------------
 
 TASK_CACHE = {}
 
@@ -174,68 +144,55 @@ def detect_task_type(prompt_text: str, model_name="qwen2.5:latest") -> str:
 
     if prompt_text in TASK_CACHE:
         return TASK_CACHE[prompt_text]
-    
+
     detector_prompt = f"""
-        You are a classifier.
+You are a classifier.
 
-        Given the PROMPT TEMPLATE below, classify its task type into ONE of:
+Classify the PROMPT TEMPLATE below into ONE category:
 
-        structured_output
-        summarization
-        classification
-        verification
-        generation
-        reasoning
+structured_output
+summarization
+classification
+verification
+generation
 
-        PROMPT TEMPLATE:
-        {prompt_text}
+PROMPT TEMPLATE:
+{prompt_text}
 
-        Return ONLY the task_type string.
-        """
+Return ONLY the task_type string.
+"""
 
     model = get_model(model_name)
 
     response = model.run(
         prompt=detector_prompt,
-        params={"temperature": 0.0, "max_tokens": 50}
+        params={"temperature": 0.0, "max_tokens": 40}
     )
 
     detected = response["output"].strip().lower()
 
-    # allowed = {
-    #     "structured_output",
-    #     "summarization",
-    #     "classification",
-    #     "verification",
-    #     "generation"
-    # }
-    allowed = {
-        "structured_output",
-        "summarization",
-        "classification",
-        "verification",
-        "generation",
-        "reasoning"
-    }
-
+    allowed = set(GENERATOR_TEMPLATES.keys())
 
     if detected not in allowed:
-        print(f"[WARN] Unknown detected task type: {detected}")
-        return "generation"
-
-    print(f"[INFO] Auto-detected task type: {detected}")
+        print(f"[WARN] Unknown detected task type: {detected} → defaulting to classification")
+        detected = "classification"
 
     TASK_CACHE[prompt_text] = detected
+
+    print(f"[INFO] Auto-detected task type: {detected}")
 
     return detected
 
 
-
+# -------------------------------
+# PARALLEL GENERATOR
+# -------------------------------
 
 def parallel_generate(
     model,
     prompt: str,
-    workers: int = 3
+    workers: int = 3,
+    max_results: int = 12
 ) -> list[str]:
 
     results = []
@@ -261,4 +218,71 @@ def parallel_generate(
             except Exception as e:
                 print(f"[WARN] Parallel generator error: {e}")
 
-    return results
+    return results[:max_results]
+
+
+# -------------------------------
+# MAIN TESTCASE GENERATOR
+# -------------------------------
+
+def generate_test_cases(
+    task_type: str,
+    input_variables: list[str],
+    base_inputs: list[str],
+    schema_fields: list[str] | None = None,
+    n: int = 6,
+    model_name: str = "qwen2.5:latest"
+):
+
+    # Normalize task types
+    task_type = TASK_NORMALIZATION_MAP.get(task_type, task_type)
+
+    if task_type not in GENERATOR_TEMPLATES:
+        raise ValueError(
+            f"No generator registered for task_type={task_type}. "
+            f"Available: {list(GENERATOR_TEMPLATES.keys())}"
+        )
+
+    model = get_model(model_name)
+
+    template = GENERATOR_TEMPLATES[task_type]
+
+    field_block = ""
+    if schema_fields:
+        field_block = "\n".join(f"- {f}" for f in schema_fields)
+
+    primary_var = input_variables[0] if input_variables else "text"
+
+    prompt = template.format(
+        n=n,
+        fields=field_block
+    )
+
+    prompt += f"\n\nInput variable name: {primary_var}"
+
+    prompt += "\n\nBase examples:\n"
+    prompt += "\n".join(f"- {t}" for t in base_inputs)
+
+    prompt += f"\n\nGenerate {n} NEW diverse examples as JSON array:"
+
+    generated = parallel_generate(
+        model=model,
+        prompt=prompt,
+        workers=3,
+        max_results=n * 2
+    )
+
+    # Clean + dedupe
+    generated = list(set([
+        x.strip() for x in generated
+        if isinstance(x, str) and len(x.strip()) > 10
+    ]))
+
+    print(f"[INFO] Base inputs: {len(base_inputs)}")
+    print(f"[INFO] Generated inputs: {len(generated)}")
+
+    if not generated:
+        print("[WARN] Generator returned no new samples — using base inputs only")
+        return base_inputs
+
+    return base_inputs + generated[:n]

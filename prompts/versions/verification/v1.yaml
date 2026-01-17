@@ -1,0 +1,31 @@
+prompt_id: fact_verification
+version: "1.0.0"
+task: verification
+task_type: verification
+
+description: >
+  Verifies whether a claim is supported by the provided text.
+
+input_variables:
+  - text
+
+constraints:
+  max_tokens: 100
+  temperature: 0.0
+  output_format: paragraph
+
+template: |
+  You are a fact verification assistant.
+
+  Determine whether the claim in the text is supported.
+
+  Respond with:
+  - Supported
+  - Not Supported
+  - Insufficient Information
+
+  Text:
+  {{text}}
+
+expected_output:
+  type: string

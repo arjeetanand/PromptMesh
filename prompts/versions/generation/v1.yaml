@@ -1,0 +1,26 @@
+prompt_id: content_generator
+version: "1.0.0"
+task: generation
+task_type: generation
+
+description: >
+  Generates structured short content based on instructions.
+
+input_variables:
+  - text
+
+constraints:
+  max_tokens: 200
+  temperature: 0.7
+  output_format: paragraph
+
+template: |
+  You are a helpful content generator.
+
+  Generate content based on the following instruction:
+
+  Instruction:
+  {{text}}
+
+expected_output:
+  type: string

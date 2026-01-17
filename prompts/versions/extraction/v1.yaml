@@ -4,39 +4,39 @@ task: extraction
 task_type: structured_output
 
 description: >
-  Extracts structured facts from text without inference.
+  Extracts factual entities from text.
 
 input_variables:
   - text
 
 constraints:
-  max_tokens: 150
+  max_tokens: 120
   temperature: 0.0
   output_format: json
-
-template: |
-  You are an information extraction system.
-
-  Extract the following fields from the text:
-  - organization
-  - year
-  - claim
-
-  Rules:
-  - Use ONLY information explicitly present in the text.
-  - If a field is missing, return null.
-  - Do not infer or guess.
-
-  Return valid JSON only.
-
-  Text:
-  {{text}}
-
-expected_output:
-  type: json
 
 output_schema:
   fields:
     - organization
     - year
     - claim
+
+template: |
+  You are an information extraction system.
+
+  Extract these fields:
+  - organization
+  - year
+  - claim
+
+  Rules:
+  - Use ONLY explicitly stated facts.
+  - If missing, return null.
+  - Do not infer.
+
+  Return valid JSON.
+
+  Text:
+  {{text}}
+
+expected_output:
+  type: json
