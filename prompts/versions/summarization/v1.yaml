@@ -1,25 +1,27 @@
-prompt_id: summarization_base
+prompt_id: summarization_strict
 version: "1.0.0"
 task: summarization
 
 description: >
-  Summarizes input text while preserving factual accuracy.
+  Summarizes text with strict factual accuracy and no stylistic padding.
 
 input_variables:
   - text
 
 constraints:
-  max_tokens: 150
+  max_tokens: 100
   temperature: 0.0
   output_format: paragraph
   tone: neutral
 
 template: |
-  You are an expert analyst.
+  You are a senior analyst.
 
-  Summarize the following text concisely.
-  Do not add new facts.
-  Preserve key numbers and names.
+  Summarize the following text in one paragraph.
+  Preserve all key facts, dates, and numbers.
+  Do not rephrase names.
+  Do not add interpretations.
+  Do not include introductions or phrases like "Here is a summary".
 
   Text:
   {{text}}

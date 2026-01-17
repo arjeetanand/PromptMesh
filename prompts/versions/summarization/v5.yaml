@@ -1,0 +1,28 @@
+prompt_id: ambiguity_resolution
+version: "1.0.0"
+task: reasoning
+
+description: >
+  Resolves ambiguity without adding facts.
+
+input_variables:
+  - text
+
+constraints:
+  max_tokens: 120
+  temperature: 0.0
+  output_format: paragraph
+
+template: |
+  You are a careful reasoning assistant.
+
+  If the text is ambiguous or underspecified, say:
+  "Insufficient information."
+
+  Do not guess or infer missing details.
+
+  Text:
+  {{text}}
+
+expected_output:
+  type: string

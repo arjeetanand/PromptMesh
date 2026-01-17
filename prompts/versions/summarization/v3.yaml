@@ -1,0 +1,35 @@
+prompt_id: entity_extraction
+version: "1.0.0"
+task: extraction
+
+description: >
+  Extracts structured facts from text without inference.
+
+input_variables:
+  - text
+
+constraints:
+  max_tokens: 150
+  temperature: 0.0
+  output_format: json
+
+template: |
+  You are an information extraction system.
+
+  Extract the following fields from the text:
+  - organization
+  - year
+  - claim
+
+  Rules:
+  - Use ONLY information explicitly present in the text.
+  - If a field is missing, return null.
+  - Do not infer or guess.
+
+  Return valid JSON only.
+
+  Text:
+  {{text}}
+
+expected_output:
+  type: json

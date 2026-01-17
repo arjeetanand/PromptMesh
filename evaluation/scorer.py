@@ -17,7 +17,7 @@ def evaluate(
         )
 
     # judge_scores = judge_output(output)
-    source_text = prompt_constraints.get("_source_text", "")
+    # source_text = prompt_constraints.get("_source_text", "")
     judge_scores = judge_output(output, source_text)
 
 

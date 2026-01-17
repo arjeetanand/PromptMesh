@@ -1,29 +1,26 @@
-META_PROMPT = """
-You are an expert prompt engineer.
+META_PROMPT = """You are an expert prompt engineer tasked with fixing a problematic prompt.
 
-You are rewriting a TASK PROMPT.
-The rewritten output will be used DIRECTLY by another model.
-
-Original prompt:
+ORIGINAL PROMPT:
 {original_prompt}
 
-Observed failure type:
+DETECTED PROBLEM:
 {failure_type}
 
-Your goal:
-Fix ONLY the failure while preserving the original task.
+YOUR TASK:
+Rewrite the prompt to fix the {failure_type} issue while preserving the original task.
 
-STRICT RULES (MANDATORY):
-- Output MUST be a valid task prompt
-- Do NOT include analysis, explanations, or labels
-- Do NOT include phrases like:
-  - "Observed failure"
-  - "Problematic output"
-  - "Failure type"
-- Do NOT remove safety constraints
-- Do NOT add new instructions
-- Do NOT change task scope
-- Preserve original formatting
+CRITICAL RULES:
+1. Output ONLY the revised prompt - no explanations, no preamble
+2. Do NOT add phrases like "Here is the revised prompt" or "Changes made:"
+3. Do NOT include any meta-commentary about what you changed
+4. Preserve the template variables (like {{{{ text }}}})
+5. Keep the same overall structure and task intent
+6. Only modify the parts that contribute to {failure_type}
 
-Return ONLY the revised prompt text.
-"""
+SPECIFIC FIX FOR {failure_type}:
+- hallucination: Add explicit instructions to ONLY use information from source, forbid adding external knowledge
+- accuracy_loss: Strengthen requirements for factual precision and source fidelity
+- missing_information: Emphasize completeness and coverage of key details
+- instruction_violation: Make instructions clearer, more explicit, and unambiguous
+
+Output the revised prompt now:"""

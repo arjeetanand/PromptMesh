@@ -3,7 +3,6 @@ from core.executor import PromptExecutor
 from evaluation.scorer import evaluate
 from comparison.types import PromptRunResult
 
-
 def run_prompt_comparison(
     task: str,
     prompt_versions: list,
@@ -17,10 +16,7 @@ def run_prompt_comparison(
 
     for version in prompt_versions:
         prompt_def = registry.load(task, version)
-
-        prompt_text = prompt_def["template"]
-        from core.types import render_prompt
-        prompt_text = render_prompt(prompt_text, input_vars)
+        prompt_text = render_prompt(prompt_def["template"], input_vars)
 
         exec_results = executor.run(
             prompt=prompt_text,
@@ -29,7 +25,11 @@ def run_prompt_comparison(
         )
 
         for r in exec_results:
-            evaluation = evaluate(r.output, prompt_def["constraints"])
+            evaluation = evaluate(
+                r.output,
+                prompt_def["constraints"],
+                input_vars[list(input_vars.keys())[0]]
+            )
 
             results.append(
                 PromptRunResult(

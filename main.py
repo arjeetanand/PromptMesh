@@ -1,5 +1,5 @@
 # ===============================
-# MAIN ENTRY – PROMPT PIPELINE
+# MAIN ENTRY — PROMPT PIPELINE
 # ===============================
 
 from prompts.registry import PromptRegistry
@@ -8,10 +8,10 @@ from core.executor import PromptExecutor
 from evaluation.scorer import evaluate
 
 from comparison.runner import run_prompt_comparison
-from comparison.ranker import rank_prompts
 
 from optimization.failure_analysis import analyze_failure
 from optimization.evolver import evolve_prompt
+from optimization.testcase_generator import generate_test_cases
 
 from models.registry import get_model
 
@@ -20,60 +20,33 @@ from models.registry import get_model
 # CONFIG
 # -------------------------------
 
-# ---- MODE SWITCH ----
-COMPARE_PROMPTS = False   # True = old prompt-vs-prompt mode
+COMPARE_PROMPTS = False
 
 TASK = "summarization"
+PRIMARY_PROMPT_VERSION = "v6"
+PROMPT_VERSIONS = ["v1", "v2"]
 
-PRIMARY_PROMPT_VERSION = "v2"      # used when COMPARE_PROMPTS = False
-PROMPT_VERSIONS = ["v1", "v2"]     # used only when COMPARE_PROMPTS = True
-
-TEST_CASES = {
-    "baseline": (
-        "OpenAI released a new language model in 2025. "
-        "The model improved reasoning performance and reduced hallucinations "
-        "compared to earlier versions."
-    ),
-    "hallucination_trap": (
-        "In 2025, OpenAI released a new model. "
-        "The announcement mentioned improvements over previous systems "
-        "but did not provide specific metrics or comparisons."
-    ),
-}
-
-TEST_NAME = "hallucination_trap"
-INPUT_TEXT = TEST_CASES[TEST_NAME]
-
-EVAL_TASK_INPUTS = {
-    "baseline": TEST_CASES["baseline"],
-    "hallucination_trap": TEST_CASES["hallucination_trap"],
-}
-
+BASE_INPUTS = [
+    "The study found a 23% reduction in symptoms after 6 weeks. "
+    "Researchers noted this was preliminary data from a small sample of 50 participants. "
+    "Further trials with 500 participants are planned for next year."
+]
 
 FAST_MODELS = [
-    "gemma3:1b",
     "llama3.2:latest",
 ]
 
 MID_MODELS = [
-    # "llama3:latest",
-    "llama3:8b",
-    # "qwen2.5:latest",
-    # "mistral:latest",
+    "qwen2.5:latest",
 ]
 
 HEAVY_MODELS = [
     "gemma2:9b",
-    # "deepseek-r1:8b",
-    # "llava:latest",
 ]
 
 EVAL_MODELS = FAST_MODELS + MID_MODELS + HEAVY_MODELS
 
-
-
-# OPTIMIZER_MODEL_NAME = "command-a-03-2025"
-OPTIMIZER_MODEL_NAME = "deepseek-r1:8b"
+OPTIMIZER_MODEL_NAME = "command-a-03-2025"
 
 MAX_EVOLUTION_ITERS = 3
 VARIANTS_PER_ITER = 3
@@ -89,7 +62,7 @@ executor = PromptExecutor()
 
 
 # ============================================================
-# MODE 1: PROMPT COMPARISON (OPTIONAL / RESEARCH MODE)
+# MODE 1: PROMPT COMPARISON (OPTIONAL)
 # ============================================================
 
 if COMPARE_PROMPTS:
@@ -99,7 +72,7 @@ if COMPARE_PROMPTS:
     results = run_prompt_comparison(
         task=TASK,
         prompt_versions=PROMPT_VERSIONS,
-        input_vars={"text": INPUT_TEXT},
+        input_vars={"text": BASE_INPUTS[0]},
         models=EVAL_MODELS
     )
 
@@ -128,59 +101,126 @@ if COMPARE_PROMPTS:
 
 
 # ============================================================
-# MODE 2: SINGLE PROMPT → MULTI-MODEL → EVOLVE → FINAL RUN
+# MODE 2: SINGLE PROMPT → MULTI-MODEL → EVOLVE
 # ============================================================
 
 print("\n==== SINGLE PROMPT • MULTI-MODEL MODE ====")
 
-# ---- Load base prompt ----
-base_prompt_def = registry.load(TASK, PRIMARY_PROMPT_VERSION)
+# ---- Load YAML prompt ----
+try:
+    base_prompt_def = registry.load(TASK, PRIMARY_PROMPT_VERSION)
+    print(f"✓ Loaded prompt: {TASK}/{PRIMARY_PROMPT_VERSION}")
+except FileNotFoundError as e:
+    print(f"\n❌ ERROR: {e}")
+    print(f"\nCreate this file: prompts/versions/{TASK}/{PRIMARY_PROMPT_VERSION}.yaml")
+    exit(1)
+
+task_name = base_prompt_def["task"]
+input_var_name = base_prompt_def["input_variables"][0]
 base_prompt = base_prompt_def["template"]
 
-prompt_text = render_prompt(base_prompt, {"text": INPUT_TEXT})
+# ---- Generate test cases (distribution) ----
+print("\n" + "="*60)
+print("GENERATING TEST CASES")
+print("="*60)
 
-# ---- Run prompt across all models ----
-raw_results = executor.run(
-    prompt=prompt_text,
-    params=base_prompt_def["constraints"],
-    models=EVAL_MODELS
+test_inputs = generate_test_cases(
+    task=task_name,
+    input_variables=base_prompt_def["input_variables"],
+    base_inputs=BASE_INPUTS,
+    n=3
 )
+
+print(f"\n✓ Total test cases: {len(test_inputs)}")
+for i, t in enumerate(test_inputs[:3], 1):
+    print(f"  {i}. {t[:80]}...")
+
+REPRESENTATIVE_INPUT = test_inputs[0]
+
+# ---- Evaluate across all models ----
+print("\n" + "="*60)
+print("EVALUATING MODELS")
+print("="*60)
 
 results = []
 
-for r in raw_results:
-    eval_result = evaluate(
-        r.output,
-        base_prompt_def["constraints"],
-        INPUT_TEXT
-    )
+for model_name in EVAL_MODELS:
+    print(f"\n[{model_name}]")
+    model = get_model(model_name)
+    scores = []
+    breakdowns = []
 
+    for i, text in enumerate(test_inputs, 1):
+        rendered = render_prompt(base_prompt, {input_var_name: text})
+        
+        print(f"  Test {i}/{len(test_inputs)}...", end=" ")
+        
+        try:
+            raw = model.run(rendered, base_prompt_def["constraints"])
+            
+            print(f"Output: {raw['output'][:60]}...")
+            
+            eval_result = evaluate(
+                raw["output"],
+                base_prompt_def["constraints"],
+                text
+            )
+            
+            scores.append(eval_result.score)
+            breakdowns.append(eval_result.breakdown)
+            
+            print(f"    Score: {eval_result.score}")
+            
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            scores.append(0.0)
+            breakdowns.append({"error": str(e)})
+
+    avg_score = round(sum(scores) / len(scores), 2) if scores else 0.0
+    
     results.append({
-        "model": r.model,
-        "score": eval_result.score,
-        "breakdown": eval_result.breakdown,
-        "output": r.output,
-        "latency": r.latency_ms
+        "model": model_name,
+        "score": avg_score,
+        "breakdowns": breakdowns
     })
+    
+    print(f"  Average score: {avg_score}")
 
 
-results = [
-    r for r in results
-    if r["breakdown"].get("reason") != "empty_output"
-]
+# ---- Filter invalid / empty-output models ----
+def is_valid_result(r):
+    return all("reason" not in b and "error" not in b for b in r["breakdowns"])
 
+valid_results = [r for r in results if is_valid_result(r)]
+
+if not valid_results:
+    print("\n❌ No valid models produced usable output.")
+    print("\nAll results:")
+    for r in results:
+        print(f"  {r['model']}: {r['breakdowns'][:2]}")
+    exit(1)
+
+results = valid_results
 
 # ---- Rank models ----
 results = sorted(results, key=lambda x: x["score"], reverse=True)
 
-print("\n==== MODEL LEADERBOARD ====")
+print("\n" + "="*60)
+print("MODEL LEADERBOARD")
+print("="*60)
 
 for i, r in enumerate(results, start=1):
+    avg_halluc = round(
+        sum(b.get("hallucination", 0) for b in r["breakdowns"]) / len(r["breakdowns"]),
+        2
+    )
+
     print(
         f"{i}. {r['model']:<18} "
-        f"score={r['score']:<4} "
-        f"halluc={r['breakdown'].get('hallucination')}"
+        f"score={r['score']:<5} "
+        f"avg_halluc={avg_halluc}"
     )
+
 
 # ---- Select top model ----
 top_model = results[0]
@@ -189,38 +229,52 @@ best_model_name = top_model["model"]
 print("\n🏆 TOP MODEL SELECTED 🏆")
 print("Model     :", best_model_name)
 print("Score     :", top_model["score"])
-print("Breakdown :", top_model["breakdown"])
+print("Breakdowns:", top_model["breakdowns"][:2])
 
 
 # ============================================================
-# PROMPT EVOLUTION (ONLY FOR TOP MODEL)
+# PROMPT EVOLUTION (DISTRIBUTION-AWARE)
 # ============================================================
 
-failure_type = analyze_failure(top_model["breakdown"])
-print("\nDetected failure type:", failure_type)
+failure_type = analyze_failure(top_model["breakdowns"])
+print(f"\nDetected failure type: {failure_type}")
 
-if failure_type != "none":
+# Only evolve if there's a real problem AND score is below threshold
+if failure_type != "none" and top_model["score"] < 7.0:
 
-    print("\n==== STARTING PROMPT EVOLUTION ====")
+    print("\n" + "="*60)
+    print("STARTING PROMPT EVOLUTION")
+    print("="*60)
 
     optimizer_model = get_model(OPTIMIZER_MODEL_NAME)
     execution_model = get_model(best_model_name)
 
     evolution_history = evolve_prompt(
         initial_prompt=base_prompt,
-        task_inputs=EVAL_TASK_INPUTS,
+        task_inputs=test_inputs,
         constraints=base_prompt_def["constraints"],
         optimizer_model=optimizer_model,
         execution_model=execution_model,
+        input_var=base_prompt_def["input_variables"][0],
         max_iters=MAX_EVOLUTION_ITERS,
         variants_per_iter=VARIANTS_PER_ITER,
         min_delta=MIN_DELTA
     )
 
     final_prompt = evolution_history[-1]["prompt"]
+    
+    print("\n" + "="*60)
+    print("EVOLUTION COMPLETE")
+    print("="*60)
+    print(f"Initial score: {evolution_history[0]['score']}")
+    print(f"Final score:   {evolution_history[-1]['score']}")
+    print(f"Improvement:   +{evolution_history[-1]['score'] - evolution_history[0]['score']:.2f}")
 
 else:
-    print("Prompt already optimal for top model.")
+    if failure_type == "none":
+        print("✓ No failures detected - prompt is working well.")
+    else:
+        print(f"✓ Score {top_model['score']} is acceptable despite {failure_type}.")
     final_prompt = base_prompt
 
 
@@ -228,11 +282,13 @@ else:
 # FINAL RUN (TOP MODEL ONLY)
 # ============================================================
 
-print("\n==== FINAL MODEL RUN ====")
+print("\n" + "="*60)
+print("FINAL MODEL RUN")
+print("="*60)
 
 final_prompt_text = render_prompt(
     final_prompt,
-    {"text": INPUT_TEXT}
+    {input_var_name: REPRESENTATIVE_INPUT}
 )
 
 final_results = executor.run(
@@ -246,7 +302,7 @@ r = final_results[0]
 final_eval = evaluate(
     r.output,
     base_prompt_def["constraints"],
-    INPUT_TEXT
+    REPRESENTATIVE_INPUT
 )
 
 print("\nMODEL:", r.model)
