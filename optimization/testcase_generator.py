@@ -23,7 +23,10 @@ TASK_NORMALIZATION_MAP = {
     "json_extraction": "structured_output",
     "extraction": "structured_output",
     "qa": "verification",
-    "question_answering": "verification"
+    "question_answering": "verification",
+    "reasoning" : "reasoning",
+
+    
 }
 
 
@@ -32,6 +35,21 @@ TASK_NORMALIZATION_MAP = {
 # ============================================================
 
 GENERATOR_TEMPLATES = {
+
+    "summarization": """
+        Generate {n} diverse summarization input texts.
+
+        Include:
+        - dense paragraphs
+        - contradictory information
+        - short minimal content
+        - multi-topic text
+        - ambiguous statements
+        - hallucination risk content
+
+        Return ONLY a valid JSON array of strings.
+        """,
+
     "structured_output": """
             You are generating INPUT TEXTS for structured information extraction.
 
@@ -57,19 +75,23 @@ GENERATOR_TEMPLATES = {
             Return ONLY a valid JSON array of strings.
             """,
 
-    "summarization": """
-        Generate {n} diverse summarization input texts.
+    "reasoning": """
+            Generate {n} ambiguous or underspecified input texts that require reasoning.
 
-        Include:
-        - dense paragraphs
-        - contradictory information
-        - short minimal content
-        - multi-topic text
-        - ambiguous statements
-        - hallucination risk content
+            Include:
+            - vague statements
+            - unclear references
+            - missing actors
+            - ambiguous pronouns
+            - partial facts
 
-        Return ONLY a valid JSON array of strings.
-        """,
+            Rules:
+            - Each item must be a standalone sentence
+            - No explanations
+            - No answers
+
+            Return ONLY valid JSON array of strings.
+            """,
 
     "classification": """
         Generate {n} classification input texts.
@@ -288,13 +310,14 @@ def parallel_generate(
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(run_one) for _ in range(workers)]
 
-        for future in as_completed(futures,  timeout=60):
+        for future in as_completed(futures):
             try:
-                batch = future.result()
+                batch = future.result(timeout=120)
                 if isinstance(batch, list):
                     results.extend(batch)
             except Exception as e:
-                print(f"[WARN] Parallel generator error: {e}")
+                print(f"[WARN] Generator worker failed: {e}")
+
             except TimeoutError:
                 print("[WARN] Parallel generation timeout")
 
@@ -392,4 +415,4 @@ def generate_test_cases(
     return base_inputs + generated[:remaining]
 
 
-    # return base_inputs + generated[:n]
+

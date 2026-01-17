@@ -124,6 +124,8 @@ def evolve_prompt(
             input_var=input_var
         )
 
+    
+
         delta = best["score"] - current_score
         print(f"Best candidate score : {best['score']} (Δ {delta:+.2f})")
 
@@ -145,6 +147,9 @@ def evolve_prompt(
             constraints,
             input_var
         )
+
+
+
 
         print(f"New breakdowns (sample): {current_breakdowns[:2]}")
 

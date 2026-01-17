@@ -6,6 +6,8 @@ import json
 import re
 
 # judge = get_model(DEFAULT_JUDGE_MODEL)
+DEBUG = False
+
 
 def get_judge_model():
     return get_model(DEFAULT_JUDGE_MODEL)
@@ -124,10 +126,11 @@ def judge_output(output: str, source_text: str) -> dict | None:
             )
             
             raw_output = response["output"]
-            
-            print(f"[DEBUG] Judge attempt {attempt+1} raw output:")
-            print(repr(raw_output[:300]))  # Use repr to see escape characters
-            print("-" * 40)
+
+            if DEBUG:
+                print(f"[DEBUG] Judge attempt {attempt+1} raw output:")
+                print(repr(raw_output[:300]))  # Use repr to see escape characters
+                print("-" * 40)
             
             scores = extract_json(raw_output)
             

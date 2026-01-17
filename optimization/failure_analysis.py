@@ -1,7 +1,19 @@
-from typing import Dict
+from typing import List, Dict
+
+
+FAILURE_TYPES = [
+    "hallucination",
+    "accuracy_loss",
+    "missing_information",
+    "instruction_violation"
+]
+
 
 def analyze_failure(breakdowns: list[dict]) -> str:
-    counts = {
+    if not breakdowns:
+        return "none"
+
+    weights = {
         "hallucination": 0,
         "accuracy_loss": 0,
         "missing_information": 0,
@@ -9,14 +21,26 @@ def analyze_failure(breakdowns: list[dict]) -> str:
     }
 
     for b in breakdowns:
-        if b.get("hallucination", 0) > 3:
-            counts["hallucination"] += 1
-        if b.get("accuracy", 10) < 7:
-            counts["accuracy_loss"] += 1
-        if b.get("completeness", 10) < 7:
-            counts["missing_information"] += 1
-        if b.get("adherence", 10) < 7:
-            counts["instruction_violation"] += 1
+        halluc = b.get("hallucination", 0)
+        acc = b.get("accuracy", 10)
+        comp = b.get("completeness", 10)
+        adher = b.get("adherence", 10)
 
-    dominant = max(counts, key=counts.get)
-    return dominant if counts[dominant] > 0 else "none"
+        if halluc >= 5:
+            weights["hallucination"] += 2
+        elif halluc >= 3:
+            weights["hallucination"] += 1
+
+        if acc < 6:
+            weights["accuracy_loss"] += 1
+
+        if comp < 6:
+            weights["missing_information"] += 1
+
+        # Only count instruction violation if VERY low
+        if adher <= 4:
+            weights["instruction_violation"] += 1
+
+    dominant = max(weights, key=weights.get)
+
+    return dominant if weights[dominant] > 0 else "none"
