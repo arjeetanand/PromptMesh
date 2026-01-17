@@ -25,9 +25,9 @@ sys.path.append(os.getcwd())
 
 COMPARE_PROMPTS = False
 
-TASK = "summarization"
+# TASK = "summarization"
 # TASK = "extraction"
-# TASK = "verification"
+TASK = "verification"
 # TASK = "classification"
 # TASK = "reasoning"
 # TASK = "generation"
@@ -36,9 +36,54 @@ TASK = "summarization"
 PRIMARY_PROMPT_VERSION = "v1"
 PROMPT_VERSIONS = ["v1", "v2"]
 
-BASE_INPUTS = [
-    "In 2022, OpenAI announced that its GPT-4 model achieved improved reasoning accuracy."
+BASE_INPUTS_SUMMARIZATION = [
+    "In 2023, Apple reported a 10 percent increase in revenue while also announcing layoffs across several departments due to market uncertainty.",
+    
+    "The European Union introduced new AI regulations aimed at improving transparency and safety, though some companies expressed concerns about compliance costs.",
+    
+    "A study published on climate change reported rising sea levels, increasing global temperatures, and the growing frequency of extreme weather events."
 ]
+
+BASE_INPUTS_EXTRACTION = [
+    "In 2022, Google announced that its cloud platform achieved a 30 percent increase in customer adoption.",
+
+    "Microsoft released a new product in 2023.",
+
+    "In 2021, a report stated that energy efficiency improved significantly."
+]
+
+BASE_INPUTS_VERIFICATION = [
+    "Claim: Tesla increased vehicle production by 50 percent in 2022. Source: Tesla reported a significant production growth in 2022.",
+
+    "Claim: Amazon launched a new smartphone in 2023. Source: Amazon announced new logistics tools in 2023.",
+
+    "Claim: Google expanded globally. Source: Google announced new office openings."
+]
+
+BASE_INPUTS_CLASSIFICATION = [
+    "The product exceeded expectations and delivered outstanding performance.",
+    
+    "Customer service was slow and unhelpful.",
+    
+    "The update was released yesterday and included several changes."
+]
+
+BASE_INPUTS_REASONING = [
+    "The company improved its performance last year.",
+
+    "John gave Mike his book after the meeting.",
+
+    "The temperature increased significantly."
+]
+
+BASE_INPUTS_GENERATION = [
+    "Write a short motivational quote about learning.",
+    
+    "Generate a two-line product description for a smartwatch.",
+    
+    "Create a brief introduction for a tech blog."
+]
+
 
 FAST_MODELS = [
     "llama3.2:latest",
@@ -49,16 +94,29 @@ MID_MODELS = [
 ]
 
 HEAVY_MODELS = [
-    "gemma2:9b",
+    # "gemma2:9b",
 ]
 
 EVAL_MODELS = FAST_MODELS + MID_MODELS + HEAVY_MODELS
 
 OPTIMIZER_MODEL_NAME = "command-a-03-2025"
 
-MAX_EVOLUTION_ITERS = 3
-VARIANTS_PER_ITER = 3
+MAX_EVOLUTION_ITERS = 2
+VARIANTS_PER_ITER = 2
 MIN_DELTA = 0.25
+
+
+BASE_INPUT_MAP = {
+    "summarization": BASE_INPUTS_SUMMARIZATION,
+    "extraction": BASE_INPUTS_EXTRACTION,
+    "verification": BASE_INPUTS_VERIFICATION,
+    "classification": BASE_INPUTS_CLASSIFICATION,
+    "reasoning": BASE_INPUTS_REASONING,
+    "generation": BASE_INPUTS_GENERATION
+}
+
+BASE_INPUTS = BASE_INPUT_MAP.get(TASK, [])
+
 
 
 # -------------------------------
