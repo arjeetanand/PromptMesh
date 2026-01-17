@@ -1,139 +1,139 @@
 # PromptMesh
 
-**PromptMesh** is a **model-agnostic prompt evaluation, evolution, and persistence framework** that systematically compares, scores, stores, and **iteratively improves prompts** across multiple Large Language Models (LLMs).
+**PromptMesh** is a **model-agnostic prompt evaluation, comparison, and evolution platform** with a built-in **FastAPI backend and web UI**. It allows you to evaluate prompt versions across multiple LLMs, run controlled experiments, generate test cases, and evolve prompts using an automated feedback loop.
 
-It treats prompt engineering as a **systems and lifecycle problem**, combining prompt versioning, multi-model execution, LLM-as-a-Judge evaluation, controlled prompt evolution, and **experiment persistence** into a single platform.
+PromptMesh treats prompt engineering as a **system-level workflow** rather than ad-hoc trial and error.
 
 ---
 
-## 🚀 Why PromptMesh?
+## 🚀 Overview
 
-In real-world GenAI systems:
+PromptMesh provides a **production-ready prompt experimentation platform** with an integrated API server and web interface.
 
-* Small prompt changes can cause large behavioral shifts
-* Prompt quality varies drastically across models
-* Manual prompt iteration does not scale
-* Hallucination control requires objective measurement
-* Prompt experiments must be reproducible and auditable
+It enables:
 
-**PromptMesh turns prompt engineering into a measurable, repeatable, evolvable, and trackable process.**
+* Programmatic prompt evaluation
+* Multi-model benchmarking
+* Automated test generation
+* Prompt evolution with feedback loops
+* Real-time job tracking and result inspection
+
+All long-running operations execute asynchronously with progress reporting and result persistence in memory.
 
 ---
 
 ## ✨ Core Capabilities
 
-### Phase 1 — Prompt Evaluation & Comparison
+### 1. Prompt Versioning (YAML-first)
 
-Phase 1 establishes a rigorous evaluation baseline.
+* Versioned prompt templates per task
+* Metadata-driven configuration:
 
-* **Prompt Versioning (YAML-first)**
-
-  * Versioned prompts per task
-  * Easy experimentation, rollback, and comparison
-
-* **Multi-Model Execution**
-
-  * Execute the same prompt across heterogeneous backends:
-
-    * **OCI GenAI** (Command-A, Meta, Gemini, Grok)
-    * **Ollama** (local models like Llama 3, Qwen)
-    * **Cohere / OpenAI** (pluggable APIs)
-
-* **LLM-as-a-Judge Evaluation**
-
-  * Independent judge model scores outputs on:
-
-    * Accuracy
-    * Completeness
-    * Instruction adherence
-    * Hallucination risk
-  * Robust JSON extraction with graceful failure handling
-
-* **Deterministic Scoring**
-
-  * Weighted scoring formula
-  * Hard rule checks + soft semantic judgment
+  * Input variables
+  * Constraints
+  * Task type
+  * Schema fields
 
 ---
 
-### Phase 2 — Prompt Evolution Engine
+### 2. Multi-Model Prompt Evaluation
 
-Phase 2 upgrades PromptMesh from comparison to a **closed-loop prompt evolution system**.
+Evaluate the same prompt across multiple models:
 
-Instead of a single optimization step, prompts are **mutated, evaluated, selected, validated, and evolved** until convergence.
+* Local models (Ollama)
+* Cloud models (OCI GenAI, Cohere)
 
-#### What Phase 2 Adds
+Each run captures:
 
-* **Prompt Mutation (`optimization/mutator.py`)**
-
-  * Generates multiple candidate prompt variants per iteration
-  * Each variant targets a specific failure mode (hallucination, accuracy loss, etc.)
-
-* **Candidate Selection (`optimization/selector.py`)**
-
-  * Executes all candidates on an evaluation model
-  * Scores each using the evaluation pipeline
-  * Selects the highest-performing prompt
-
-* **Evolution Loop (`optimization/evolver.py`)**
-
-  * Iteratively refines prompts over generations
-  * Convergence checks based on score delta (`min_delta`)
-  * Anti-regression constraints (e.g. hallucination must not increase)
-
-* **Failure-Aware Evolution**
-
-  * Automatic failure classification (hallucination, accuracy loss, completeness, adherence)
-  * Evolution strategy adapts based on detected failure
-
-* **Traceable Evolution History**
-
-  * Stores prompt text, scores, and breakdowns per iteration
-  * Enables full auditability of prompt changes
+* Output text
+* Token usage
+* Latency
+* Score breakdown
 
 ---
 
-### Phase 3 — Experiment Persistence & Analysis
+### 3. LLM-as-a-Judge Scoring Pipeline
 
-PromptMesh now persists all experiments for reproducibility and analysis.
+Independent judge model scores outputs on:
 
-* **SQLite-backed Storage (`storage/`)**
+* Accuracy
+* Completeness
+* Instruction adherence
+* Hallucination risk
 
-  * Stores prompts, runs, evaluations, and outputs
-  * Enables longitudinal analysis of prompt evolution
+Features:
 
-* **Structured Experiment Tracking**
+* Robust JSON extraction
+* Graceful parsing fallback
+* Structured score breakdowns
 
-  * Prompt → Run → Evaluation hierarchy
-  * Latency, scores, breakdowns, and raw outputs recorded
+---
 
-This elevates PromptMesh from an experimentation script to a **prompt engineering platform**.
+### 4. Prompt Comparison Engine
+
+Compare multiple prompt versions across multiple models:
+
+* Side-by-side scoring
+* Ranked leaderboard output
+* Per-version performance analysis
+
+---
+
+### 5. Automated Prompt Evolution Engine
+
+PromptMesh supports closed-loop prompt optimization:
+
+* Failure-aware mutation
+* Iterative improvement
+* Score-based convergence control
+
+Capabilities:
+
+* Automatic failure detection
+* Controlled evolution using optimizer model
+* Improvement threshold (`min_delta`)
+* Iteration limits
+
+---
+
+### 6. Test Case Generation
+
+Automatically generate evaluation datasets:
+
+* Distribution-aware test generation
+* Schema-based generation support
+* Custom base input expansion
 
 ---
 
 ## 🧠 System Architecture
 
 ```
-prompts/        → Versioned prompt definitions (YAML)
-models/         → Model adapters & registries
-core/           → Execution, prompt rendering
-comparison/     → Prompt/model comparison orchestration
-evaluation/     → Rules, judge, scoring logic
-optimization/   → Prompt mutation, evolution & validation
-storage/        → Experiment persistence (SQLite)
-main.py         → End-to-end experiment runner
+prompts/        → Versioned YAML prompt definitions
+models/         → Model adapters and registry
+core/           → Prompt rendering and execution engine
+comparison/     → Prompt comparison logic
+evaluation/     → Judge and scoring logic
+optimization/   → Failure analysis and evolution engine
+static/         → Frontend UI assets
+app.py          → FastAPI backend server
+main.py         → CLI experiment runner
 ```
 
 ---
 
-## 📁 Project Structure
+## 📁 Updated Project Structure
 
 ```
-mcp/
+PromptMesh/
+├── app.py                  # FastAPI server
+├── main.py                 # CLI pipeline runner
+├── static/                 # Web UI (index.html, css, js)
+│
 ├── prompts/
 │   ├── registry.py
 │   └── versions/
-│       └── summarization/
+│       └── reasoning/
 │           ├── v1.yaml
 │           └── v2.yaml
 │
@@ -141,81 +141,35 @@ mcp/
 │   ├── base.py
 │   ├── registry.py
 │   ├── constants.py
-│   ├── oci_chat_model.py
 │   ├── ollama_model.py
 │   ├── cohere_model.py
-│   └── openai_model.py
+│   └── oci_chat_model.py
 │
 ├── core/
 │   ├── executor.py
-│   ├── result.py
 │   └── types.py
 │
 ├── evaluation/
-│   ├── rules.py
 │   ├── judge.py
 │   ├── scorer.py
-│   └── types.py
+│   └── rules.py
 │
 ├── comparison/
-│   ├── runner.py
-│   ├── ranker.py
-│   └── types.py
+│   └── runner.py
 │
 ├── optimization/
-│   ├── failure_analysis.py
-│   ├── mutator.py
-│   ├── selector.py
 │   ├── evolver.py
-│   ├── meta_prompt.py
-│   ├── optimizer.py
-│   └── validator.py
+│   ├── failure_analysis.py
+│   └── testcase_generator.py
 │
-├── storage/
-│   ├── db.py
-│   ├── init_db.py
-│   └── repository.py
-│
-├── main.py
+├── diagnostic_test.py      # Judge and model diagnostics
+├── combine_project_to_txt.py
 └── README.md
 ```
 
 ---
 
-## 🧪 Test Case–Driven Evaluation
-
-PromptMesh supports **explicit test scenarios** to stress prompts:
-
-* `baseline`
-* `hallucination_trap`
-* `completeness_failure`
-* `instruction_conflict`
-
-Each test case exposes different failure modes and drives evolution decisions.
-
----
-
-## 🛠 Supported Models
-
-### Local (Ollama)
-
-* `llama3`
-* `llama3:8b`
-* `qwen2.5:latest`
-* `llava:latest`
-
-### Cloud
-
-* **OCI GenAI**
-
-  * Command-A (generation + judge)
-  * Meta / Gemini / Grok (generic chat)
-* **Cohere Public API**
-* **OpenAI API** (extensible)
-
----
-
-## ▶️ Running PromptMesh
+## ▶️ Running PromptMesh (API + UI)
 
 ### 1. Environment Setup
 
@@ -227,39 +181,131 @@ pip install -r requirements.txt
 
 Prerequisites:
 
-* OCI credentials configured locally
-* Ollama running for local inference
+* Ollama running locally (for llama/qwen)
+* OCI / Cohere credentials configured (if using cloud models)
 
 ---
 
-### 2. Initialize Storage
+### 2. Start FastAPI Server
 
 ```bash
-python storage/init_db.py
+python app.py
+```
+
+Server starts at:
+
+```
+http://localhost:8000
+```
+
+The root endpoint automatically serves the frontend UI.
+
+---
+
+## 🌐 Available API Endpoints
+
+### Health
+
+```
+GET /api/health
 ```
 
 ---
 
-### 3. Run End-to-End Experiment
+### Task Discovery
+
+```
+GET /api/tasks
+GET /api/tasks/{task}/versions
+```
+
+---
+
+### Model Registry
+
+```
+GET /api/models
+```
+
+---
+
+### Prompt Evaluation (Async Job)
+
+```
+POST /api/evaluate
+```
+
+Features:
+
+* Background execution
+* Multi-model evaluation
+* Automatic test generation
+
+---
+
+### Prompt Comparison
+
+```
+POST /api/compare
+```
+
+---
+
+### Prompt Evolution
+
+```
+POST /api/evolve
+```
+
+Runs automated optimization loop.
+
+---
+
+### Test Case Generation
+
+```
+POST /api/test-cases/generate
+```
+
+---
+
+### Job Status Tracking
+
+```
+GET /api/jobs/{job_id}
+```
+
+Returns:
+
+* Progress percentage
+* Final results
+* Error details (if any)
+
+---
+
+## ▶️ Running CLI Pipeline (Standalone Mode)
+
+For debugging and batch experiments:
 
 ```bash
 python main.py
 ```
 
-Execution flow:
+Pipeline flow:
 
-1. Initial prompt comparison across models
-2. Best prompt selection
-3. Failure analysis
-4. Iterative prompt evolution
-5. Final multi-model evaluation
-6. Persistent storage of all results
+1. Load YAML prompt
+2. Generate test cases
+3. Evaluate across models
+4. Rank models
+5. Run failure analysis
+6. Trigger prompt evolution
+7. Final evaluation
 
 ---
 
-## 📊 Scoring Model
+## 📊 Scoring Formula
 
-Final score is computed as:
+Final score computation:
 
 ```
 0.4 × Accuracy
@@ -268,41 +314,48 @@ Final score is computed as:
 − 0.1 × Hallucination
 ```
 
-Hallucination is explicitly penalized and used as a hard stop during evolution.
+Hallucination is explicitly penalized and monitored during evolution.
 
 ---
 
-## 🔐 Security
+## 🧪 Diagnostics & Debugging
 
-* No credentials are committed
-* `.gitignore` excludes:
+Use the built-in diagnostic script:
 
-  * OCI config files
-  * Virtual environments
-  * Generated artifacts
+```bash
+python diagnostic_test.py
+```
+
+It validates:
+
+* Judge JSON extraction
+* Judge scoring behavior
+* Model connectivity
+* Token and latency reporting
 
 ---
 
 ## 🎯 Use Cases
 
 * Prompt benchmarking
-* Cross-model prompt validation
+* Model comparison
 * Prompt regression testing
-* Hallucination reduction
-* GenAI experimentation platforms
-* Internal evaluation and governance tooling
+* Automated prompt optimization
+* LLM evaluation research
+* Internal GenAI tooling
 
 ---
 
 ## 🧭 Roadmap
 
-* Parallel execution engine
-* Cost estimation per run
-* Judge ensembles and calibration
-* JSON-schema output validation
-* Prompt evolution visualizer
-* Web UI / dashboard
-* CI-based prompt regression testing
+Planned improvements:
+
+* Persistent experiment storage
+* Execution parallelization
+* Cost tracking per run
+* Prompt evolution visualization
+* UI-based comparison dashboard
+* CI/CD prompt regression testing
 
 ---
 
@@ -315,4 +368,4 @@ MIT License
 ## ✍️ Author
 
 Built by **Arjeet Anand**
-Focused on GenAI systems, prompt evaluation, and cloud-scale LLM engineering.
+Focused on GenAI systems, prompt evaluation, and automated LLM optimization.
