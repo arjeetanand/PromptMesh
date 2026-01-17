@@ -90,7 +90,9 @@ def generate_prompt_variants(
         print(f"\n[MUTATOR] Variant {i+1}:")
         print(f"  Raw length: {len(raw_output)}")
         print(f"  Clean length: {len(cleaned)}")
-        print(f"  Preview: {cleaned[:100]}...")
+        print("\n----- MUTATED PROMPT START -----")
+        print(cleaned)
+        print("----- MUTATED PROMPT END -----\n")
         
         if len(cleaned) < 50:
             print(f"  ⚠️ Warning: Suspiciously short prompt, using raw")

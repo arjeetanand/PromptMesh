@@ -27,9 +27,9 @@ COMPARE_PROMPTS = False
 
 # TASK = "summarization"
 # TASK = "extraction"
-TASK = "verification"
+# TASK = "verification"
 # TASK = "classification"
-# TASK = "reasoning"
+TASK = "reasoning"
 # TASK = "generation"
 
 
@@ -105,6 +105,7 @@ MAX_EVOLUTION_ITERS = 2
 VARIANTS_PER_ITER = 2
 MIN_DELTA = 0.25
 
+GENERATE_TEST_CASE_COUNT = 2
 
 BASE_INPUT_MAP = {
     "summarization": BASE_INPUTS_SUMMARIZATION,
@@ -207,7 +208,7 @@ test_inputs = generate_test_cases(
     input_variables=prompt_meta["input_variables"],
     base_inputs=BASE_INPUTS,
     schema_fields=schema_fields,
-    n=3
+    n=GENERATE_TEST_CASE_COUNT
 )
 
 
@@ -233,17 +234,26 @@ for model_name in EVAL_MODELS:
     for i, text in enumerate(test_inputs, 1):
         rendered = render_prompt(base_prompt, {input_var_name: text})
         
-        print(f"  Test {i}/{len(test_inputs)}...", end=" ")
+        # print(f"  Test {i}/{len(test_inputs)}...", end=" ")
+        print(f"\n--- TEST {i}/{len(test_inputs)} ---")
+        print("INPUT:")
+        print(text)
+        print("-" * 40)
+
         
         try:
             raw = model.run(rendered, constraints)
             
-            print(f"Output: {raw['output'][:60]}...")
+            print("\nMODEL OUTPUT:")
+            print(raw["output"])
+            print("-" * 40)
+
             
             eval_result = evaluate(
                 raw["output"],
                 constraints,
-                text
+                text,
+                task_type
             )
             
             scores.append(eval_result.score)

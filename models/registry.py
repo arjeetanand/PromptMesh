@@ -93,7 +93,6 @@ def get_model(model_name: str):
 
     # 2) accept direct Ollama model identifiers (common form: "model:tag")
     if ":" in model_name:
-        # treat as Ollama locally served model id
         return OllamaModel(model_name)
 
     # 3) helpful error

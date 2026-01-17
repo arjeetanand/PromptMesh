@@ -5,7 +5,11 @@ from models.constants import DEFAULT_JUDGE_MODEL
 import json
 import re
 
-judge = get_model(DEFAULT_JUDGE_MODEL)
+# judge = get_model(DEFAULT_JUDGE_MODEL)
+
+def get_judge_model():
+    return get_model(DEFAULT_JUDGE_MODEL)
+
 
 JUDGE_PROMPT = """You are a strict evaluator.
 
@@ -113,6 +117,7 @@ def judge_output(output: str, source_text: str) -> dict | None:
         )
         
         try:
+            judge = get_judge_model()
             response = judge.run(
                 prompt=full_prompt,
                 params={"temperature": 0.0, "max_tokens": 500}

@@ -5,7 +5,8 @@ from evaluation.types import EvaluationResult
 def evaluate(
     output: str,
     prompt_constraints: dict,
-    source_text: str
+    source_text: str,
+    task_type="generation"
 ):
     rules = rule_checks(output, prompt_constraints)
 
@@ -26,6 +27,20 @@ def evaluate(
             score=0.0,
             breakdown={"reason": "judge_failed"},
             passed=False
+        )
+    
+    if task_type in ("verification", "classification"):
+        final_score = (
+            0.6 * judge_scores["accuracy"]
+            + 0.2 * judge_scores["adherence"]
+            - 0.2 * judge_scores["hallucination"]
+        )
+    else:
+        final_score = (
+            0.4 * judge_scores["accuracy"]
+            + 0.3 * judge_scores["completeness"]
+            + 0.2 * judge_scores["adherence"]
+            - 0.1 * judge_scores["hallucination"]
         )
 
 
