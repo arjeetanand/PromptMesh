@@ -1,5 +1,11 @@
 // ============================================================
-// STATE MANAGEMENT
+// CONFIG
+// ============================================================
+
+const API_BASE = window.location.origin;
+
+// ============================================================
+// STATE
 // ============================================================
 
 const state = {
@@ -7,14 +13,15 @@ const state = {
     models: {},
     currentJob: null,
     jobHistory: [],
-    activeTab: 'evaluate'
+    activeTab: "evaluate",
+    pollingTimer: null
 };
 
 // ============================================================
-// INITIALIZATION
+// INIT
 // ============================================================
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener("DOMContentLoaded", async () => {
     await checkAPIHealth();
     await loadInitialData();
     setupEventListeners();
@@ -23,216 +30,242 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ============================================================
-// API FUNCTIONS
+// API CORE
 // ============================================================
 
 async function apiCall(endpoint, options = {}) {
     try {
-        const response = await fetch(`/api${endpoint}`, {
+        const response = await fetch(`${API_BASE}/api${endpoint}`, {
             headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
+                "Content-Type": "application/json",
+                ...(options.headers || {})
             },
             ...options
         });
 
+        const data = await response.json();
+
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'API request failed');
+            throw new Error(data.detail || "API request failed");
         }
 
-        return await response.json();
-    } catch (error) {
-        console.error('API Error:', error);
-        showToast(error.message, 'error');
-        throw error;
+        return data;
+
+    } catch (err) {
+        console.error("API Error:", err);
+        showToast(err.message, "error");
+        throw err;
     }
 }
 
+// ============================================================
+// HEALTH CHECK
+// ============================================================
+
 async function checkAPIHealth() {
     try {
-        await apiCall('/health');
+        await apiCall("/health");
         updateAPIStatus(true);
     } catch {
         updateAPIStatus(false);
     }
 }
 
-function updateAPIStatus(connected) {
-    const statusEl = document.getElementById('apiStatus');
-    const dot = statusEl.querySelector('.dot');
-    
-    if (connected) {
-        statusEl.innerHTML = '<span class="dot"></span> API Connected';
-        dot.style.background = 'var(--secondary)';
+function updateAPIStatus(isConnected) {
+    const statusEl = document.getElementById("apiStatus");
+
+    if (!statusEl) return;
+
+    if (isConnected) {
+        statusEl.innerHTML = `<span class="dot"></span> API Connected`;
+        statusEl.querySelector(".dot").style.background = "var(--secondary)";
     } else {
-        statusEl.innerHTML = '<span class="dot"></span> API Disconnected';
-        dot.style.background = 'var(--danger)';
+        statusEl.innerHTML = `<span class="dot"></span> API Disconnected`;
+        statusEl.querySelector(".dot").style.background = "var(--danger)";
     }
 }
 
 // ============================================================
-// DATA LOADING
+// LOAD INITIAL DATA
 // ============================================================
 
 async function loadInitialData() {
     try {
-        // Load tasks
-        const tasksData = await apiCall('/tasks');
-        state.tasks = tasksData.tasks;
+        const tasksData = await apiCall("/tasks");
+        const modelsData = await apiCall("/models");
 
-        // Load models
-        const modelsData = await apiCall('/models');
-        state.models = modelsData;
+        state.tasks = tasksData.tasks || [];
+        state.models = modelsData || {};
 
-        // Populate dropdowns
         populateTaskDropdowns();
-        populateModelCheckboxes();
-    } catch (error) {
-        showToast('Failed to load initial data', 'error');
+        populateModelSelectors();
+
+    } catch {
+        showToast("Failed to load initial data", "error");
     }
 }
 
 function populateTaskDropdowns() {
-    const taskSelects = ['evalTask', 'compareTask', 'evolveTask'];
-    
-    taskSelects.forEach(id => {
-        const select = document.getElementById(id);
-        select.innerHTML = '<option value="">Select a task...</option>';
-        
+    ["evalTask", "compareTask", "evolveTask"].forEach(id => {
+        const el = document.getElementById(id);
+        el.innerHTML = `<option value="">Select task...</option>`;
+
         state.tasks.forEach(task => {
-            const option = document.createElement('option');
-            option.value = task;
-            option.textContent = task.charAt(0).toUpperCase() + task.slice(1);
-            select.appendChild(option);
+            const opt = document.createElement("option");
+            opt.value = task;
+            opt.textContent = task;
+            el.appendChild(opt);
         });
     });
 }
 
-function populateModelCheckboxes() {
-    const modelGroups = ['evalModels', 'compareModels'];
-    
-    modelGroups.forEach(groupId => {
-        const container = document.getElementById(groupId);
-        container.innerHTML = '';
-        
-        state.models.all.forEach(model => {
-            const label = document.createElement('label');
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.value = model;
-            checkbox.name = 'model';
-            
-            // Check fast models by default for eval
-            if (groupId === 'evalModels' && state.models.fast.includes(model)) {
-                checkbox.checked = true;
+function populateModelSelectors() {
+
+    // Evaluation + Comparison checkboxes
+    ["evalModels", "compareModels"].forEach(containerId => {
+
+        const container = document.getElementById(containerId);
+        container.innerHTML = "";
+
+        (state.models.all || []).forEach(model => {
+
+            const label = document.createElement("label");
+            const cb = document.createElement("input");
+
+            cb.type = "checkbox";
+            cb.value = model;
+
+            if (containerId === "evalModels" &&
+                (state.models.fast || []).includes(model)) {
+                cb.checked = true;
             }
-            
-            label.appendChild(checkbox);
-            label.appendChild(document.createTextNode(model));
+
+            label.appendChild(cb);
+            label.append(model);
+
             container.appendChild(label);
         });
     });
 
-    // Populate evolution model dropdown
-    const evolveModelSelect = document.getElementById('evolveModel');
-    evolveModelSelect.innerHTML = '<option value="">Select model...</option>';
-    state.models.all.forEach(model => {
-        const option = document.createElement('option');
-        option.value = model;
-        option.textContent = model;
-        evolveModelSelect.appendChild(option);
+    // Evolution model dropdown
+    const evolveSelect = document.getElementById("evolveModel");
+    evolveSelect.innerHTML = `<option value="">Select model...</option>`;
+
+    (state.models.all || []).forEach(model => {
+        const opt = document.createElement("option");
+        opt.value = model;
+        opt.textContent = model;
+        evolveSelect.appendChild(opt);
     });
 }
 
-async function loadVersionsForTask(task, targetSelectId) {
+// ============================================================
+// LOAD PROMPT VERSIONS
+// ============================================================
+
+async function loadVersionsForTask(task, targetId) {
+
     try {
         const data = await apiCall(`/tasks/${task}/versions`);
-        const select = document.getElementById(targetSelectId);
-        select.innerHTML = '<option value="">Select version...</option>';
-        
-        data.versions.forEach(version => {
-            const option = document.createElement('option');
-            option.value = version;
-            option.textContent = version;
-            select.appendChild(option);
-        });
+        const versions = data.versions || [];
 
-        // For compare tab, also populate checkboxes
-        if (targetSelectId === 'compareTask') {
-            const container = document.getElementById('compareVersions');
-            container.innerHTML = '';
-            
-            data.versions.forEach(version => {
-                const label = document.createElement('label');
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.value = version;
-                checkbox.name = 'version';
-                
-                label.appendChild(checkbox);
-                label.appendChild(document.createTextNode(version));
+        // Dropdown
+        const select = document.getElementById(targetId);
+        if (select && select.tagName === "SELECT") {
+
+            select.innerHTML = `<option value="">Select version...</option>`;
+
+            versions.forEach(v => {
+                const opt = document.createElement("option");
+                opt.value = v;
+                opt.textContent = v;
+                select.appendChild(opt);
+            });
+        }
+
+        // Compare checkbox group
+        if (targetId === "compareVersions") {
+
+            const container = document.getElementById("compareVersions");
+            container.innerHTML = "";
+
+            versions.forEach(v => {
+                const label = document.createElement("label");
+                const cb = document.createElement("input");
+
+                cb.type = "checkbox";
+                cb.value = v;
+
+                label.appendChild(cb);
+                label.append(v);
+
                 container.appendChild(label);
             });
         }
-    } catch (error) {
-        showToast('Failed to load versions', 'error');
+
+    } catch {
+        showToast("Failed to load versions", "error");
     }
 }
 
 // ============================================================
-// EVENT LISTENERS
+// EVENTS
 // ============================================================
 
 function setupEventListeners() {
-    // Task selection change handlers
-    document.getElementById('evalTask').addEventListener('change', (e) => {
-        if (e.target.value) loadVersionsForTask(e.target.value, 'evalVersion');
+
+    document.getElementById("evalTask").addEventListener("change", e => {
+        if (e.target.value) {
+            loadVersionsForTask(e.target.value, "evalVersion");
+        }
     });
 
-    document.getElementById('compareTask').addEventListener('change', (e) => {
-        if (e.target.value) loadVersionsForTask(e.target.value, 'compareTask');
+    document.getElementById("compareTask").addEventListener("change", e => {
+        if (e.target.value) {
+            loadVersionsForTask(e.target.value, "compareVersions");
+        }
     });
 
-    document.getElementById('evolveTask').addEventListener('change', (e) => {
-        if (e.target.value) loadVersionsForTask(e.target.value, 'evolveVersion');
+    document.getElementById("evolveTask").addEventListener("change", e => {
+        if (e.target.value) {
+            loadVersionsForTask(e.target.value, "evolveVersion");
+        }
     });
 
-    // Auto-generate test cases toggle
-    document.getElementById('evalGenerateTests').addEventListener('change', (e) => {
-        document.getElementById('manualTestsGroup').style.display = 
-            e.target.checked ? 'none' : 'block';
+    document.getElementById("evalGenerateTests").addEventListener("change", e => {
+        document.getElementById("manualTestsGroup").style.display =
+            e.target.checked ? "none" : "block";
     });
 
-    // Form submissions
-    document.getElementById('evaluateForm').addEventListener('submit', handleEvaluateSubmit);
-    document.getElementById('compareForm').addEventListener('submit', handleCompareSubmit);
-    document.getElementById('evolveForm').addEventListener('submit', handleEvolveSubmit);
-    document.getElementById('testcasesForm').addEventListener('submit', handleTestCasesSubmit);
+    document.getElementById("evaluateForm").addEventListener("submit", handleEvaluate);
+    document.getElementById("compareForm").addEventListener("submit", handleCompare);
+    document.getElementById("evolveForm").addEventListener("submit", handleEvolve);
+    document.getElementById("testcasesForm").addEventListener("submit", handleTestcase);
 
-    // Refresh button
-    document.getElementById('refreshBtn').addEventListener('click', () => {
-        location.reload();
-    });
+    document.getElementById("refreshBtn").addEventListener("click", () => location.reload());
 }
 
+// ============================================================
+// TAB NAV
+// ============================================================
+
 function setupTabNavigation() {
-    const navBtns = document.querySelectorAll('.nav-btn');
-    
-    navBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
+
+    document.querySelectorAll(".nav-btn").forEach(btn => {
+
+        btn.addEventListener("click", () => {
+
             const tab = btn.dataset.tab;
-            
-            // Update active states
-            navBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            
-            // Show correct content
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            document.getElementById(`${tab}-tab`).classList.add('active');
-            
+
+            document.querySelectorAll(".nav-btn")
+                .forEach(b => b.classList.remove("active"));
+
+            document.querySelectorAll(".tab-content")
+                .forEach(c => c.classList.remove("active"));
+
+            btn.classList.add("active");
+            document.getElementById(`${tab}-tab`).classList.add("active");
+
             state.activeTab = tab;
         });
     });
@@ -242,495 +275,223 @@ function setupTabNavigation() {
 // FORM HANDLERS
 // ============================================================
 
-async function handleEvaluateSubmit(e) {
+async function handleEvaluate(e) {
     e.preventDefault();
-    
-    const task = document.getElementById('evalTask').value;
-    const version = document.getElementById('evalVersion').value;
-    const models = getCheckedValues('evalModels input[name="model"]');
-    const generateTests = document.getElementById('evalGenerateTests').checked;
-    const testCount = parseInt(document.getElementById('evalTestCount').value);
-    
-    if (!task || !version || models.length === 0) {
-        showToast('Please fill all required fields', 'error');
-        return;
+
+    const payload = {
+        task: evalTask.value,
+        version: evalVersion.value,
+        models: getChecked("evalModels"),
+        generate_test_cases: evalGenerateTests.checked,
+        test_case_count: Number(evalTestCount.value),
+        test_inputs: evalGenerateTests.checked
+            ? []
+            : evalTestInputs.value.split("\n").filter(Boolean)
+    };
+
+    if (!payload.task || !payload.version || payload.models.length === 0) {
+        return showToast("Missing required fields", "error");
     }
 
-    const testInputs = generateTests ? [] : 
-        document.getElementById('evalTestInputs').value.split('\n').filter(s => s.trim());
+    const res = await apiCall("/evaluate", {
+        method: "POST",
+        body: JSON.stringify(payload)
+    });
 
-    try {
-        const response = await apiCall('/evaluate', {
-            method: 'POST',
-            body: JSON.stringify({
-                task,
-                version,
-                models,
-                test_inputs: testInputs,
-                generate_test_cases: generateTests,
-                test_case_count: testCount
-            })
-        });
-
-        startJobPolling(response.job_id, 'evaluation');
-        addToHistory('Evaluation', { task, version, models });
-    } catch (error) {
-        // Error already shown by apiCall
-    }
+    startPolling(res.job_id, "evaluation");
 }
 
-async function handleCompareSubmit(e) {
+async function handleCompare(e) {
     e.preventDefault();
-    
-    const task = document.getElementById('compareTask').value;
-    const versions = getCheckedValues('compareVersions input[name="version"]');
-    const models = getCheckedValues('compareModels input[name="model"]');
-    const testInput = document.getElementById('compareTestInput').value;
-    
-    if (!task || versions.length === 0 || models.length === 0 || !testInput) {
-        showToast('Please fill all required fields', 'error');
-        return;
+
+    const payload = {
+        task: compareTask.value,
+        versions: getChecked("compareVersions"),
+        models: getChecked("compareModels"),
+        test_input: compareTestInput.value
+    };
+
+    if (!payload.task || payload.versions.length === 0 ||
+        payload.models.length === 0 || !payload.test_input) {
+
+        return showToast("Missing required fields", "error");
     }
 
-    try {
-        const response = await apiCall('/compare', {
-            method: 'POST',
-            body: JSON.stringify({
-                task,
-                versions,
-                models,
-                test_input: testInput
-            })
-        });
+    const res = await apiCall("/compare", {
+        method: "POST",
+        body: JSON.stringify(payload)
+    });
 
-        startJobPolling(response.job_id, 'comparison');
-        addToHistory('Comparison', { task, versions, models });
-    } catch (error) {
-        // Error already shown by apiCall
-    }
+    startPolling(res.job_id, "comparison");
 }
 
-async function handleEvolveSubmit(e) {
+async function handleEvolve(e) {
     e.preventDefault();
-    
-    const task = document.getElementById('evolveTask').value;
-    const version = document.getElementById('evolveVersion').value;
-    const model = document.getElementById('evolveModel').value;
-    const optimizer = document.getElementById('evolveOptimizer').value;
-    const iterations = parseInt(document.getElementById('evolveIterations').value);
-    const testCount = parseInt(document.getElementById('evolveTestCount').value);
-    
-    if (!task || !version || !model) {
-        showToast('Please fill all required fields', 'error');
-        return;
+
+    const payload = {
+        task: evolveTask.value,
+        version: evolveVersion.value,
+        model: evolveModel.value,
+        optimizer_model: evolveOptimizer.value,
+        max_iterations: Number(evolveIterations.value),
+        test_case_count: Number(evolveTestCount.value)
+    };
+
+    if (!payload.task || !payload.version || !payload.model) {
+        return showToast("Missing required fields", "error");
     }
 
-    try {
-        const response = await apiCall('/evolve', {
-            method: 'POST',
-            body: JSON.stringify({
-                task,
-                version,
-                model,
-                optimizer_model: optimizer,
-                max_iterations: iterations,
-                test_case_count: testCount
-            })
-        });
+    const res = await apiCall("/evolve", {
+        method: "POST",
+        body: JSON.stringify(payload)
+    });
 
-        startJobPolling(response.job_id, 'evolution');
-        addToHistory('Evolution', { task, version, model });
-    } catch (error) {
-        // Error already shown by apiCall
-    }
+    startPolling(res.job_id, "evolution");
 }
 
-async function handleTestCasesSubmit(e) {
+async function handleTestcase(e) {
     e.preventDefault();
-    
-    const taskType = document.getElementById('testcaseType').value;
-    const baseInputs = document.getElementById('testcaseBase').value
-        .split('\n').filter(s => s.trim());
-    const count = parseInt(document.getElementById('testcaseCount').value);
-    
-    try {
-        showToast('Generating test cases...', 'info');
-        
-        const response = await apiCall('/test-cases/generate', {
-            method: 'POST',
-            body: JSON.stringify({
-                task_type: taskType,
-                base_inputs: baseInputs,
-                count
-            })
-        });
 
-        displayTestCaseResults(response.test_cases);
-        showToast('Test cases generated successfully', 'success');
-    } catch (error) {
-        // Error already shown by apiCall
-    }
+    const payload = {
+        task_type: testcaseType.value,
+        base_inputs: testcaseBase.value.split("\n").filter(Boolean),
+        count: Number(testcaseCount.value)
+    };
+
+    const res = await apiCall("/test-cases/generate", {
+        method: "POST",
+        body: JSON.stringify(payload)
+    });
+
+    displayTestCases(res.test_cases);
 }
 
 // ============================================================
 // JOB POLLING
 // ============================================================
 
-async function startJobPolling(jobId, type) {
-    state.currentJob = { id: jobId, type };
-    
+function startPolling(jobId, type) {
+
+    clearInterval(state.pollingTimer);
+
     showProgressModal(`Running ${type}...`);
-    
-    const pollInterval = setInterval(async () => {
+
+    state.pollingTimer = setInterval(async () => {
+
         try {
-            const status = await apiCall(`/jobs/${jobId}`);
-            
-            updateProgress(status.progress, status.status);
-            
-            if (status.status === 'completed') {
-                clearInterval(pollInterval);
+            const job = await apiCall(`/jobs/${jobId}`);
+
+            updateProgress(job.progress, job.status);
+
+            if (job.status === "completed") {
+                clearInterval(state.pollingTimer);
                 hideProgressModal();
-                handleJobComplete(type, status.results);
-                showToast(`${type} completed successfully`, 'success');
-            } else if (status.status === 'failed') {
-                clearInterval(pollInterval);
-                hideProgressModal();
-                showToast(`${type} failed: ${status.error}`, 'error');
+                handleJobResult(type, job.results);
+                showToast("Job completed", "success");
             }
-        } catch (error) {
-            clearInterval(pollInterval);
+
+            if (job.status === "failed") {
+                clearInterval(state.pollingTimer);
+                hideProgressModal();
+                showToast(job.error, "error");
+            }
+
+        } catch {
+            clearInterval(state.pollingTimer);
             hideProgressModal();
         }
+
     }, 2000);
 }
 
-function handleJobComplete(type, results) {
-    switch(type) {
-        case 'evaluation':
-            displayEvaluationResults(results);
-            break;
-        case 'comparison':
-            displayComparisonResults(results);
-            break;
-        case 'evolution':
-            displayEvolutionResults(results);
-            break;
-    }
+// ============================================================
+// RESULT ROUTER
+// ============================================================
+
+function handleJobResult(type, results) {
+
+    if (type === "evaluation") displayEvaluation(results);
+    if (type === "comparison") displayComparison(results);
+    if (type === "evolution") displayEvolution(results);
 }
 
 // ============================================================
-// RESULTS DISPLAY
+// HELPERS
 // ============================================================
 
-function displayEvaluationResults(results) {
-    const container = document.getElementById('evaluateResults');
-    container.style.display = 'block';
-    
-    let html = '<div class="results-header"><h3>Evaluation Results</h3></div>';
-    
-    results.forEach((modelResult, index) => {
-        const isWinner = index === 0;
-        
-        html += `
-            <div class="model-card ${isWinner ? 'winner' : ''}">
-                <div class="model-header">
-                    <span class="model-name">
-                        ${isWinner ? '🏆 ' : ''}${modelResult.model}
-                    </span>
-                    <span class="score-badge">${modelResult.average_score.toFixed(2)}</span>
-                </div>
-                
-                ${modelResult.results.map(r => `
-                    <div class="test-result">
-                        <div class="test-input">
-                            <div class="test-label">Input</div>
-                            <div class="test-text">${escapeHtml(r.input)}</div>
-                        </div>
-                        <div class="test-output">
-                            <div class="test-label">Output</div>
-                            <div class="test-text">${escapeHtml(r.output)}</div>
-                        </div>
-                        <div class="breakdown-grid">
-                            <div class="breakdown-item">
-                                <div class="breakdown-label">Score</div>
-                                <div class="breakdown-value">${r.score.toFixed(1)}</div>
-                            </div>
-                            <div class="breakdown-item">
-                                <div class="breakdown-label">Accuracy</div>
-                                <div class="breakdown-value">${r.breakdown.accuracy}</div>
-                            </div>
-                            <div class="breakdown-item">
-                                <div class="breakdown-label">Complete</div>
-                                <div class="breakdown-value">${r.breakdown.completeness}</div>
-                            </div>
-                            <div class="breakdown-item">
-                                <div class="breakdown-label">Adherence</div>
-                                <div class="breakdown-value">${r.breakdown.adherence}</div>
-                            </div>
-                            <div class="breakdown-item">
-                                <div class="breakdown-label">Hallucination</div>
-                                <div class="breakdown-value">${r.breakdown.hallucination}</div>
-                            </div>
-                        </div>
-                        <div class="test-metrics">
-                            <span>⚡ ${r.latency_ms}ms</span>
-                            <span>🎯 ${r.tokens} tokens</span>
-                        </div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-    });
-    
-    container.innerHTML = html;
+function getChecked(containerId) {
+    return Array.from(document.querySelectorAll(`#${containerId} input:checked`))
+        .map(cb => cb.value);
 }
 
-function displayComparisonResults(results) {
-    const container = document.getElementById('compareResults');
-    container.style.display = 'block';
-    
-    // Group by version
-    const byVersion = {};
-    results.forEach(r => {
-        if (!byVersion[r.prompt_version]) {
-            byVersion[r.prompt_version] = [];
-        }
-        byVersion[r.prompt_version].push(r);
-    });
-    
-    let html = '<div class="results-header"><h3>Comparison Results</h3></div>';
-    
-    Object.entries(byVersion).forEach(([version, versionResults]) => {
-        const avgScore = versionResults.reduce((sum, r) => sum + r.score, 0) / versionResults.length;
-        
-        html += `
-            <div class="model-card">
-                <div class="model-header">
-                    <span class="model-name">Version: ${version}</span>
-                    <span class="score-badge">${avgScore.toFixed(2)}</span>
-                </div>
-                ${versionResults.map(r => `
-                    <div class="test-result">
-                        <div class="test-label">Model: ${r.model}</div>
-                        <div class="test-output">
-                            <div class="test-text">${escapeHtml(r.output)}</div>
-                        </div>
-                        <div class="breakdown-grid">
-                            <div class="breakdown-item">
-                                <div class="breakdown-label">Accuracy</div>
-                                <div class="breakdown-value">${r.breakdown.accuracy}</div>
-                            </div>
-                            <div class="breakdown-item">
-                                <div class="breakdown-label">Complete</div>
-                                <div class="breakdown-value">${r.breakdown.completeness}</div>
-                            </div>
-                            <div class="breakdown-item">
-                                <div class="breakdown-label">Adherence</div>
-                                <div class="breakdown-value">${r.breakdown.adherence}</div>
-                            </div>
-                            <div class="breakdown-item">
-                                <div class="breakdown-label">Hallucination</div>
-                                <div class="breakdown-value">${r.breakdown.hallucination}</div>
-                            </div>
-                        </div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-    });
-    
-    container.innerHTML = html;
-}
-
-function displayEvolutionResults(results) {
-    const container = document.getElementById('evolveResults');
-    container.style.display = 'block';
-    
-    let html = `
-        <div class="results-header">
-            <h3>Evolution Results</h3>
-        </div>
-        <div class="breakdown-grid" style="margin-bottom: 24px;">
-            <div class="breakdown-item">
-                <div class="breakdown-label">Initial Score</div>
-                <div class="breakdown-value">${results.initial_score.toFixed(2)}</div>
-            </div>
-            <div class="breakdown-item">
-                <div class="breakdown-label">Final Score</div>
-                <div class="breakdown-value">${results.final_score.toFixed(2)}</div>
-            </div>
-            <div class="breakdown-item">
-                <div class="breakdown-label">Improvement</div>
-                <div class="breakdown-value" style="color: var(--secondary);">
-                    +${results.improvement.toFixed(2)}
-                </div>
-            </div>
-        </div>
-        <div class="evolution-timeline">
-    `;
-    
-    results.history.forEach((step, index) => {
-        const isFinal = index === results.history.length - 1;
-        html += `
-            <div class="evolution-step ${isFinal ? 'final' : ''}">
-                <div class="step-header">
-                    <span class="step-title">
-                        ${index === 0 ? 'Initial' : `Iteration ${index}`}
-                        ${isFinal ? ' (Final)' : ''}
-                    </span>
-                    <span class="step-score">${step.score.toFixed(2)}</span>
-                </div>
-                <div class="prompt-diff">${escapeHtml(step.prompt)}</div>
-            </div>
-        `;
-    });
-    
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-function displayTestCaseResults(testCases) {
-    const container = document.getElementById('testcasesResults');
-    container.style.display = 'block';
-    
-    let html = `
-        <div class="results-header">
-            <h3>Generated Test Cases (${testCases.length})</h3>
-        </div>
-    `;
-    
-    testCases.forEach((testCase, index) => {
-        html += `
-            <div class="test-result">
-                <div class="test-label">Test Case ${index + 1}</div>
-                <div class="test-text">${escapeHtml(testCase)}</div>
-            </div>
-        `;
-    });
-    
-    container.innerHTML = html;
+function escapeHTML(text) {
+    const d = document.createElement("div");
+    d.textContent = text;
+    return d.innerHTML;
 }
 
 // ============================================================
-// PROGRESS MODAL
+// UI: MODAL + TOAST
 // ============================================================
 
 function showProgressModal(title) {
-    const modal = document.getElementById('progressModal');
-    document.getElementById('progressTitle').textContent = title;
-    document.getElementById('progressText').textContent = 'Initializing...';
-    document.getElementById('progressFill').style.width = '0%';
-    modal.classList.add('active');
+    progressModal.classList.add("active");
+    progressTitle.textContent = title;
+    progressFill.style.width = "0%";
+    progressText.textContent = "Starting...";
 }
 
-function updateProgress(progress, status) {
-    document.getElementById('progressFill').style.width = `${progress}%`;
-    document.getElementById('progressText').textContent = status;
+function updateProgress(percent, text) {
+    progressFill.style.width = `${percent}%`;
+    progressText.textContent = text;
 }
 
 function hideProgressModal() {
-    document.getElementById('progressModal').classList.remove('active');
+    progressModal.classList.remove("active");
+}
+
+function showToast(msg, type = "info") {
+
+    const el = document.createElement("div");
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+
+    toastContainer.appendChild(el);
+
+    setTimeout(() => el.remove(), 4000);
 }
 
 // ============================================================
-// TOAST NOTIFICATIONS
+// RESULTS UI (Minimal Stable Rendering)
 // ============================================================
 
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toastContainer');
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    
-    const icons = {
-        success: '✓',
-        error: '✗',
-        info: 'ℹ'
-    };
-    
-    toast.innerHTML = `
-        <span class="toast-icon">${icons[type]}</span>
-        <span class="toast-message">${message}</span>
-    `;
-    
-    container.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.style.animation = 'slideIn 0.3s reverse';
-        setTimeout(() => toast.remove(), 300);
-    }, 4000);
+function displayEvaluation(results) {
+    evaluateResults.style.display = "block";
+    evaluateResults.innerHTML = `<pre>${JSON.stringify(results, null, 2)}</pre>`;
+}
+
+function displayComparison(results) {
+    compareResults.style.display = "block";
+    compareResults.innerHTML = `<pre>${JSON.stringify(results, null, 2)}</pre>`;
+}
+
+function displayEvolution(results) {
+    evolveResults.style.display = "block";
+    evolveResults.innerHTML = `<pre>${JSON.stringify(results, null, 2)}</pre>`;
+}
+
+function displayTestCases(data) {
+    testcasesResults.style.display = "block";
+    testcasesResults.innerHTML = data.map(t => `<div>${escapeHTML(t)}</div>`).join("");
 }
 
 // ============================================================
 // HISTORY
 // ============================================================
 
-function addToHistory(type, details) {
-    const historyItem = {
-        id: Date.now(),
-        type,
-        details,
-        timestamp: new Date().toISOString()
-    };
-    
-    state.jobHistory.unshift(historyItem);
-    localStorage.setItem('jobHistory', JSON.stringify(state.jobHistory));
-    updateHistoryDisplay();
-}
-
 function loadJobHistory() {
-    const saved = localStorage.getItem('jobHistory');
+    const saved = localStorage.getItem("jobHistory");
     if (saved) {
         state.jobHistory = JSON.parse(saved);
-        updateHistoryDisplay();
     }
-}
-
-function updateHistoryDisplay() {
-    const container = document.getElementById('historyList');
-    
-    if (state.jobHistory.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <span class="icon">📋</span>
-                <p>No jobs in history yet</p>
-            </div>
-        `;
-        return;
-    }
-    
-    let html = '';
-    state.jobHistory.forEach(item => {
-        const date = new Date(item.timestamp);
-        const timeStr = date.toLocaleString();
-        
-        html += `
-            <div class="history-item">
-                <div class="history-header">
-                    <span class="history-type">${item.type}</span>
-                    <span class="history-time">${timeStr}</span>
-                </div>
-                <div class="history-details">
-                    ${JSON.stringify(item.details)}
-                </div>
-            </div>
-        `;
-    });
-    
-    container.innerHTML = html;
-}
-
-// ============================================================
-// UTILITY FUNCTIONS
-// ============================================================
-
-function getCheckedValues(selector) {
-    return Array.from(document.querySelectorAll(selector))
-        .filter(cb => cb.checked)
-        .map(cb => cb.value);
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }

@@ -133,38 +133,65 @@ GENERATOR_TEMPLATES = {
         """,
 
     "generation": """
-        Generate {n} content generation instructions.
+        You are generating INPUT PROMPTS to test a content generation system.
 
-        Include:
-        - creative tasks
-        - technical writing tasks
-        - constrained instructions
-        - ambiguous requirements
-        - long-form and short-form prompts
+        Your job is to produce realistic user prompts that someone would type into an AI assistant.
 
-        Return ONLY a valid JSON array of strings.
+        Generate {n} diverse prompt strings.
+
+        Include variety:
+        - creative writing tasks
+        - technical documentation requests
+        - short-form content requests
+        - long-form writing tasks
+        - constrained instruction prompts
+        - ambiguous or underspecified requests
+
+        Rules:
+        - Each item MUST be a single natural language prompt
+        - Do NOT include answers
+        - Do NOT number items
+        - Do NOT use bullet points
+        - Do NOT add explanations
+        - Do NOT add markdown
+
+        Output format rules:
+        - Return ONLY a valid JSON array
+        - Each array element MUST be a string
+
+        Example output format:
+        [
+        "Write a short inspirational quote about teamwork.",
+        "Generate a two-paragraph introduction for a cybersecurity blog.",
+        "Create a product description for a wireless keyboard."
+        ]
+
+        If you cannot produce valid JSON, return [] only.
         """,
 
     # Universal fallback for unknown future tasks
     "universal": """
-        You are generating INPUT examples for testing an LLM prompt.
+            You are generating INPUT TEXTS to test an AI prompt.
 
-        Prompt description:
-        {task_hint}
+            Generate {n} realistic and diverse inputs that users would naturally provide.
 
-        Generate {n} diverse realistic inputs.
+            Rules:
+            - Each item must be a single string
+            - No numbering
+            - No markdown
+            - No explanations
 
-        Include:
-        - normal usage
-        - edge cases
-        - ambiguous cases
-        - minimal input
-        - noisy input
+            Return ONLY a valid JSON array of strings.
 
-        Rules:
-        - Do NOT include outputs
-        - Return ONLY JSON array of strings
-        """
+            Example:
+            [
+            "Explain the benefits of remote work.",
+            "Summarize this article about renewable energy.",
+            "Classify the sentiment of this sentence."
+            ]
+
+            If formatting fails return [].
+            """,
 }
 
 

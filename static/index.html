@@ -2,294 +2,357 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <title>PromptMesh — Prompt Engineering Platform</title>
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PromptMesh - Production Prompt Engineering Platform</title>
+
+    <!-- Styles -->
     <link rel="stylesheet" href="/static/styles.css">
+
 </head>
 <body>
-    <!-- Header -->
-    <header class="header">
-        <div class="container">
-            <div class="header-content">
-                <div class="logo">
-                    <h1>🔗 PromptMesh</h1>
-                    <p>Model-Agnostic Prompt Evolution Platform</p>
-                </div>
-                <div class="header-actions">
-                    <button class="btn btn-secondary" id="refreshBtn">
-                        <span class="icon">🔄</span> Refresh
-                    </button>
-                    <div class="status-indicator" id="apiStatus">
-                        <span class="dot"></span> API Connected
-                    </div>
-                </div>
+
+<!-- ========================================================= -->
+<!-- HEADER -->
+<!-- ========================================================= -->
+
+<header class="header">
+    <div class="container header-content">
+
+        <div class="logo">
+            <h1>PromptMesh</h1>
+            <p>Model-Agnostic Prompt Evaluation Platform</p>
+        </div>
+
+        <div class="header-actions">
+            <button id="refreshBtn" class="btn btn-secondary">
+                Refresh
+            </button>
+
+            <div id="apiStatus" class="status-indicator">
+                <span class="dot"></span> Connecting...
             </div>
         </div>
-    </header>
 
-    <!-- Main Navigation -->
-    <nav class="main-nav">
-        <div class="container">
-            <button class="nav-btn active" data-tab="evaluate">
-                <span class="icon">📊</span> Evaluate
-            </button>
-            <button class="nav-btn" data-tab="compare">
-                <span class="icon">⚖️</span> Compare
-            </button>
-            <button class="nav-btn" data-tab="evolve">
-                <span class="icon">🧬</span> Evolve
-            </button>
-            <button class="nav-btn" data-tab="testcases">
-                <span class="icon">🧪</span> Test Cases
-            </button>
-            <button class="nav-btn" data-tab="history">
-                <span class="icon">📜</span> History
-            </button>
-        </div>
-    </nav>
-
-    <!-- Main Content -->
-    <main class="main-content">
-        <div class="container">
-            
-            <!-- Evaluate Tab -->
-            <div class="tab-content active" id="evaluate-tab">
-                <div class="panel">
-                    <h2>Evaluate Prompt Across Models</h2>
-                    <p class="subtitle">Test a prompt version against multiple models with automatic test case generation</p>
-                    
-                    <form id="evaluateForm" class="form">
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="evalTask">Task</label>
-                                <select id="evalTask" required>
-                                    <option value="">Select a task...</option>
-                                </select>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="evalVersion">Version</label>
-                                <select id="evalVersion" required>
-                                    <option value="">Select version...</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Models to Evaluate</label>
-                            <div class="checkbox-group" id="evalModels">
-                                <!-- Populated dynamically -->
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="evalGenerateTests" checked>
-                                Auto-generate test cases
-                            </label>
-                        </div>
-
-                        <div class="form-group" id="manualTestsGroup" style="display: none;">
-                            <label for="evalTestInputs">Manual Test Inputs (one per line)</label>
-                            <textarea id="evalTestInputs" rows="4" placeholder="Enter test inputs..."></textarea>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="evalTestCount">Number of Test Cases</label>
-                            <input type="number" id="evalTestCount" value="3" min="1" max="10">
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-large">
-                            <span class="icon">🚀</span> Start Evaluation
-                        </button>
-                    </form>
-
-                    <div id="evaluateResults" class="results-section" style="display: none;">
-                        <!-- Results populated dynamically -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Compare Tab -->
-            <div class="tab-content" id="compare-tab">
-                <div class="panel">
-                    <h2>Compare Prompt Versions</h2>
-                    <p class="subtitle">Compare multiple versions of a prompt side-by-side</p>
-                    
-                    <form id="compareForm" class="form">
-                        <div class="form-group">
-                            <label for="compareTask">Task</label>
-                            <select id="compareTask" required>
-                                <option value="">Select a task...</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Versions to Compare</label>
-                            <div class="checkbox-group" id="compareVersions">
-                                <!-- Populated dynamically -->
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Models</label>
-                            <div class="checkbox-group" id="compareModels">
-                                <!-- Populated dynamically -->
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="compareTestInput">Test Input</label>
-                            <textarea id="compareTestInput" rows="4" required placeholder="Enter a test input to compare versions..."></textarea>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-large">
-                            <span class="icon">⚖️</span> Compare Versions
-                        </button>
-                    </form>
-
-                    <div id="compareResults" class="results-section" style="display: none;">
-                        <!-- Results populated dynamically -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Evolve Tab -->
-            <div class="tab-content" id="evolve-tab">
-                <div class="panel">
-                    <h2>Evolve Prompt</h2>
-                    <p class="subtitle">Iteratively improve a prompt using AI-powered evolution</p>
-                    
-                    <form id="evolveForm" class="form">
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="evolveTask">Task</label>
-                                <select id="evolveTask" required>
-                                    <option value="">Select a task...</option>
-                                </select>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="evolveVersion">Version</label>
-                                <select id="evolveVersion" required>
-                                    <option value="">Select version...</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="evolveModel">Execution Model</label>
-                                <select id="evolveModel" required>
-                                    <option value="">Select model...</option>
-                                </select>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="evolveOptimizer">Optimizer Model</label>
-                                <select id="evolveOptimizer" required>
-                                    <option value="command-a-03-2025">Command-A 03 2025</option>
-                                    <option value="qwen2.5:latest">Qwen 2.5</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="evolveIterations">Max Iterations</label>
-                                <input type="number" id="evolveIterations" value="3" min="1" max="10">
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="evolveTestCount">Test Cases</label>
-                                <input type="number" id="evolveTestCount" value="3" min="1" max="10">
-                            </div>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-large">
-                            <span class="icon">🧬</span> Start Evolution
-                        </button>
-                    </form>
-
-                    <div id="evolveResults" class="results-section" style="display: none;">
-                        <!-- Results populated dynamically -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Test Cases Tab -->
-            <div class="tab-content" id="testcases-tab">
-                <div class="panel">
-                    <h2>Generate Test Cases</h2>
-                    <p class="subtitle">Create diverse test cases for prompt evaluation</p>
-                    
-                    <form id="testcasesForm" class="form">
-                        <div class="form-group">
-                            <label for="testcaseType">Task Type</label>
-                            <select id="testcaseType" required>
-                                <option value="summarization">Summarization</option>
-                                <option value="extraction">Extraction</option>
-                                <option value="verification">Verification</option>
-                                <option value="classification">Classification</option>
-                                <option value="reasoning">Reasoning</option>
-                                <option value="generation">Generation</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="testcaseBase">Base Examples (one per line)</label>
-                            <textarea id="testcaseBase" rows="4" placeholder="Enter 1-3 example inputs..."></textarea>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="testcaseCount">Number to Generate</label>
-                            <input type="number" id="testcaseCount" value="5" min="1" max="20">
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-large">
-                            <span class="icon">🧪</span> Generate Test Cases
-                        </button>
-                    </form>
-
-                    <div id="testcasesResults" class="results-section" style="display: none;">
-                        <!-- Results populated dynamically -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- History Tab -->
-            <div class="tab-content" id="history-tab">
-                <div class="panel">
-                    <h2>Job History</h2>
-                    <p class="subtitle">View past evaluation, comparison, and evolution runs</p>
-                    
-                    <div id="historyList" class="history-list">
-                        <div class="empty-state">
-                            <span class="icon">📋</span>
-                            <p>No jobs in history yet</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-    </main>
-
-    <!-- Progress Modal -->
-    <div id="progressModal" class="modal">
-        <div class="modal-content">
-            <h3 id="progressTitle">Processing...</h3>
-            <div class="progress-bar">
-                <div class="progress-fill" id="progressFill"></div>
-            </div>
-            <p id="progressText">Initializing...</p>
-            <button class="btn btn-secondary" id="cancelJobBtn" style="display: none;">Cancel</button>
-        </div>
     </div>
+</header>
 
-    <!-- Toast Notifications -->
-    <div id="toastContainer" class="toast-container"></div>
+<!-- ========================================================= -->
+<!-- NAVIGATION -->
+<!-- ========================================================= -->
 
-    <script src="/static/app.js"></script>
+<nav class="main-nav">
+    <div class="container">
+
+        <button class="nav-btn active" data-tab="evaluate">
+            Evaluate
+        </button>
+
+        <button class="nav-btn" data-tab="compare">
+            Compare
+        </button>
+
+        <button class="nav-btn" data-tab="evolve">
+            Evolve
+        </button>
+
+        <button class="nav-btn" data-tab="testcases">
+            Test Cases
+        </button>
+
+        <button class="nav-btn" data-tab="history">
+            History
+        </button>
+
+    </div>
+</nav>
+
+<!-- ========================================================= -->
+<!-- MAIN CONTENT -->
+<!-- ========================================================= -->
+
+<main class="main-content">
+<div class="container">
+
+<!-- ========================================================= -->
+<!-- EVALUATE TAB -->
+<!-- ========================================================= -->
+
+<section id="evaluate-tab" class="tab-content active">
+
+<div class="panel">
+
+<h2>Evaluate Prompt</h2>
+<p class="subtitle">Evaluate a prompt across multiple models</p>
+
+<form id="evaluateForm">
+
+<div class="form-grid">
+
+<div class="form-group">
+<label>Task</label>
+<select id="evalTask" required>
+<option value="">Select task...</option>
+</select>
+</div>
+
+<div class="form-group">
+<label>Version</label>
+<select id="evalVersion" required>
+<option value="">Select version...</option>
+</select>
+</div>
+
+</div>
+
+<div class="form-group">
+<label>Models</label>
+<div id="evalModels" class="checkbox-group"></div>
+</div>
+
+<div class="form-group">
+<label>
+<input type="checkbox" id="evalGenerateTests" checked>
+Auto-generate test cases
+</label>
+</div>
+
+<div class="form-group" id="manualTestsGroup" style="display:none;">
+<label>Manual Inputs (one per line)</label>
+<textarea id="evalTestInputs" rows="4"></textarea>
+</div>
+
+<div class="form-group">
+<label>Test Case Count</label>
+<input type="number" id="evalTestCount" value="3" min="1" max="10">
+</div>
+
+<button type="submit" class="btn btn-primary btn-large">
+Start Evaluation
+</button>
+
+</form>
+
+<div id="evaluateResults" class="results-section" style="display:none;"></div>
+
+</div>
+</section>
+
+<!-- ========================================================= -->
+<!-- COMPARE TAB -->
+<!-- ========================================================= -->
+
+<section id="compare-tab" class="tab-content">
+
+<div class="panel">
+
+<h2>Compare Prompt Versions</h2>
+
+<form id="compareForm">
+
+<div class="form-group">
+<label>Task</label>
+<select id="compareTask" required>
+<option value="">Select task...</option>
+</select>
+</div>
+
+<div class="form-group">
+<label>Versions</label>
+<div id="compareVersions" class="checkbox-group"></div>
+</div>
+
+<div class="form-group">
+<label>Models</label>
+<div id="compareModels" class="checkbox-group"></div>
+</div>
+
+<div class="form-group">
+<label>Test Input</label>
+<textarea id="compareTestInput" rows="4" required></textarea>
+</div>
+
+<button type="submit" class="btn btn-primary btn-large">
+Compare
+</button>
+
+</form>
+
+<div id="compareResults" class="results-section" style="display:none;"></div>
+
+</div>
+</section>
+
+<!-- ========================================================= -->
+<!-- EVOLVE TAB -->
+<!-- ========================================================= -->
+
+<section id="evolve-tab" class="tab-content">
+
+<div class="panel">
+
+<h2>Evolve Prompt</h2>
+
+<form id="evolveForm">
+
+<div class="form-grid">
+
+<div class="form-group">
+<label>Task</label>
+<select id="evolveTask" required>
+<option value="">Select task...</option>
+</select>
+</div>
+
+<div class="form-group">
+<label>Version</label>
+<select id="evolveVersion" required>
+<option value="">Select version...</option>
+</select>
+</div>
+
+</div>
+
+<div class="form-grid">
+
+<div class="form-group">
+<label>Execution Model</label>
+<select id="evolveModel" required>
+<option value="">Select model...</option>
+</select>
+</div>
+
+<div class="form-group">
+<label>Optimizer Model</label>
+<select id="evolveOptimizer">
+<option value="command-a-03-2025">Command-A</option>
+<option value="qwen2.5:latest">Qwen</option>
+</select>
+</div>
+
+</div>
+
+<div class="form-grid">
+
+<div class="form-group">
+<label>Max Iterations</label>
+<input type="number" id="evolveIterations" value="3" min="1">
+</div>
+
+<div class="form-group">
+<label>Test Cases</label>
+<input type="number" id="evolveTestCount" value="3" min="1">
+</div>
+
+</div>
+
+<button type="submit" class="btn btn-primary btn-large">
+Start Evolution
+</button>
+
+</form>
+
+<div id="evolveResults" class="results-section" style="display:none;"></div>
+
+</div>
+</section>
+
+<!-- ========================================================= -->
+<!-- TEST CASE TAB -->
+<!-- ========================================================= -->
+
+<section id="testcases-tab" class="tab-content">
+
+<div class="panel">
+
+<h2>Generate Test Cases</h2>
+
+<form id="testcasesForm">
+
+<div class="form-group">
+<label>Task Type</label>
+<select id="testcaseType">
+<option value="summarization">Summarization</option>
+<option value="extraction">Extraction</option>
+<option value="verification">Verification</option>
+<option value="classification">Classification</option>
+<option value="reasoning">Reasoning</option>
+<option value="generation">Generation</option>
+</select>
+</div>
+
+<div class="form-group">
+<label>Base Inputs</label>
+<textarea id="testcaseBase" rows="4"></textarea>
+</div>
+
+<div class="form-group">
+<label>Count</label>
+<input type="number" id="testcaseCount" value="5" min="1">
+</div>
+
+<button type="submit" class="btn btn-primary btn-large">
+Generate
+</button>
+
+</form>
+
+<div id="testcasesResults" class="results-section" style="display:none;"></div>
+
+</div>
+</section>
+
+<!-- ========================================================= -->
+<!-- HISTORY TAB -->
+<!-- ========================================================= -->
+
+<section id="history-tab" class="tab-content">
+
+<div class="panel">
+
+<h2>Job History</h2>
+
+<div id="historyList" class="history-list">
+<p>No history yet</p>
+</div>
+
+</div>
+</section>
+
+</div>
+</main>
+
+<!-- ========================================================= -->
+<!-- PROGRESS MODAL -->
+<!-- ========================================================= -->
+
+<div id="progressModal" class="modal">
+
+<div class="modal-content">
+
+<h3 id="progressTitle">Processing...</h3>
+
+<div class="progress-bar">
+<div id="progressFill" class="progress-fill"></div>
+</div>
+
+<p id="progressText">Starting...</p>
+
+</div>
+
+</div>
+
+<!-- ========================================================= -->
+<!-- TOAST -->
+<!-- ========================================================= -->
+
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- ========================================================= -->
+<!-- SCRIPT -->
+<!-- ========================================================= -->
+
+<script src="/static/app.js"></script>
+
 </body>
 </html>
