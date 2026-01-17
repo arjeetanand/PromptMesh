@@ -4,6 +4,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from pathlib import Path  # ← MISSING IMPORT
 import asyncio
 from datetime import datetime
 import uuid
@@ -30,7 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
+# Mount static files - MUST be after CORS but before routes
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Global state for job tracking
@@ -82,7 +83,10 @@ class TestCaseGenerationRequest(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the main HTML interface"""
-    with open("static/index.html", "r") as f:
+    html_path = Path("static/index.html")
+    if not html_path.exists():
+        raise HTTPException(status_code=404, detail="index.html not found in static/")
+    with open(html_path, "r", encoding="utf-8") as f:
         return f.read()
 
 @app.get("/api/health")
@@ -95,6 +99,8 @@ async def get_available_tasks():
     """Get list of available tasks"""
     try:
         tasks_dir = Path("prompts/versions")
+        if not tasks_dir.exists():
+            return {"tasks": []}
         tasks = [d.name for d in tasks_dir.iterdir() if d.is_dir()]
         return {"tasks": tasks}
     except Exception as e:
@@ -105,6 +111,8 @@ async def get_task_versions(task: str):
     """Get available versions for a task"""
     try:
         task_dir = Path(f"prompts/versions/{task}")
+        if not task_dir.exists():
+            return {"versions": []}
         versions = [f.stem for f in task_dir.glob("*.yaml")]
         return {"versions": versions}
     except Exception as e:
@@ -225,10 +233,10 @@ async def get_job_status(job_id: str):
     return jobs[job_id]
 
 # ============================================================
-# BACKGROUND TASK FUNCTIONS
+# BACKGROUND TASK FUNCTIONS - FIXED TO BE SYNC
 # ============================================================
 
-async def run_evaluation(job_id: str, request: EvaluationRequest):
+def run_evaluation(job_id: str, request: EvaluationRequest):
     """Background task for evaluation"""
     try:
         # Load prompt
@@ -307,7 +315,7 @@ async def run_evaluation(job_id: str, request: EvaluationRequest):
             "completed_at": datetime.now().isoformat()
         })
 
-async def run_comparison(job_id: str, request: ComparisonRequest):
+def run_comparison(job_id: str, request: ComparisonRequest):
     """Background task for comparison"""
     try:
         results = run_prompt_comparison(
@@ -341,7 +349,7 @@ async def run_comparison(job_id: str, request: ComparisonRequest):
             "completed_at": datetime.now().isoformat()
         })
 
-async def run_evolution(job_id: str, request: EvolutionRequest):
+def run_evolution(job_id: str, request: EvolutionRequest):
     """Background task for evolution"""
     try:
         # Load prompt
@@ -401,4 +409,6 @@ async def run_evolution(job_id: str, request: EvolutionRequest):
 
 if __name__ == "__main__":
     import uvicorn
+    print("🚀 Starting PromptMesh on http://localhost:8000")
+    print("📁 Make sure 'static' folder exists with index.html, styles.css, and app.js")
     uvicorn.run(app, host="0.0.0.0", port=8000)
