@@ -151,55 +151,47 @@ def generate_test_cases(
 
     prompt += f"\n\nGenerate {n} NEW diverse examples as JSON array:"
 
-    # response = model.run(
-    #     prompt=prompt,
-    #     params={
-    #         "temperature": 0.7,
-    #         "max_tokens": 1200
-    #     }
-    # )
-
-    # generated = extract_json_list(response["output"])
-
     generated = parallel_generate(
         model=model,
         prompt=prompt,
         workers=3
     )
 
-
-    # generated = [
-    #     x for x in generated
-    #     if isinstance(x, str) and len(x) > 10
-    # ]
-
     generated = list(set([
     x for x in generated
     if isinstance(x, str) and len(x) > 10
 ]))
 
+    print(f"[INFO] Base inputs: {len(base_inputs)}")
+    print(f"[INFO] Generated inputs: {len(generated)}")
 
     return base_inputs + generated
 
 
+TASK_CACHE = {}
+
 def detect_task_type(prompt_text: str, model_name="qwen2.5:latest") -> str:
 
+    if prompt_text in TASK_CACHE:
+        return TASK_CACHE[prompt_text]
+    
     detector_prompt = f"""
-You are a classifier.
+        You are a classifier.
 
-Given the PROMPT TEMPLATE below, classify its task type into ONE of:
+        Given the PROMPT TEMPLATE below, classify its task type into ONE of:
 
-structured_output
-summarization
-classification
-verification
-generation
+        structured_output
+        summarization
+        classification
+        verification
+        generation
+        reasoning
 
-PROMPT TEMPLATE:
-{prompt_text}
+        PROMPT TEMPLATE:
+        {prompt_text}
 
-Return ONLY the task_type string.
-"""
+        Return ONLY the task_type string.
+        """
 
     model = get_model(model_name)
 
@@ -210,20 +202,34 @@ Return ONLY the task_type string.
 
     detected = response["output"].strip().lower()
 
+    # allowed = {
+    #     "structured_output",
+    #     "summarization",
+    #     "classification",
+    #     "verification",
+    #     "generation"
+    # }
     allowed = {
         "structured_output",
         "summarization",
         "classification",
         "verification",
-        "generation"
+        "generation",
+        "reasoning"
     }
+
 
     if detected not in allowed:
         print(f"[WARN] Unknown detected task type: {detected}")
         return "generation"
 
     print(f"[INFO] Auto-detected task type: {detected}")
+
+    TASK_CACHE[prompt_text] = detected
+
     return detected
+
+
 
 
 def parallel_generate(

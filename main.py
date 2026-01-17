@@ -26,7 +26,7 @@ sys.path.append(os.getcwd())
 COMPARE_PROMPTS = False
 
 TASK = "summarization"
-PRIMARY_PROMPT_VERSION = "v3"
+PRIMARY_PROMPT_VERSION = "v5"
 PROMPT_VERSIONS = ["v1", "v2"]
 
 BASE_INPUTS = [
@@ -139,6 +139,7 @@ print("="*60)
 
 test_inputs = generate_test_cases(
     task_type=task_type,
+    # input_variables=input_var_name,
     input_variables=prompt_meta["input_variables"],
     base_inputs=BASE_INPUTS,
     schema_fields=schema_fields,

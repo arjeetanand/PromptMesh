@@ -118,7 +118,7 @@ def evolve_prompt(
 
         best, scored = select_best_prompt(
             candidate_prompts=candidates,
-            model=optimizer_model,
+            model=execution_model,
             task_inputs=task_inputs,
             constraints=constraints,
             input_var=input_var
