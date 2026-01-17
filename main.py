@@ -1,7 +1,6 @@
 # ===============================
 # MAIN ENTRY — PROMPT PIPELINE
 # ===============================
-
 from prompts.registry import PromptRegistry
 from core.types import render_prompt
 from core.executor import PromptExecutor
@@ -11,10 +10,14 @@ from comparison.runner import run_prompt_comparison
 
 from optimization.failure_analysis import analyze_failure
 from optimization.evolver import evolve_prompt
-from optimization.testcase_generator import generate_test_cases
+from optimization.testcase_generator import generate_test_cases, detect_task_type
 
 from models.registry import get_model
 
+
+import sys
+import os
+sys.path.append(os.getcwd())
 
 # -------------------------------
 # CONFIG
@@ -23,13 +26,11 @@ from models.registry import get_model
 COMPARE_PROMPTS = False
 
 TASK = "summarization"
-PRIMARY_PROMPT_VERSION = "v6"
+PRIMARY_PROMPT_VERSION = "v3"
 PROMPT_VERSIONS = ["v1", "v2"]
 
 BASE_INPUTS = [
-    "The study found a 23% reduction in symptoms after 6 weeks. "
-    "Researchers noted this was preliminary data from a small sample of 50 participants. "
-    "Further trials with 500 participants are planned for next year."
+    "In 2022, OpenAI announced that its GPT-4 model achieved improved reasoning accuracy."
 ]
 
 FAST_MODELS = [
@@ -108,16 +109,28 @@ print("\n==== SINGLE PROMPT • MULTI-MODEL MODE ====")
 
 # ---- Load YAML prompt ----
 try:
-    base_prompt_def = registry.load(TASK, PRIMARY_PROMPT_VERSION)
+    # base_prompt_def = registry.load(TASK, PRIMARY_PROMPT_VERSION)
+    prompt_meta = registry.load_with_metadata(TASK, PRIMARY_PROMPT_VERSION)
+
     print(f"✓ Loaded prompt: {TASK}/{PRIMARY_PROMPT_VERSION}")
 except FileNotFoundError as e:
     print(f"\n❌ ERROR: {e}")
     print(f"\nCreate this file: prompts/versions/{TASK}/{PRIMARY_PROMPT_VERSION}.yaml")
     exit(1)
 
-task_name = base_prompt_def["task"]
-input_var_name = base_prompt_def["input_variables"][0]
-base_prompt = base_prompt_def["template"]
+
+
+task_type = prompt_meta["task_type"]
+schema_fields = prompt_meta["schema_fields"]
+
+input_var_name = prompt_meta["input_variables"][0]
+base_prompt = prompt_meta["template"]
+constraints = prompt_meta["constraints"]
+
+if not task_type:
+    print("[INFO] task_type missing — auto detecting...")
+    task_type = detect_task_type(base_prompt)
+
 
 # ---- Generate test cases (distribution) ----
 print("\n" + "="*60)
@@ -125,11 +138,13 @@ print("GENERATING TEST CASES")
 print("="*60)
 
 test_inputs = generate_test_cases(
-    task=task_name,
-    input_variables=base_prompt_def["input_variables"],
+    task_type=task_type,
+    input_variables=prompt_meta["input_variables"],
     base_inputs=BASE_INPUTS,
+    schema_fields=schema_fields,
     n=3
 )
+
 
 print(f"\n✓ Total test cases: {len(test_inputs)}")
 for i, t in enumerate(test_inputs[:3], 1):
@@ -156,13 +171,13 @@ for model_name in EVAL_MODELS:
         print(f"  Test {i}/{len(test_inputs)}...", end=" ")
         
         try:
-            raw = model.run(rendered, base_prompt_def["constraints"])
+            raw = model.run(rendered, constraints)
             
             print(f"Output: {raw['output'][:60]}...")
             
             eval_result = evaluate(
                 raw["output"],
-                base_prompt_def["constraints"],
+                constraints,
                 text
             )
             
@@ -252,10 +267,10 @@ if failure_type != "none" and top_model["score"] < 7.0:
     evolution_history = evolve_prompt(
         initial_prompt=base_prompt,
         task_inputs=test_inputs,
-        constraints=base_prompt_def["constraints"],
+        constraints=constraints,
         optimizer_model=optimizer_model,
         execution_model=execution_model,
-        input_var=base_prompt_def["input_variables"][0],
+        input_var=input_var_name,
         max_iters=MAX_EVOLUTION_ITERS,
         variants_per_iter=VARIANTS_PER_ITER,
         min_delta=MIN_DELTA
@@ -293,7 +308,7 @@ final_prompt_text = render_prompt(
 
 final_results = executor.run(
     prompt=final_prompt_text,
-    params=base_prompt_def["constraints"],
+    params=constraints,
     models=[best_model_name]
 )
 
@@ -301,7 +316,7 @@ r = final_results[0]
 
 final_eval = evaluate(
     r.output,
-    base_prompt_def["constraints"],
+    constraints,
     REPRESENTATIVE_INPUT
 )
 

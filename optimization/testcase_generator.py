@@ -3,43 +3,97 @@
 from models.registry import get_model
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-GENERATOR_PROMPTS = {
-    "summarization": """
-You are generating INPUT TEXTS to test a summarization prompt.
 
-Generate {n} diverse input texts.
-Each text should test a different failure mode:
-- missing details
-- ambiguity
-- hallucination risk
-- minimal content
-- dense information
-- conflicting statements
+__all__ = [
+    "generate_test_cases",
+    "detect_task_type"
+]
 
-Return ONLY a JSON array of strings like this:
-["text 1", "text 2", "text 3"]
 
-Do NOT include summaries or explanations.
+GENERATOR_TEMPLATES = {
+
+"structured_output": """
+You are generating INPUT TEXTS for structured information extraction.
+
+Target fields:
+{fields}
+
+Generate {n} diverse inputs.
+
+Include:
+- missing fields
+- ambiguous references
+- multiple entities
+- numeric values
+- incomplete information
+- hallucination traps (no explicit facts)
+- unstructured sentences
+
+Rules:
+- Do NOT include outputs
+- Do NOT explain
+- Generate realistic text
+
+Return ONLY JSON array of strings.
 """,
 
-    "verification": """
-You are generating INPUT TEXTS to test a factual verification prompt.
+"summarization": """
+Generate {n} diverse summarization input texts.
 
-Each input should contain:
-- a factual claim
-- a source text that may or may not support the claim
+Include:
+- dense paragraphs
+- contradictory information
+- short minimal content
+- multi-topic text
+- ambiguous statements
+- hallucination risk content
 
-Some inputs MUST be:
-- clearly supported
-- clearly not supported
-- ambiguous / underspecified
+Return ONLY JSON array.
+""",
 
-Generate {n} diverse input texts.
+"classification": """
+Generate {n} classification inputs.
+
+Include:
+- clear category examples
+- borderline ambiguous cases
+- noisy informal language
+- mixed sentiment or topics
+
+Return ONLY JSON array.
+""",
+
+"verification": """
+Generate {n} verification inputs.
+
+Include:
+- clearly supported claims
+- clearly false claims
+- partially supported
+- underspecified claims
+
 Do NOT include answers.
-Return ONLY a JSON array of strings.
+
+Return ONLY JSON array.
+""",
+
+"generation": """
+Generate {n} content generation prompts.
+
+Include:
+- creative tasks
+- technical writing tasks
+- constrained instructions
+- ambiguous requirements
+- long-form and short-form prompts
+
+Return ONLY JSON array.
 """
 }
+
+
 
 
 def extract_json_list(text: str) -> list:
@@ -65,62 +119,140 @@ def extract_json_list(text: str) -> list:
 
 
 def generate_test_cases(
-    task: str,
+    task_type: str,
     input_variables: list[str],
     base_inputs: list[str],
+    schema_fields: list[str] | None = None,
     n: int = 6,
     model_name: str = "qwen2.5:latest"
-) -> list[str]:
-    """
-    Generates distribution-aware test cases for prompt evaluation.
-    """
-    
-    if task not in GENERATOR_PROMPTS:
-        print(f"[WARN] No test-case generator for task: {task}")
-        print(f"[WARN] Returning base inputs only")
-        return base_inputs
+):
+
+    if task_type not in GENERATOR_TEMPLATES:
+        raise ValueError(
+            f"No generator registered for task_type={task_type}. "
+            f"Available: {list(GENERATOR_TEMPLATES.keys())}"
+        )
 
     model = get_model(model_name)
 
-    prompt = (
-        GENERATOR_PROMPTS[task].format(n=n)
-        + "\n\nBase examples:\n"
-        + "\n".join(f"- {t}" for t in base_inputs)
-        + f"\n\nGenerate {n} NEW diverse examples as JSON array:"
+    template = GENERATOR_TEMPLATES[task_type]
+
+    field_block = ""
+    if schema_fields:
+        field_block = "\n".join(f"- {f}" for f in schema_fields)
+
+    prompt = template.format(
+        n=n,
+        fields=field_block
     )
 
-    print(f"\n[DEBUG] Generating {n} test cases using {model_name}...")
-    
-    try:
+    prompt += "\n\nBase examples:\n"
+    prompt += "\n".join(f"- {t}" for t in base_inputs)
+
+    prompt += f"\n\nGenerate {n} NEW diverse examples as JSON array:"
+
+    # response = model.run(
+    #     prompt=prompt,
+    #     params={
+    #         "temperature": 0.7,
+    #         "max_tokens": 1200
+    #     }
+    # )
+
+    # generated = extract_json_list(response["output"])
+
+    generated = parallel_generate(
+        model=model,
+        prompt=prompt,
+        workers=3
+    )
+
+
+    # generated = [
+    #     x for x in generated
+    #     if isinstance(x, str) and len(x) > 10
+    # ]
+
+    generated = list(set([
+    x for x in generated
+    if isinstance(x, str) and len(x) > 10
+]))
+
+
+    return base_inputs + generated
+
+
+def detect_task_type(prompt_text: str, model_name="qwen2.5:latest") -> str:
+
+    detector_prompt = f"""
+You are a classifier.
+
+Given the PROMPT TEMPLATE below, classify its task type into ONE of:
+
+structured_output
+summarization
+classification
+verification
+generation
+
+PROMPT TEMPLATE:
+{prompt_text}
+
+Return ONLY the task_type string.
+"""
+
+    model = get_model(model_name)
+
+    response = model.run(
+        prompt=detector_prompt,
+        params={"temperature": 0.0, "max_tokens": 50}
+    )
+
+    detected = response["output"].strip().lower()
+
+    allowed = {
+        "structured_output",
+        "summarization",
+        "classification",
+        "verification",
+        "generation"
+    }
+
+    if detected not in allowed:
+        print(f"[WARN] Unknown detected task type: {detected}")
+        return "generation"
+
+    print(f"[INFO] Auto-detected task type: {detected}")
+    return detected
+
+
+def parallel_generate(
+    model,
+    prompt: str,
+    workers: int = 3
+) -> list[str]:
+
+    results = []
+
+    def run_one():
         response = model.run(
             prompt=prompt,
             params={
                 "temperature": 0.7,
-                "max_tokens": 1000
+                "max_tokens": 1200
             }
         )
-        
-        print(f"[DEBUG] Generator raw output:")
-        print(response["output"][:500])
-        print("-" * 40)
-        
-        generated = extract_json_list(response["output"])
-        
-        if not isinstance(generated, list):
-            print(f"[WARN] Generated output is not a list: {type(generated)}")
-            generated = []
-        
-        # Ensure all items are strings
-        generated = [str(x) for x in generated if isinstance(x, str) and len(x) > 10]
-        
-        print(f"[DEBUG] ✓ Generated {len(generated)} valid test cases")
-        
-    except Exception as e:
-        print(f"[ERROR] Test case generation failed: {e}")
-        generated = []
+        return extract_json_list(response["output"])
 
-    # Always include original inputs
-    all_cases = base_inputs + generated
-    print(f"[DEBUG] Total test cases: {len(all_cases)}")
-    
-    return all_cases
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(run_one) for _ in range(workers)]
+
+        for f in as_completed(futures):
+            try:
+                batch = f.result()
+                if isinstance(batch, list):
+                    results.extend(batch)
+            except Exception as e:
+                print(f"[WARN] Parallel generator error: {e}")
+
+    return results

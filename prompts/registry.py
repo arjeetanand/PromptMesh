@@ -21,3 +21,20 @@ class PromptRegistry:
 
         self._cache[key] = prompt
         return prompt
+    
+    def load_with_metadata(self, task: str, version: str) -> dict:
+        prompt_def = self.load(task, version)
+
+        metadata = {
+            "task": prompt_def.get("task"),
+            "task_type": prompt_def.get("task_type"),
+            "input_variables": prompt_def.get("input_variables", []),
+            "schema_fields": (
+                prompt_def.get("output_schema", {})
+                .get("fields", [])
+            ),
+            "constraints": prompt_def.get("constraints", {}),
+            "template": prompt_def.get("template")
+        }
+
+        return metadata

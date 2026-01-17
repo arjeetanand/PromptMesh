@@ -1,6 +1,7 @@
 prompt_id: entity_extraction
 version: "1.0.0"
 task: extraction
+task_type: structured_output
 
 description: >
   Extracts structured facts from text without inference.
@@ -33,3 +34,9 @@ template: |
 
 expected_output:
   type: json
+
+output_schema:
+  fields:
+    - organization
+    - year
+    - claim
