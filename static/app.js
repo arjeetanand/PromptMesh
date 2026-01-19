@@ -163,49 +163,54 @@ function populateModelSelectors() {
 // LOAD PROMPT VERSIONS
 // ============================================================
 
+// LOAD PROMPT VERSIONS
 async function loadVersionsForTask(task, targetId) {
+  try {
+    const data = await apiCall(`tasks/${task}/versions`);
+    const versions = data.versions;
 
-    try {
-        const data = await apiCall(`/tasks/${task}/versions`);
-        const versions = data.versions || [];
-
-        // Dropdown
-        const select = document.getElementById(targetId);
-        if (select && select.tagName === "SELECT") {
-
-            select.innerHTML = `<option value="">Select version...</option>`;
-
-            versions.forEach(v => {
-                const opt = document.createElement("option");
-                opt.value = v;
-                opt.textContent = v;
-                select.appendChild(opt);
-            });
-        }
-
-        // Compare checkbox group
-        if (targetId === "compareVersions") {
-
-            const container = document.getElementById("compareVersions");
-            container.innerHTML = "";
-
-            versions.forEach(v => {
-                const label = document.createElement("label");
-                const cb = document.createElement("input");
-
-                cb.type = "checkbox";
-                cb.value = v;
-
-                label.appendChild(cb);
-                label.append(v);
-
-                container.appendChild(label);
-            });
-        }
-
-    } catch {
-        showToast("Failed to load versions", "error");
+    // Dropdown
+    const select = document.getElementById(targetId);
+    if (select && select.tagName === 'SELECT') {
+      select.innerHTML = '<option value="">Select version...</option>';
+      versions.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        select.appendChild(opt);
+      });
     }
+
+    // Compare checkbox group
+    if (targetId === 'compareVersions') {
+      const container = document.getElementById('compareVersions');
+      container.innerHTML = '';
+      versions.forEach(v => {
+        const label = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = v;
+        
+        // Add change listener to update count
+        cb.addEventListener('change', () => {
+          const checkedCount = document.querySelectorAll('#compareVersions input:checked').length;
+          // Limit to 2 selections
+          if (checkedCount > 2) {
+            cb.checked = false;
+            showToast('Please select exactly 2 versions to compare', 'warning');
+          }
+          updateVersionCount();
+        });
+        
+        label.appendChild(cb);
+        label.append(v);
+        container.appendChild(label);
+      });
+      updateVersionCount();
+    }
+  } catch {
+    showToast('Failed to load versions', 'error');
+  }
 }
 
 // ============================================================
@@ -304,6 +309,23 @@ function setupEventListeners() {
             loadPromptForEditing("evolve", task, e.target.value);
         }
     });
+    
+    document.getElementById('compareUseCustom').addEventListener('change', (e) => {
+    const yamlSection = document.getElementById('compareYamlSection');
+    const customSection = document.getElementById('compareCustomSection');
+    const taskSelect = document.getElementById('compareTask');
+
+    if (e.target.checked) {
+        yamlSection.style.display = 'none';
+        customSection.style.display = 'block';
+        taskSelect.required = false;
+        showToast('Custom prompt mode enabled ✍️', 'success');
+    } else {
+        yamlSection.style.display = 'block';
+        customSection.style.display = 'none';
+        taskSelect.required = true;
+    }
+    });
 
     document.getElementById("evaluateForm").addEventListener("submit", handleEvaluate);
     document.getElementById("compareForm").addEventListener("submit", handleCompare);
@@ -369,9 +391,15 @@ function setupTabNavigation() {
     });
 }
 
-// ============================================================
-// FORM HANDLERS
-// ============================================================
+// Update version count display
+function updateVersionCount() {
+  const checkedCount = document.querySelectorAll('#compareVersions input:checked').length;
+  const countEl = document.getElementById('versionCount');
+  if (countEl) {
+    countEl.textContent = `${checkedCount} selected`;
+    countEl.style.color = checkedCount === 2 ? 'var(--secondary)' : 'var(--gray)';
+  }
+}
 
 // ============================================================
 // FORM HANDLERS (UPDATED)
@@ -520,29 +548,121 @@ async function handleEvolve(e) {
 }
 
 
+// Add to setupEventListeners function
+document.getElementById('compareUseCustom').addEventListener('change', (e) => {
+  const yamlSection = document.getElementById('compareYamlSection');
+  const customSection = document.getElementById('compareCustomSection');
+  const taskSelect = document.getElementById('compareTask');
+  
+  if (e.target.checked) {
+    // Show custom prompts
+    yamlSection.style.display = 'none';
+    customSection.style.display = 'block';
+    taskSelect.required = false;
+  } else {
+    // Show YAML selection
+    yamlSection.style.display = 'block';
+    customSection.style.display = 'none';
+    taskSelect.required = true;
+  }
+});
+
+// ============================================================================
+// REPLACE the existing handleCompare function with this:
+// ============================================================================
 
 async function handleCompare(e) {
-    e.preventDefault();
+  e.preventDefault();
 
-    const payload = {
-        task: compareTask.value,
-        versions: getChecked("compareVersions"),
-        models: getChecked("compareModels"),
-        test_input: compareTestInput.value
-    };
+  const useCustom = document.getElementById('compareUseCustom').checked;
 
-    if (!payload.task || payload.versions.length === 0 ||
-        payload.models.length === 0 || !payload.test_input) {
+  const payload = {
+    models: getChecked('compareModels'),
+    testinput: document.getElementById('compareTestInput').value.trim()
+  };
 
-        return showToast("Missing required fields", "error");
+  if (useCustom) {
+    // Custom prompts mode
+    const promptA = document.getElementById('comparePromptA').value.trim();
+    const promptB = document.getElementById('comparePromptB').value.trim();
+
+    if (!promptA || !promptB) {
+      return showToast('Please write both Prompt A and Prompt B', 'error');
     }
 
-    const res = await apiCall("/compare", {
-        method: "POST",
-        body: JSON.stringify(payload)
-    });
+    // Check for {text} placeholder
+    if (!promptA.includes('{text}')) {
+      showToast('Warning: Prompt A is missing {text} placeholder', 'warning');
+    }
+    if (!promptB.includes('{text}')) {
+      showToast('Warning: Prompt B is missing {text} placeholder', 'warning');
+    }
 
-    startPolling(res.job_id, "comparison");
+    payload.task = 'custom';
+    payload.versions = ['Prompt_A', 'Prompt_B'];
+    payload.customprompts = {
+      'Prompt_A': promptA,
+      'Prompt_B': promptB
+    };
+  } else {
+    // YAML mode
+    const versions = getChecked('compareVersions');
+
+    if (versions.length !== 2) {
+      return showToast('Please select exactly 2 prompt versions', 'error');
+    }
+
+    payload.task = document.getElementById('compareTask').value;
+    payload.versions = versions;
+
+    if (!payload.task) {
+      return showToast('Please select a task', 'error');
+    }
+  }
+
+  if (payload.models.length === 0) {
+    return showToast('Please select at least one model', 'error');
+  }
+
+  if (!payload.testinput) {
+    return showToast('Please provide test input', 'error');
+  }
+
+  try {
+    const res = await apiCall('compare', { 
+      method: 'POST', 
+      body: JSON.stringify(payload) 
+    });
+    startPolling(res.jobid, 'comparison');
+  } catch (err) {
+    showToast(`Failed to start comparison: ${err.message}`, 'error');
+  }
+}
+
+// ============================================================================
+// REPLACE the existing displayComparison function with this:
+// ============================================================================
+
+function displayComparison(results) {
+  compareResults.style.display = 'block';
+
+  const tbody = document.getElementById('comparisonTableBody');
+  tbody.innerHTML = '';
+
+  if (!results || results.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--gray);">No results</td></tr>';
+    return;
+  }
+
+  results.forEach(r => {
+    const row = tbody.insertRow();
+    row.innerHTML = `
+      <td><strong style="color: var(--primary);">${escapeHTML(r.promptversion)}</strong></td>
+      <td>${escapeHTML(r.model)}</td>
+      <td class="score-cell">${r.score.toFixed(2)}</td>
+      <td class="output-cell">${escapeHTML(r.output)}</td>
+    `;
+  });
 }
 
 
@@ -751,10 +871,7 @@ function displayEvaluation(results) {
 }
 
 
-function displayComparison(results) {
-    compareResults.style.display = "block";
-    compareResults.innerHTML = `<pre>${JSON.stringify(results, null, 2)}</pre>`;
-}
+
 
 function displayEvolution(results) {
     evolveResults.style.display = "block";

@@ -27,6 +27,14 @@ def evaluate_prompt(prompt_template, task_inputs, model, constraints, input_var)
             text
         )
 
+        # results.append({
+        #     "input": text,
+        #     "output": result["output"],
+        #     "score": evaluation.score,
+        #     "breakdown": evaluation.breakdown
+        # })
+
+
         scores.append(evaluation.score)
         breakdowns.append(evaluation.breakdown)
 
@@ -99,6 +107,10 @@ def evolve_prompt(
 
         print(f"\n--- Iteration {iteration} ---")
         print(f"Failure driving evolution : {failure_type}")
+
+        if failure_type == "none":
+            print("No failure detected — stopping evolution")
+            break
 
         candidates = generate_prompt_variants(
             original_prompt=current_prompt,

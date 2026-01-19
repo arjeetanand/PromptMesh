@@ -1108,60 +1108,147 @@
                 </div>
             </div>
 
+
             
             <!-- COMPARE TAB -->
             <div id="compare-tab" class="tab-content">
-                <div class="panel">
-                    <h2>⚖️ Compare Prompt Versions</h2>
-                    <p style="color: var(--gray); margin-bottom: 24px;">Compare different prompt versions on the same test input</p>
+            <div class="panel">
+                <h2>Compare 2 Prompts</h2>
+                <p style="color: var(--gray); margin-bottom: 24px">
+                Write or select 2 prompts and compare their outputs side-by-side
+                </p>
+                
+                <form id="compareForm" class="form">
+                <!-- Mode Toggle -->
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="compareUseCustom">
+                    <span style="font-weight: 600;">✍️ Write Custom Prompts (instead of using saved versions)</span>
+                    </label>
+                </div>
 
-                    <form id="compareForm" class="form">
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="compareTask">Task</label>
-                                <select id="compareTask" required>
-                                    <option value="">Select task...</option>
-                                </select>
-                            </div>
-                        </div>
+                <!-- YAML Mode (default) -->
+                <div id="compareYamlSection">
+                    <div class="form-grid">
+                    <div class="form-group">
+                        <label for="compareTask">Task</label>
+                        <select id="compareTask" required>
+                        <option value="">Select task...</option>
+                        </select>
+                    </div>
+                    </div>
 
-                        <div class="form-group">
-                            <label>Versions</label>
-                            <div id="compareVersions" class="checkbox-group"></div>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Models</label>
-                            <div id="compareModels" class="checkbox-group"></div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="compareTestInput">Test Input</label>
-                            <textarea id="compareTestInput" rows="4" placeholder="Enter test input..." required></textarea>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-large">▶ Compare</button>
-                    </form>
-
-                    <!-- COMPARISON RESULTS -->
-                    <div id="compareResults" class="results-section" style="display: none;">
-                        <div class="results-header">
-                            <h3>Comparison Results</h3>
-                        </div>
-                        <table class="comparison-table">
-                            <thead>
-                                <tr>
-                                    <th>Version</th>
-                                    <th>Model</th>
-                                    <th>Score</th>
-                                    <th>Output</th>
-                                </tr>
-                            </thead>
-                            <tbody id="comparisonTableBody"></tbody>
-                        </table>
+                    <div class="form-group">
+                    <label style="display: flex; justify-content: space-between;">
+                        <span>Versions <span style="color: var(--danger); font-weight: 600;">(select exactly 2)</span></span>
+                        <span id="versionCount" style="color: var(--gray); font-size: 13px;">0 selected</span>
+                    </label>
+                    <div id="compareVersions" class="checkbox-group"></div>
                     </div>
                 </div>
+
+                <!-- Custom Prompts Mode -->
+                <div id="compareCustomSection" style="display: none;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                    
+                    <!-- Prompt A -->
+                    <div class="custom-prompt-container">
+                        <div class="form-group">
+                        <label style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 600; color: var(--primary);">📝 Prompt A</span>
+                            <button type="button" class="btn btn-secondary" 
+                                    style="padding: 4px 12px; font-size: 12px;"
+                                    onclick="loadExamplePrompt('comparePromptA')">
+                            Load Example
+                            </button>
+                        </label>
+                        <textarea id="comparePromptA" rows="12" 
+                                    placeholder="Write your first prompt here...
+
+            Example:
+            Summarize the following text in exactly 2 sentences:
+
+            {text}
+
+            Be concise and clear."
+                                    style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
+                        <small style="color: var(--gray); display: block; margin-top: 8px;">
+                            💡 Use <strong>{text}</strong> as placeholder where test input should go
+                        </small>
+                        </div>
+                    </div>
+
+                    <!-- Prompt B -->
+                    <div class="custom-prompt-container">
+                        <div class="form-group">
+                        <label style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 600; color: var(--secondary);">📝 Prompt B</span>
+                            <button type="button" class="btn btn-secondary" 
+                                    style="padding: 4px 12px; font-size: 12px;"
+                                    onclick="loadExamplePrompt('comparePromptB')">
+                            Load Example
+                            </button>
+                        </label>
+                        <textarea id="comparePromptB" rows="12" 
+                                    placeholder="Write your second prompt here...
+
+            Example:
+            Provide a brief 2-sentence summary of:
+
+            {text}
+
+            Keep it simple and direct."
+                                    style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
+                        <small style="color: var(--gray); display: block; margin-top: 8px;">
+                            💡 Use <strong>{text}</strong> as placeholder where test input should go
+                        </small>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Models (always visible) -->
+                <div class="form-group">
+                    <label>Models to Test</label>
+                    <div id="compareModels" class="checkbox-group"></div>
+                </div>
+
+                <!-- Test Input (always visible) -->
+                <div class="form-group">
+                    <label for="compareTestInput">Test Input</label>
+                    <textarea id="compareTestInput" rows="4" 
+                            placeholder="Enter test input here..." required></textarea>
+                    <small style="color: var(--gray); display: block; margin-top: 8px;">
+                    This text will replace {text} in your prompts
+                    </small>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-large">🔍 Compare Prompts</button>
+                </form>
+                
+                <!-- COMPARISON RESULTS -->
+                <div id="compareResults" class="results-section" style="display: none;">
+                <div class="results-header">
+                    <h3>Comparison Results</h3>
+                    <button class="btn btn-secondary" onclick="exportResults('comparison')">Export JSON</button>
+                </div>
+                <table class="comparison-table">
+                    <thead>
+                    <tr>
+                        <th>Prompt</th>
+                        <th>Model</th>
+                        <th>Score</th>
+                        <th>Output</th>
+                    </tr>
+                    </thead>
+                    <tbody id="comparisonTableBody"></tbody>
+                </table>
+                </div>
             </div>
+            </div>
+
+
+
 
 
 

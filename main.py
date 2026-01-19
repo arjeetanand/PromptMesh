@@ -28,10 +28,12 @@ COMPARE_PROMPTS = False
 # TASK = "summarization"
 # TASK = "extraction"
 # TASK = "verification"
-# TASK = "classification"
-TASK = "reasoning"
+TASK = "classification"
+# TASK = "reasoning"
 # TASK = "generation"
 
+# Add this config at the top
+ALWAYS_OPTIMIZE = True  # Set to True to always try to improve
 
 PRIMARY_PROMPT_VERSION = "v1"
 PROMPT_VERSIONS = ["v1", "v2"]
@@ -41,7 +43,7 @@ BASE_INPUTS_SUMMARIZATION = [
     
     "The European Union introduced new AI regulations aimed at improving transparency and safety, though some companies expressed concerns about compliance costs.",
     
-    "A study published on climate change reported rising sea levels, increasing global temperatures, and the growing frequency of extreme weather events."
+    # "A study published on climate change reported rising sea levels, increasing global temperatures, and the growing frequency of extreme weather events."
 ]
 
 BASE_INPUTS_EXTRACTION = [
@@ -49,7 +51,7 @@ BASE_INPUTS_EXTRACTION = [
 
     "Microsoft released a new product in 2023.",
 
-    "In 2021, a report stated that energy efficiency improved significantly."
+    # "In 2021, a report stated that energy efficiency improved significantly."
 ]
 
 BASE_INPUTS_VERIFICATION = [
@@ -57,7 +59,7 @@ BASE_INPUTS_VERIFICATION = [
 
     "Claim: Amazon launched a new smartphone in 2023. Source: Amazon announced new logistics tools in 2023.",
 
-    "Claim: Google expanded globally. Source: Google announced new office openings."
+    # "Claim: Google expanded globally. Source: Google announced new office openings."
 ]
 
 BASE_INPUTS_CLASSIFICATION = [
@@ -65,7 +67,7 @@ BASE_INPUTS_CLASSIFICATION = [
     
     "Customer service was slow and unhelpful.",
     
-    "The update was released yesterday and included several changes."
+    # "The update was released yesterday and included several changes."
 ]
 
 BASE_INPUTS_REASONING = [
@@ -73,13 +75,13 @@ BASE_INPUTS_REASONING = [
 
     "John gave Mike his book after the meeting.",
 
-    "The temperature increased significantly."
+    # "The temperature increased significantly."
 ]
 
 BASE_INPUTS_GENERATION = [
     "Write a short motivational quote about learning.",
     
-    "Generate a two-line product description for a smartwatch.",
+    # "Generate a two-line product description for a smartwatch.",
     
     "Create a brief introduction for a tech blog."
 ]
@@ -105,7 +107,7 @@ MAX_EVOLUTION_ITERS = 2
 VARIANTS_PER_ITER = 2
 MIN_DELTA = 0.25
 
-GENERATE_TEST_CASE_COUNT = 2
+GENERATE_TEST_CASE_COUNT = 4
 
 BASE_INPUT_MAP = {
     "summarization": BASE_INPUTS_SUMMARIZATION,
@@ -330,7 +332,7 @@ failure_type = analyze_failure(top_model["breakdowns"])
 print(f"\nDetected failure type: {failure_type}")
 
 # Only evolve if there's a real problem AND score is below threshold
-if failure_type != "none" and top_model["score"] < 7.0:
+if ALWAYS_OPTIMIZE or (failure_type != "none" and top_model["score"] < 7.0):
 
     print("\n" + "="*60)
     print("STARTING PROMPT EVOLUTION")

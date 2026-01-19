@@ -787,3 +787,22 @@ body {
     border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
 }
+
+.custom-prompt-container {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  padding: 20px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+}
+
+.custom-prompt-container textarea {
+  background: white;
+  border: 2px solid var(--border);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.custom-prompt-container textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}

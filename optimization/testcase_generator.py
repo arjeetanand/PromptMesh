@@ -1,445 +1,338 @@
-# optimization/testcase_generator.py
-
+"""
+Intelligent Test Case Generator - Context-Aware
+Analyzes user input and generates relevant, diverse test cases
+"""
 from models.registry import get_model
+from typing import List, Optional
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Optional
 
-
-__all__ = [
-    "generate_test_cases",
-    "detect_task_type"
-]
+__all__ = ["generate_test_cases", "detect_task_type"]
 
 
 # ============================================================
-# TASK NORMALIZATION LAYER
+# INTELLIGENT GENERATION PROMPTS
 # ============================================================
 
-TASK_NORMALIZATION_MAP = {
-    "reasoning": "classification",
-    "entity_extraction": "structured_output",
-    "json_extraction": "structured_output",
-    "extraction": "structured_output",
-    "qa": "verification",
-    "question_answering": "verification",
-    "reasoning" : "reasoning",
+ANALYSIS_PROMPT = """Analyze this test input and identify:
+1. Domain/topic (e.g., business, technology, health, etc.)
+2. Key entities mentioned (companies, people, numbers, dates)
+3. Complexity level (simple, moderate, complex)
+4. Tone (formal, casual, technical)
 
-    
-}
+Input: "{input_text}"
 
+Return ONLY a JSON object:
+{{
+  "domain": "...",
+  "entities": ["...", "..."],
+  "complexity": "...",
+  "tone": "..."
+}}
+"""
 
-# ============================================================
-# GENERATOR PROMPT TEMPLATES
-# ============================================================
+GENERATION_PROMPT = """You are generating test cases for evaluating an AI prompt.
 
-GENERATOR_TEMPLATES = {
+TASK TYPE: {task_type}
 
-    "summarization": """
-        Generate {n} diverse summarization input texts.
+USER'S ORIGINAL INPUT:
+{original_input}
 
-        Include:
-        - dense paragraphs
-        - contradictory information
-        - short minimal content
-        - multi-topic text
-        - ambiguous statements
-        - hallucination risk content
+ANALYSIS:
+- Domain: {domain}
+- Complexity: {complexity}
+- Entities: {entities}
 
-        Return ONLY a valid JSON array of strings.
-        """,
+YOUR TASK:
+Generate {n} diverse test inputs that are SIMILAR to the original but cover different scenarios:
 
-    "structured_output": """
-            You are generating INPUT TEXTS for structured information extraction.
+1. **Variation in complexity**: Generate some simpler and some more complex than original
+2. **Variation in length**: Mix of short, medium, and longer texts
+3. **Different entities**: Use different names, numbers, dates but same domain
+4. **Edge cases**: Include boundary cases (very short, very long, ambiguous)
+5. **Domain consistency**: Stay within the same domain as original
 
-            Target output fields:
-            {fields}
+EXAMPLES for this task type:
+{examples}
 
-            Generate {n} diverse input texts.
+CRITICAL RULES:
+- Each test case should be TESTABLE with the same prompt
+- Maintain the same general format as original
+- Vary the difficulty and scenarios
+- Keep the same domain/topic as original
+- Return ONLY a valid JSON array of strings
+- No markdown, no explanation, no commentary
 
-            Include:
-            - missing fields
-            - ambiguous references
-            - multiple entities
-            - numeric values
-            - incomplete information
-            - hallucination traps (no explicit facts)
-            - unstructured sentences
-
-            Rules:
-            - Do NOT include outputs
-            - Do NOT explain
-            - Generate realistic text
-
-            Return ONLY a valid JSON array of strings.
-            """,
-
-    "reasoning": """
-            Generate {n} ambiguous or underspecified input texts that require reasoning.
-
-            Include:
-            - vague statements
-            - unclear references
-            - missing actors
-            - ambiguous pronouns
-            - partial facts
-
-            Rules:
-            - Each item must be a standalone sentence
-            - No explanations
-            - No answers
-
-            Return ONLY valid JSON array of strings.
-            """,
-
-    "classification": """
-        Generate {n} classification input texts.
-
-        Include:
-        - clear category examples
-        - borderline ambiguous cases
-        - noisy informal language
-        - mixed sentiment or intent
-
-        Return ONLY a valid JSON array of strings.
-        """,
-
-    "verification": """
-        You are generating INPUT TEXTS for fact verification.
-
-        Each input MUST follow this EXACT format:
-
-        Claim: <single factual claim>
-        Source: <text that may or may not support the claim>
-
-        Generate {n} diverse inputs.
-
-        Distribution:
-        - 40% clearly supported (exact wording or numeric match)
-        - 30% clearly false
-        - 20% underspecified
-        - 10% partially overlapping facts
-
-        Rules:
-        - For supported cases, the claim MUST appear explicitly in the source
-        - Match numbers exactly when used
-        - Do NOT include answers
-        - Do NOT explain
-        - Each item must be a single string
-
-        Return ONLY a valid JSON array of strings.
-
-        """,
-
-    "generation": """
-        You are generating INPUT PROMPTS to test a content generation system.
-
-        Your job is to produce realistic user prompts that someone would type into an AI assistant.
-
-        Generate {n} diverse prompt strings.
-
-        Include variety:
-        - creative writing tasks
-        - technical documentation requests
-        - short-form content requests
-        - long-form writing tasks
-        - constrained instruction prompts
-        - ambiguous or underspecified requests
-
-        Rules:
-        - Each item MUST be a single natural language prompt
-        - Do NOT include answers
-        - Do NOT number items
-        - Do NOT use bullet points
-        - Do NOT add explanations
-        - Do NOT add markdown
-
-        Output format rules:
-        - Return ONLY a valid JSON array
-        - Each array element MUST be a string
-
-        Example output format:
-        [
-        "Write a short inspirational quote about teamwork.",
-        "Generate a two-paragraph introduction for a cybersecurity blog.",
-        "Create a product description for a wireless keyboard."
-        ]
-
-        If you cannot produce valid JSON, return [] only.
-        """,
-
-    # Universal fallback for unknown future tasks
-    "universal": """
-            You are generating INPUT TEXTS to test an AI prompt.
-
-            Generate {n} realistic and diverse inputs that users would naturally provide.
-
-            Rules:
-            - Each item must be a single string
-            - No numbering
-            - No markdown
-            - No explanations
-
-            Return ONLY a valid JSON array of strings.
-
-            Example:
-            [
-            "Explain the benefits of remote work.",
-            "Summarize this article about renewable energy.",
-            "Classify the sentiment of this sentence."
-            ]
-
-            If formatting fails return [].
-            """,
-}
+Format: ["test case 1", "test case 2", ...]
+"""
 
 
 # ============================================================
-# JSON ARRAY EXTRACTION
+# HELPER FUNCTIONS
 # ============================================================
 
-def extract_json_list(text: str) -> List[str]:
-    """
-    Safely extract JSON list from LLM output.
-    """
+def extract_json(text: str):
+    """Extract JSON from model output"""
+    # Remove markdown
+    text = re.sub(r'```json\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'```\s*', '', text)
+    text = text.strip()
 
-    # Strip markdown blocks
-    text = re.sub(r"```json\s*|\s*```", "", text, flags=re.IGNORECASE).strip()
-
-    # Try to find array
-    match = re.search(r"\[.*\]", text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except Exception:
-            pass
-
-    # Fallback: try full parse
+    # Try direct parse
     try:
-        parsed = json.loads(text)
-        if isinstance(parsed, list):
-            return parsed
-    except Exception:
+        return json.loads(text)
+    except:
         pass
+
+    # Find JSON with regex
+    patterns = [
+        r'\{[^{}]*\}',  # Simple object
+        r'\[[^\[\]]*\]',  # Simple array
+        r'\{.*?\}',  # Complex object
+        r'\[.*?\]'   # Complex array
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except:
+                continue
+
+    # Extract quoted strings as array
+    strings = re.findall(r'"([^"]+)"', text)
+    if strings and len(strings) > 0:
+        return strings
+
+    return None
+
+
+def analyze_input_context(input_text: str, model) -> dict:
+    """Analyze the user's input to understand context"""
+    try:
+        print(f"[INFO] Analyzing input context...")
+        prompt = ANALYSIS_PROMPT.format(input_text=input_text[:500])
+
+        response = model.run(prompt, {"temperature": 0.3, "max_tokens": 200})
+        output = response["output"]
+
+        print(f"[DEBUG] Analysis output: {output[:200]}")
+
+        analysis = extract_json(output)
+        if isinstance(analysis, dict):
+            return {
+                "domain": analysis.get("domain", "general"),
+                "entities": analysis.get("entities", []),
+                "complexity": analysis.get("complexity", "moderate"),
+                "tone": analysis.get("tone", "formal")
+            }
+    except Exception as e:
+        print(f"[WARN] Context analysis failed: {e}")
+
+    # Fallback: simple heuristic analysis
+    return {
+        "domain": "general",
+        "entities": [],
+        "complexity": "moderate" if len(input_text) > 100 else "simple",
+        "tone": "formal"
+    }
+
+
+def generate_with_retries(model, prompt: str, max_retries: int = 2) -> List[str]:
+    """Generate with multiple retries and fallback strategies"""
+    for attempt in range(max_retries):
+        try:
+            temp = 0.7 + (attempt * 0.15)  # Increase temperature on retry
+            response = model.run(prompt, {"temperature": temp, "max_tokens": 600})
+            output = response["output"]
+
+            print(f"[DEBUG] Attempt {attempt + 1} output: {output[:200]}...")
+
+            # Try to extract array
+            result = extract_json(output)
+
+            if isinstance(result, list) and len(result) > 0:
+                # Clean and validate
+                cleaned = [
+                    str(x).strip() 
+                    for x in result 
+                    if isinstance(x, str) and len(str(x).strip()) > 15
+                ]
+                if cleaned:
+                    print(f"[SUCCESS] Generated {len(cleaned)} test cases")
+                    return cleaned
+
+        except Exception as e:
+            print(f"[ERROR] Attempt {attempt + 1} failed: {e}")
+            continue
 
     return []
 
 
 # ============================================================
-# TASK TYPE AUTO-DETECTION (CACHED)
-# ============================================================
-
-TASK_CACHE = {}
-
-def detect_task_type(prompt_text: str, model_name: str = "qwen2.5:latest") -> str:
-
-    if prompt_text in TASK_CACHE:
-        return TASK_CACHE[prompt_text]
-
-    detector_prompt = f"""
-You are a task classifier.
-
-Classify the PROMPT TEMPLATE below into ONE category:
-
-structured_output
-summarization
-classification
-verification
-generation
-
-PROMPT TEMPLATE:
-{prompt_text}
-
-Return ONLY the task type string.
-"""
-
-    model = get_model(model_name)
-
-    response = model.run(
-        prompt=detector_prompt,
-        params={"temperature": 0.0, "max_tokens": 40}
-    )
-
-    detected = response["output"].strip().lower()
-
-    allowed = set(GENERATOR_TEMPLATES.keys())
-
-    if detected not in allowed:
-        print(f"[WARN] Unknown detected task type: {detected} → defaulting to classification")
-        detected = "classification"
-
-    TASK_CACHE[prompt_text] = detected
-
-    print(f"[INFO] Auto-detected task type: {detected}")
-
-    return detected
-
-
-# ============================================================
-# ADAPTIVE PROMPT BUILDER
-# ============================================================
-
-def build_adaptive_prompt(
-    task_type: str,
-    base_prompt_hint: str,
-    input_vars: List[str],
-    schema_fields: Optional[List[str]],
-    n: int
-) -> str:
-
-    template = GENERATOR_TEMPLATES.get(task_type, GENERATOR_TEMPLATES["universal"])
-
-    field_block = ""
-    if schema_fields:
-        field_block = "\n".join(f"- {f}" for f in schema_fields)
-
-    input_var_block = "\n".join(f"- {v}" for v in input_vars)
-
-    return template.format(
-        n=n,
-        fields=field_block,
-        input_vars=input_var_block,
-        task_hint=base_prompt_hint[:600]
-    )
-
-
-# ============================================================
-# PARALLEL GENERATION ENGINE
-# ============================================================
-
-def parallel_generate(
-    model,
-    prompt: str,
-    workers: int = 3,
-    max_results: int = 12
-) -> List[str]:
-
-    results: List[str] = []
-
-    def run_one():
-        response = model.run(
-            prompt=prompt,
-            params={
-                "temperature": 0.7,
-                "max_tokens": 1400
-            }
-        )
-
-        raw = response["output"]
-
-        if "[" not in raw:
-            print("[WARN] Generator returned non-JSON output:")
-            print(raw[:300])
-
-        return extract_json_list(raw)
-
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(run_one) for _ in range(workers)]
-
-        for future in as_completed(futures):
-            try:
-                batch = future.result(timeout=120)
-                if isinstance(batch, list):
-                    results.extend(batch)
-            except Exception as e:
-                print(f"[WARN] Generator worker failed: {e}")
-
-            except TimeoutError:
-                print("[WARN] Parallel generation timeout")
-
-
-    return results[:max_results]
-
-
-# ============================================================
-# MAIN TESTCASE GENERATOR API
+# MAIN FUNCTION
 # ============================================================
 
 def generate_test_cases(
-        task_type: str,
-        input_variables: List[str],
-        base_inputs: List[str],
-        schema_fields: Optional[List[str]] = None,
-        n: int = 6,
-        model_name: str = "qwen2.5:latest"
-    ) -> List[str]:
+    task_type: str,
+    input_variables: List[str],
+    base_inputs: List[str],
+    schema_fields: Optional[List[str]] = None,
+    n: int = 5
+) -> List[str]:
+    """
+    Generate intelligent, context-aware test cases
 
+    Strategy:
+    1. Analyze the first base input to understand context
+    2. Generate n-1 similar but varied test cases
+    3. Return original + generated cases
+    """
+    print(f"\n{'='*80}")
+    print(f"INTELLIGENT TEST CASE GENERATION")
+    print(f"{'='*80}")
+    print(f"Task type: {task_type}")
+    print(f"Requested: {n} test cases")
+    print(f"Base inputs provided: {len(base_inputs)}")
 
-    generated = [] 
-    # Normalize task label
-    task_type = TASK_NORMALIZATION_MAP.get(task_type, task_type)
+    # If we already have enough, return them
+    if len(base_inputs) >= n:
+        print(f"[INFO] Using provided base inputs (sufficient)")
+        return base_inputs[:n]
 
-    if task_type not in GENERATOR_TEMPLATES:
-        print(f"[WARN] No generator template for {task_type} → using universal fallback")
-        task_type = "universal"
+    # Need to generate more
+    needed = n - len(base_inputs)
+    print(f"[INFO] Need to generate {needed} additional test cases")
 
-    model = get_model(model_name)
+    try:
+        # Use a good model for generation
+        model = get_model("command-a-03-2025")
 
-    # Build adaptive generation prompt
-    adaptive_prompt = build_adaptive_prompt(
-        task_type=task_type,
-        base_prompt_hint=" ".join(base_inputs[:2]),
-        input_vars=input_variables,
-        schema_fields=schema_fields,
-        n=n
-    )
+        # Analyze the first input to understand context
+        original_input = base_inputs[0]
+        print(f"\n[INFO] Analyzing original input:\n{original_input[:200]}...\n")
 
-    adaptive_prompt += "\n\nBase examples:\n"
-    adaptive_prompt += "\n".join(f"- {x}" for x in base_inputs)
+        context = analyze_input_context(original_input, model)
+        print(f"[INFO] Detected context: {context}")
 
-    adaptive_prompt += "\n\nIMPORTANT: Return ONLY a JSON array of strings."
+        # Build examples from base inputs
+        examples_text = "\n".join(f"{i+1}. {inp}" for i, inp in enumerate(base_inputs[:3]))
 
-    # First generation attempt
-    raw = parallel_generate(
-        model=model,
-        prompt=adaptive_prompt,
-        workers=3,
-        max_results=n * 2
-    )
-
-    # Cleanup + dedupe
-    cleaned = list(set([
-        x.strip() for x in generated
-        if isinstance(x, str) and len(x.strip()) > 10
-    ]))
-
-    generated = cleaned[:n]
-
-    print(f"[INFO] Base inputs: {len(base_inputs)}")
-    print(f"[INFO] Generated inputs: {len(generated)}")
-
-    # Retry once if empty
-    if not generated:
-        print("[WARN] Empty generation result — retrying with stricter JSON enforcement")
-
-        retry_prompt = adaptive_prompt + """
-
-                STRICT MODE:
-                - Output ONLY valid JSON
-                - No markdown
-                - No explanation
-                - No commentary
-                """
-
-        generated = parallel_generate(
-            model=model,
-            prompt=retry_prompt,
-            workers=2,
-            max_results=n * 2
+        # Create intelligent generation prompt
+        prompt = GENERATION_PROMPT.format(
+            task_type=task_type,
+            original_input=original_input,
+            domain=context["domain"],
+            complexity=context["complexity"],
+            entities=", ".join(context["entities"][:5]) if context["entities"] else "none",
+            examples=examples_text,
+            n=needed
         )
 
-        generated = list(set([
-            x.strip() for x in generated
-            if isinstance(x, str) and len(x.strip()) > 10
-        ]))
+        print(f"\n[DEBUG] Generation prompt (first 400 chars):\n{prompt[:400]}...\n")
 
-    if not generated:
-        print("[WARN] Generator failed — returning base inputs only")
-        return base_inputs
-    
-    remaining = max(0, n - len(base_inputs))
-    return base_inputs + generated[:remaining]
+        # Generate with retries
+        generated = generate_with_retries(model, prompt, max_retries=2)
+
+        if not generated:
+            print("[WARN] Generation failed completely, using smart fallback...")
+            # Smart fallback: create variations of base inputs
+            generated = create_smart_variations(base_inputs, needed, task_type)
+
+        # Combine base + generated
+        all_cases = base_inputs + generated[:needed]
+
+        print(f"\n{'='*80}")
+        print(f"FINAL RESULT: {len(all_cases)} test cases")
+        print(f"{'='*80}")
+        for i, case in enumerate(all_cases, 1):
+            print(f"{i}. {case[:100]}{'...' if len(case) > 100 else ''}")
+        print(f"{'='*80}\n")
+
+        return all_cases
+
+    except Exception as e:
+        print(f"[ERROR] Test case generation failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+        # Final fallback
+        print("[FALLBACK] Using base inputs with simple variations")
+        return create_smart_variations(base_inputs, n, task_type)
 
 
+def create_smart_variations(base_inputs: List[str], n: int, task_type: str) -> List[str]:
+    """Create intelligent variations when LLM generation fails"""
+    variations = list(base_inputs)
 
+    # Simple transformation strategies based on task type
+    transforms = {
+        "summarization": [
+            lambda x: x.replace(".", ". Additionally, recent developments suggest further changes."),
+            lambda x: x.split(".")[0] + ".",  # Shorter version
+            lambda x: x.replace("10%", "25%").replace("2023", "2024")  # Change numbers
+        ],
+        "extraction": [
+            lambda x: x.replace("Google", "Amazon").replace("30%", "15%"),
+            lambda x: x.replace("2022", "2023").replace("increased", "decreased"),
+        ],
+        "classification": [
+            lambda x: x.replace("exceeded", "failed to meet").replace("outstanding", "poor"),
+            lambda x: x + " However, improvements are expected.",
+        ],
+        "default": [
+            lambda x: x.replace(".", ". Furthermore, analysis shows interesting patterns."),
+            lambda x: x.split(".")[0] + ".",
+        ]
+    }
+
+    transform_list = transforms.get(task_type, transforms["default"])
+
+    # Apply transformations
+    for base in base_inputs:
+        if len(variations) >= n:
+            break
+        for transform in transform_list:
+            if len(variations) >= n:
+                break
+            try:
+                variation = transform(base)
+                if variation != base and variation not in variations:
+                    variations.append(variation)
+            except:
+                continue
+
+    # If still not enough, duplicate with markers
+    while len(variations) < n:
+        for i, base in enumerate(base_inputs):
+            if len(variations) >= n:
+                break
+            variations.append(f"{base} (Test scenario {len(variations) + 1})")
+
+    return variations[:n]
+
+
+def detect_task_type(prompt_template: str) -> str:
+    """Auto-detect task type from prompt template"""
+    prompt_lower = prompt_template.lower()
+
+    keywords = {
+        "summarization": ["summarize", "summary", "brief", "concise"],
+        "extraction": ["extract", "find", "identify", "list"],
+        "classification": ["classify", "categorize", "label", "category"],
+        "verification": ["verify", "check", "fact", "claim", "true", "false"],
+        "reasoning": ["reason", "infer", "conclude", "deduce", "analyze"],
+        "generation": ["generate", "write", "create", "compose", "draft"]
+    }
+
+    scores = {}
+    for task, words in keywords.items():
+        scores[task] = sum(1 for word in words if word in prompt_lower)
+
+    best_match = max(scores, key=scores.get)
+
+    if scores[best_match] > 0:
+        return best_match
+    else:
+        return "generation"  # Default
