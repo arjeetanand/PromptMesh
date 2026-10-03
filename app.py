@@ -1,12 +1,17 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 from typing import List, Optional
 from pathlib import Path
 from datetime import datetime
-import uuid
+import asyncio
+import hashlib
+import hmac
+import ipaddress
+import os
 
 
 # ============================================================
@@ -14,6 +19,22 @@ import uuid
 # ============================================================
 from prompts.registry import PromptRegistry
 from core.types import render_prompt
+from core.security import (
+    CallerJobLimitError,
+    JobStore,
+    MAX_ACTIVE_JOBS_PER_CALLER,
+    MAX_EVOLUTION_INPUTS,
+    MAX_EVOLUTION_ITERATIONS,
+    MAX_INPUT_CHARS,
+    MAX_MODELS,
+    MAX_OUTPUT_TOKENS,
+    MAX_PROMPT_CHARS,
+    MAX_REQUESTS_PER_MINUTE,
+    MAX_TEST_INPUTS,
+    RequestBodyLimitMiddleware,
+    RequestRateLimiter,
+    ServerJobLimitError,
+)
 from core.executor import PromptExecutor
 from evaluation.scorer import evaluate
 from comparison.runner import run_prompt_comparison
@@ -42,13 +63,19 @@ app = FastAPI(title="PromptMesh", version="1.0.0")
 # ============================================================
 # CORS
 # ============================================================
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("PROMPTMESH_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+app.add_middleware(RequestBodyLimitMiddleware)
 
 
 # ============================================================
@@ -60,56 +87,197 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # ============================================================
 # GLOBAL STATE
 # ============================================================
-jobs = {}
+API_KEY = os.environ.get("PROMPTMESH_API_KEY", "").strip() or None
+if API_KEY and len(API_KEY) < 32:
+    raise RuntimeError("PROMPTMESH_API_KEY must contain at least 32 characters")
+
+jobs = JobStore()
 registry = PromptRegistry()
 executor = PromptExecutor()
+request_limiter = RequestRateLimiter(limit=MAX_REQUESTS_PER_MINUTE)
+login_limiter = RequestRateLimiter(limit=5, window_seconds=300, max_callers=4096)
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _is_loopback_request(request: Request) -> bool:
+    try:
+        client_is_local = ipaddress.ip_address(_client_ip(request)).is_loopback
+    except ValueError:
+        client_is_local = False
+    return client_is_local and request.url.hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def _has_valid_api_key(request: Request) -> bool:
+    authorization = request.headers.get("authorization", "")
+    scheme, _, supplied = authorization.partition(" ")
+    return bool(
+        API_KEY
+        and scheme.lower() == "bearer"
+        and supplied
+        and hmac.compare_digest(supplied.encode("utf-8"), API_KEY.encode("utf-8"))
+    )
+
+
+@app.middleware("http")
+async def enforce_api_access(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/") and path not in {"/api/health", "/api/session"}:
+        origin = request.headers.get("origin")
+        expected_origin = f"{request.url.scheme}://{request.headers.get('host', '')}"
+        if origin and origin != expected_origin and (not API_KEY or origin not in ALLOWED_ORIGINS):
+            return JSONResponse({"detail": "Cross-origin API access is not allowed"}, status_code=403)
+        if API_KEY:
+            if not _has_valid_api_key(request):
+                return JSONResponse(
+                    {"detail": "A valid Bearer API key is required"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            identity = hashlib.sha256(
+                f"{API_KEY}\0{_client_ip(request)}".encode("utf-8")
+            ).hexdigest()
+        else:
+            if not _is_loopback_request(request):
+                return JSONResponse(
+                    {"detail": "Remote API access requires PROMPTMESH_API_KEY"},
+                    status_code=403,
+                )
+            identity = f"local:{_client_ip(request)}"
+        request.state.caller_id = identity
+    return await call_next(request)
+
+
+def _caller_id(request: Request) -> str:
+    return request.state.caller_id
+
+
+def _enforce_request_quota(request: Request):
+    if not request_limiter.allow(_caller_id(request)):
+        raise HTTPException(status_code=429, detail="Request limit exceeded; retry in one minute")
+
+
+def _validate_text_values(values, label, *, max_length):
+    if values is None:
+        return
+    for value in values:
+        if len(value) > max_length:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Each {label} value must be at most {max_length} characters",
+            )
+
+
+def _validate_custom_constraints(constraints):
+    if not constraints:
+        return
+    max_tokens = constraints.get("max_tokens")
+    if max_tokens is not None:
+        if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
+            raise HTTPException(status_code=422, detail="max_tokens must be an integer")
+        if not 1 <= max_tokens <= MAX_OUTPUT_TOKENS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"max_tokens must be between 1 and {MAX_OUTPUT_TOKENS}",
+            )
+
+
+def _admit_job(request: Request) -> str:
+    _enforce_request_quota(request)
+    try:
+        return jobs.create(_caller_id(request))
+    except CallerJobLimitError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=f"At most {MAX_ACTIVE_JOBS_PER_CALLER} jobs may run per caller",
+        ) from exc
+    except ServerJobLimitError as exc:
+        raise HTTPException(status_code=503, detail="The job capacity is full") from exc
+
+
+def _run_admitted_job(job_id, runner, request_model):
+    try:
+        runner(job_id, request_model)
+    finally:
+        jobs.finish(job_id)
+
+
+async def _expire_jobs():
+    while True:
+        await asyncio.sleep(60)
+        jobs.prune()
+
+
+_job_cleanup_task = None
+
+
+@app.on_event("startup")
+async def start_job_cleanup():
+    global _job_cleanup_task
+    _job_cleanup_task = asyncio.create_task(_expire_jobs())
+
+
+@app.on_event("shutdown")
+async def stop_job_cleanup():
+    if _job_cleanup_task:
+        _job_cleanup_task.cancel()
+        try:
+            await _job_cleanup_task
+        except asyncio.CancelledError:
+            pass
 
 
 # ============================================================
 # REQUEST MODELS
 # ============================================================
 class PromptVersionRequest(BaseModel):
-    task: str
-    version: str
+    task: str = Field(min_length=1, max_length=64)
+    version: str = Field(min_length=1, max_length=64)
 
 
 class EvaluationRequest(BaseModel):
-    task: str
-    version: str
-    models: List[str]
-    test_inputs: Optional[List[str]] = None
+    task: str = Field(min_length=1, max_length=64)
+    version: str = Field(min_length=1, max_length=64)
+    models: List[str] = Field(min_length=1, max_length=MAX_MODELS)
+    test_inputs: Optional[List[str]] = Field(default=None, max_length=MAX_TEST_INPUTS)
     generate_test_cases: bool = True
-    test_case_count: int = 3
-    custom_prompt: Optional[str] = None
-    custom_constraints: Optional[dict] = None
+    test_case_count: int = Field(default=3, ge=0, le=MAX_TEST_INPUTS)
+    custom_prompt: Optional[str] = Field(default=None, max_length=MAX_PROMPT_CHARS)
+    custom_constraints: Optional[dict] = Field(default=None, max_length=32)
 
 
 class ComparisonRequest(BaseModel):
-    task: str
-    versions: List[str]
-    models: List[str]
-    test_input: str
-    custom_prompts: Optional[dict] = None  # {version: prompt_text}
+    task: str = Field(min_length=1, max_length=64)
+    versions: List[str] = Field(min_length=1, max_length=MAX_MODELS)
+    models: List[str] = Field(min_length=1, max_length=MAX_MODELS)
+    test_input: str = Field(max_length=MAX_INPUT_CHARS)
+    custom_prompts: Optional[dict[str, str]] = Field(default=None, max_length=MAX_MODELS)
 
 
 class EvolutionRequest(BaseModel):
-    task: str
-    version: str
-    model: str
-    optimizer_model: str = "command-a-03-2025"
-    max_iterations: int = 3
-    test_case_count: int = 3
-    min_delta: float = 0.25
-    custom_prompt: Optional[str] = None
-    custom_constraints: Optional[dict] = None
-    test_inputs: Optional[List[str]] = None
+    task: str = Field(min_length=1, max_length=64)
+    version: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=128)
+    optimizer_model: str = Field(default="command-a-03-2025", min_length=1, max_length=128)
+    max_iterations: int = Field(default=3, ge=0, le=MAX_EVOLUTION_ITERATIONS)
+    test_case_count: int = Field(default=3, ge=0, le=MAX_TEST_INPUTS)
+    min_delta: float = Field(default=0.25, ge=0, le=1)
+    custom_prompt: Optional[str] = Field(default=None, max_length=MAX_PROMPT_CHARS)
+    custom_constraints: Optional[dict] = Field(default=None, max_length=32)
+    test_inputs: Optional[List[str]] = Field(default=None, max_length=MAX_EVOLUTION_INPUTS)
 
 
 class TestCaseGenerationRequest(BaseModel):
-    task_type: str
-    base_inputs: List[str]
-    schema_fields: Optional[List[str]] = None
-    count: int = 5
+    task_type: str = Field(min_length=1, max_length=64)
+    base_inputs: List[str] = Field(min_length=1, max_length=MAX_TEST_INPUTS)
+    schema_fields: Optional[List[str]] = Field(default=None, max_length=32)
+    count: int = Field(default=5, ge=1, le=MAX_TEST_INPUTS)
+
+
+class ApiSessionRequest(BaseModel):
+    api_key: str = Field(min_length=32, max_length=256)
 
 
 # ============================================================
@@ -121,8 +289,38 @@ async def root():
 
 
 @app.get("/api/health")
-async def health_check():
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+async def health_check(request: Request):
+    auth_required = API_KEY is not None or not _is_loopback_request(request)
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "auth_required": auth_required,
+        "remote_access_enabled": API_KEY is not None or _is_loopback_request(request),
+    }
+
+
+@app.get("/api/session")
+async def session_status(request: Request):
+    local_access = _is_loopback_request(request)
+    auth_required = API_KEY is not None or not local_access
+    return {
+        "auth_required": auth_required,
+        "authenticated": (API_KEY is None and local_access) or _has_valid_api_key(request),
+    }
+
+
+@app.post("/api/session")
+async def create_session(request: Request, credentials: ApiSessionRequest):
+    if API_KEY is None:
+        if _is_loopback_request(request):
+            return {"auth_required": False, "authenticated": True}
+        raise HTTPException(status_code=403, detail="Set PROMPTMESH_API_KEY for remote access")
+    caller = f"login:{_client_ip(request)}"
+    if not login_limiter.allow(caller):
+        raise HTTPException(status_code=429, detail="Too many authentication attempts")
+    if not hmac.compare_digest(credentials.api_key.encode("utf-8"), API_KEY.encode("utf-8")):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return {"auth_required": True, "authenticated": True}
 
 
 @app.get("/api/tasks/{task}/versions/{version}/prompt")
@@ -137,8 +335,10 @@ async def get_prompt_content(task: str, version: str):
             "input_variables": meta["input_variables"],
             "schema_fields": meta.get("schema_fields", [])
         }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail="Prompt not found") from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Prompt could not be loaded") from e
 
 
 @app.get("/api/tasks")
@@ -154,11 +354,9 @@ async def get_tasks():
 @app.get("/api/tasks/{task}/versions")
 async def get_task_versions(task: str):
     try:
-        task_dir = BASE_DIR / "prompts" / "versions" / task
-        versions = [f.stem for f in task_dir.glob("*.y*ml")]
-        return {"versions": versions}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"versions": registry.list_versions(task)}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail="Prompt task not found") from e
 
 
 @app.get("/api/models")
@@ -173,74 +371,94 @@ async def get_models():
 
 
 @app.get("/api/jobs/{job_id}")
-async def get_job(job_id: str):
-    job = jobs.get(job_id)
+async def get_job(job_id: str, request: Request):
+    job = jobs.get(job_id, _caller_id(request))
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
 
 
 @app.post("/api/evaluate")
-async def evaluate_prompt(request: EvaluationRequest, bg: BackgroundTasks):
-    job_id = str(uuid.uuid4())
-    jobs[job_id] = {
-        "status": "running",
-        "progress": 0,
-        "results": None,
-        "error": None,
-        "started_at": datetime.utcnow().isoformat()
-    }
-    bg.add_task(run_evaluation_job, job_id, request)
+async def evaluate_prompt(request: EvaluationRequest, bg: BackgroundTasks, http_request: Request):
+    _validate_text_values(request.models, "model name", max_length=128)
+    _validate_text_values(request.test_inputs, "test input", max_length=MAX_INPUT_CHARS)
+    _validate_custom_constraints(request.custom_constraints)
+    if request.test_inputs and request.generate_test_cases:
+        if len(request.test_inputs) + request.test_case_count > MAX_TEST_INPUTS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Manual and generated test inputs may total at most {MAX_TEST_INPUTS}",
+            )
+    if not request.test_inputs and request.test_case_count == 0:
+        raise HTTPException(status_code=422, detail="At least one test case is required")
+
+    job_id = _admit_job(http_request)
+    bg.add_task(_run_admitted_job, job_id, run_evaluation_job, request)
     return {"job_id": job_id, "status": "started"}
 
 
 @app.post("/api/compare")
-async def compare_prompt(request: ComparisonRequest, bg: BackgroundTasks):
-    job_id = str(uuid.uuid4())
-    jobs[job_id] = {
-        "status": "running",
-        "progress": 0,
-        "results": None,
-        "error": None,
-        "started_at": datetime.utcnow().isoformat()
-    }
-    bg.add_task(run_comparison_job, job_id, request)
+async def compare_prompt(request: ComparisonRequest, bg: BackgroundTasks, http_request: Request):
+    _validate_text_values(request.models, "model name", max_length=128)
+    _validate_text_values(request.versions, "prompt version", max_length=64)
+    _validate_text_values([request.test_input], "test input", max_length=MAX_INPUT_CHARS)
+    if request.custom_prompts:
+        if any(len(version) > 64 for version in request.custom_prompts):
+            raise HTTPException(status_code=422, detail="Prompt version names must be at most 64 characters")
+        _validate_text_values(request.custom_prompts.values(), "custom prompt", max_length=MAX_PROMPT_CHARS)
+
+    job_id = _admit_job(http_request)
+    bg.add_task(_run_admitted_job, job_id, run_comparison_job, request)
     return {"job_id": job_id, "status": "started"}
 
 
 @app.post("/api/evolve")
-async def evolve_prompt_api(request: EvolutionRequest, bg: BackgroundTasks):
-    job_id = str(uuid.uuid4())
-    jobs[job_id] = {
-        "status": "running",
-        "progress": 0,
-        "results": None,
-        "error": None,
-        "started_at": datetime.utcnow().isoformat()
-    }
-    bg.add_task(run_evolution_job, job_id, request)
+async def evolve_prompt_api(request: EvolutionRequest, bg: BackgroundTasks, http_request: Request):
+    _validate_text_values([request.model, request.optimizer_model], "model name", max_length=128)
+    _validate_text_values(request.test_inputs, "test input", max_length=MAX_INPUT_CHARS)
+    _validate_custom_constraints(request.custom_constraints)
+    if not request.test_inputs and request.test_case_count == 0:
+        raise HTTPException(status_code=422, detail="At least one test case is required")
+
+    job_id = _admit_job(http_request)
+    bg.add_task(_run_admitted_job, job_id, run_evolution_job, request)
     return {"job_id": job_id, "status": "started"}
 
 
 @app.post("/api/test-cases/generate")
-async def generate_tests(request: TestCaseGenerationRequest):
+async def generate_tests(request: TestCaseGenerationRequest, http_request: Request):
+    _enforce_request_quota(http_request)
+    _validate_text_values(request.base_inputs, "base input", max_length=MAX_INPUT_CHARS)
+    _validate_text_values(request.schema_fields, "schema field", max_length=128)
     try:
-        cases = generate_test_cases(
+        work_token = jobs.reserve(_caller_id(http_request))
+    except CallerJobLimitError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=f"At most {MAX_ACTIVE_JOBS_PER_CALLER} model jobs may run per caller",
+        ) from exc
+    except ServerJobLimitError as exc:
+        raise HTTPException(status_code=503, detail="The model work capacity is full") from exc
+    try:
+        cases = await run_in_threadpool(
+            generate_test_cases,
             task_type=request.task_type,
             input_variables=["text"],
             base_inputs=request.base_inputs,
             schema_fields=request.schema_fields,
-            n=request.count
+            n=request.count,
         )
         return {"success": True, "test_cases": cases}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Test case generation failed") from e
+    finally:
+        jobs.release_work(work_token)
 
 
 # ============================================================
 # BACKGROUND JOBS
 # ============================================================
-async def run_evaluation_job(job_id: str, request: EvaluationRequest):
+def run_evaluation_job(job_id: str, request: EvaluationRequest):
     try:
         if request.custom_prompt:
             base_prompt = request.custom_prompt
@@ -257,17 +475,15 @@ async def run_evaluation_job(job_id: str, request: EvaluationRequest):
         input_var = input_vars[0]
 
         if request.test_inputs and len(request.test_inputs) > 0:
-            inputs = request.test_inputs
+            inputs = list(request.test_inputs)
             if request.generate_test_cases and request.test_case_count > 0:
-                additional = generate_test_cases(
+                inputs = generate_test_cases(
                     task_type=task_type,
                     input_variables=input_vars,
                     base_inputs=request.test_inputs,
                     schema_fields=[],
-                    n=request.test_case_count
+                    n=len(request.test_inputs) + request.test_case_count
                 )
-                if additional:
-                    inputs.extend(additional)
         else:
             base_inputs = get_default_inputs(task_type)
             inputs = generate_test_cases(
@@ -284,7 +500,7 @@ async def run_evaluation_job(job_id: str, request: EvaluationRequest):
             raise ValueError("No test inputs available. Please provide manual inputs.")
 
         print(f"[INFO] Running evaluation with {len(inputs)} test inputs")
-        jobs[job_id]["progress"] = 20
+        jobs.update(job_id, {"progress": 20})
 
         results = []
         total = len(request.models)
@@ -315,11 +531,11 @@ async def run_evaluation_job(job_id: str, request: EvaluationRequest):
                 "results": model_outputs
             })
 
-            jobs[job_id]["progress"] = 20 + int(((i + 1) / total) * 70)
+            jobs.update(job_id, {"progress": 20 + int(((i + 1) / total) * 70)})
 
         results.sort(key=lambda x: x["average_score"], reverse=True)
 
-        jobs[job_id].update({
+        jobs.update(job_id, {
             "status": "completed",
             "progress": 100,
             "results": results,
@@ -330,7 +546,7 @@ async def run_evaluation_job(job_id: str, request: EvaluationRequest):
         print(f"[ERROR] Evaluation job failed: {e}")
         import traceback
         traceback.print_exc()
-        jobs[job_id].update({
+        jobs.update(job_id, {
             "status": "failed",
             "progress": 100,
             "error": str(e),
@@ -338,7 +554,7 @@ async def run_evaluation_job(job_id: str, request: EvaluationRequest):
         })
 
 
-async def run_comparison_job(job_id: str, request: ComparisonRequest):
+def run_comparison_job(job_id: str, request: ComparisonRequest):
     try:
         # Custom prompts mode
         if request.custom_prompts:
@@ -382,7 +598,7 @@ async def run_comparison_job(job_id: str, request: ComparisonRequest):
                     "breakdown": r.evaluation.breakdown
                 })
 
-        jobs[job_id].update({
+        jobs.update(job_id, {
             "status": "completed",
             "progress": 100,
             "results": results,
@@ -393,7 +609,7 @@ async def run_comparison_job(job_id: str, request: ComparisonRequest):
         print(f"[ERROR] Comparison job failed: {e}")
         import traceback
         traceback.print_exc()
-        jobs[job_id].update({
+        jobs.update(job_id, {
             "status": "failed",
             "progress": 100,
             "error": str(e),
@@ -401,7 +617,7 @@ async def run_comparison_job(job_id: str, request: ComparisonRequest):
         })
 
 
-async def run_evolution_job(job_id: str, request: EvolutionRequest):
+def run_evolution_job(job_id: str, request: EvolutionRequest):
     try:
         if request.custom_prompt:
             base_prompt = request.custom_prompt
@@ -416,7 +632,7 @@ async def run_evolution_job(job_id: str, request: EvolutionRequest):
             input_vars = meta["input_variables"]
 
         input_var = input_vars[0]
-        jobs[job_id]["progress"] = 20
+        jobs.update(job_id, {"progress": 20})
 
         if request.test_inputs and len(request.test_inputs) > 0:
             inputs = request.test_inputs
@@ -451,7 +667,7 @@ async def run_evolution_job(job_id: str, request: EvolutionRequest):
             min_delta=request.min_delta
         )
 
-        jobs[job_id].update({
+        jobs.update(job_id, {
             "status": "completed",
             "progress": 100,
             "results": {
@@ -468,7 +684,7 @@ async def run_evolution_job(job_id: str, request: EvolutionRequest):
         print(f"[ERROR] Evolution job failed: {e}")
         import traceback
         traceback.print_exc()
-        jobs[job_id].update({
+        jobs.update(job_id, {
             "status": "failed",
             "progress": 100,
             "error": str(e),
@@ -513,4 +729,4 @@ def get_default_inputs(task_type: str) -> List[str]:
 # ============================================================
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)

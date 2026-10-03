@@ -68,7 +68,6 @@ def check_dependencies():
         "fastapi",
         "uvicorn",
         "pydantic",
-        "jinja2",
         "pyyaml",
         "ollama",
         "oci",
@@ -218,11 +217,14 @@ To start PromptMesh:
    
    OR
    
-   uvicorn app:app --reload --host 0.0.0.0 --port 8000
+   uvicorn app:app --reload --host 127.0.0.1 --port 8000
 
 4. Open your browser to:
    
    http://localhost:8000
+
+For remote access, set a strong `PROMPTMESH_API_KEY` (at least 32 characters)
+before binding Uvicorn to a network interface. The browser UI prompts for this key.
 
 5. Check the browser console (F12) for any JavaScript errors
 

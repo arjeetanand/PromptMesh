@@ -14,7 +14,8 @@ const state = {
     currentJob: null,
     jobHistory: [],
     activeTab: "evaluate",
-    pollingTimer: null
+    pollingTimer: null,
+    apiKey: null
 };
 
 // ============================================================
@@ -23,10 +24,22 @@ const state = {
 
 document.addEventListener("DOMContentLoaded", async () => {
     await checkAPIHealth();
-    await loadInitialData();
     setupEventListeners();
     setupTabNavigation();
     loadJobHistory();
+
+    try {
+        const access = await apiCall("/session");
+        const authPanel = document.getElementById("apiAuth");
+        authPanel.hidden = access.auth_required && !access.authenticated;
+        if (access.authenticated) {
+            await loadInitialData();
+        } else {
+            updateAPIStatus(false);
+        }
+    } catch {
+        updateAPIStatus(false);
+    }
 });
 
 // ============================================================
@@ -35,12 +48,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 async function apiCall(endpoint, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}/api${endpoint}`, {
-            headers: {
+        const headers = {
                 "Content-Type": "application/json",
                 ...(options.headers || {})
-            },
-            ...options
+        };
+        if (state.apiKey) {
+            headers.Authorization = `Bearer ${state.apiKey}`;
+        }
+        const response = await fetch(`${API_BASE}/api${endpoint}`, {
+            ...options,
+            headers
         });
 
         const data = await response.json();
@@ -220,6 +237,28 @@ async function loadVersionsForTask(task, targetId) {
 // EVENT LISTENERS (UPDATED)
 // ============================================================
 function setupEventListeners() {
+    document.getElementById("connectApiBtn").addEventListener("click", async () => {
+        const input = document.getElementById("apiKeyInput");
+        const apiKey = input.value.trim();
+        if (!apiKey) {
+            return showToast("Enter the server API key", "error");
+        }
+
+        try {
+            await apiCall("/session", {
+                method: "POST",
+                body: JSON.stringify({ api_key: apiKey })
+            });
+            state.apiKey = apiKey;
+            input.value = "";
+            document.getElementById("apiAuth").hidden = true;
+            updateAPIStatus(true);
+            await loadInitialData();
+        } catch {
+            state.apiKey = null;
+        }
+    });
+
     document.getElementById("evalTask").addEventListener("change", e => {
         if (e.target.value) {
             loadVersionsForTask(e.target.value, "evalVersion");

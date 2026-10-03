@@ -78,6 +78,24 @@
             align-items: center;
         }
 
+        .auth-control {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .auth-control[hidden] {
+            display: none;
+        }
+
+        .auth-control input {
+            width: 190px;
+            padding: 9px 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font: inherit;
+        }
+
         .status-indicator {
             display: flex;
             align-items: center;
@@ -815,6 +833,10 @@
                     <p>AI Prompt Engineering Platform</p>
                 </div>
                 <div class="header-actions">
+                    <div class="auth-control" id="apiAuth" hidden>
+                        <input id="apiKeyInput" type="password" autocomplete="off" aria-label="Server API key" placeholder="Server API key">
+                        <button class="btn btn-secondary" id="connectApiBtn" type="button">Connect</button>
+                    </div>
                     <div class="status-indicator" id="apiStatus">
                         <span class="dot"></span>
                         <span>Checking...</span>

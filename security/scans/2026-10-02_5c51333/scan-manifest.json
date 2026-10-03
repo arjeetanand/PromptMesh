@@ -1,0 +1,91 @@
+{
+  "documentType": "codex-security.scan-manifest",
+  "scan": {
+    "artifacts": [
+      {
+        "mediaType": "application/json",
+        "path": "findings.json",
+        "sha256": "2e199453c295a324ffe6484aa4a178c2221b0d424bb531e44fa3085d77a25925"
+      },
+      {
+        "mediaType": "application/json",
+        "path": "coverage.json",
+        "sha256": "153e98b01611fbe00ef935f851208c931555de4ff05bd3f5833f6c14d92a4701"
+      }
+    ],
+    "completedAt": "2026-10-03T04:56:47.946634Z",
+    "coverageRef": "coverage.json",
+    "findingsRef": "findings.json",
+    "id": "e430979a-88b7-4399-a6df-f2d7329ec698",
+    "preservedSources": {
+      "checkpoints/44f1826d9b58dcdefd0dd920f8dea492e9e568bed39c088f06302a50d2f433cb.json": "e968d29381bd5178877f54f710bb260fa1ccb02723fac916b3b244bff906c9aa",
+      "checkpoints/64f69f0a7bd47568be249e650bbb75c3c205d114f312423a5ed111bc8a056ffd.json": "a24ae88ac871d493c775712c8e3f5f93783627de84b1def3f715c9a1f26c68ea",
+      "checkpoints/caf7bb0aba77302b4ca83ba9071502259643704e1240d29785a5b0443a63b5eb.json": "caf7bb0aba77302b4ca83ba9071502259643704e1240d29785a5b0443a63b5eb"
+    },
+    "producer": {
+      "name": "codex-security-plugin",
+      "version": "0.1.31"
+    },
+    "scope": {
+      "artifactsReviewed": [
+        "All 50 tracked repository files",
+        "Threat model",
+        "SQLite prompt databases inspected read-only"
+      ],
+      "context": "FastAPI prompt evaluation/evolution service: browser requests load prompt YAML, render templates, call model adapters, store jobs in memory, and return results.",
+      "excludePaths": [],
+      "includePaths": [
+        "."
+      ],
+      "limitations": [
+        "Deployment reachability and upstream authentication are unknown.",
+        "Active provider credentials, quotas, and external resource limits were not inspected.",
+        "No live requests or model-provider calls were made.",
+        "The Jinja runtime proof could not execute because Jinja2 was unavailable in the review Python environment."
+      ],
+      "runtimeStatus": "No live deployment tested. Dynamic Jinja reproduction unavailable because Jinja2 was missing from the review Python environment.",
+      "summary": "Static security review of all 50 tracked files in PromptMesh at commit 5c51333fe4cbfc3f2ac5b3271ad3766ffc68e8ab.",
+      "validationMode": "Static source trace, read-only SQLite inspection, and safe standard-library path-composition check."
+    },
+    "sealedAt": "2026-10-03T04:56:47.946634Z",
+    "startedAt": "2026-10-02T19:49:14.312947Z",
+    "status": "completed",
+    "target": {
+      "displayName": "PromptMesh",
+      "kind": "git_revision",
+      "revision": "5c51333fe4cbfc3f2ac5b3271ad3766ffc68e8ab",
+      "targetId": "target_sha256_3c300149b2c8f5b6671c399eef5753232a3e396ad068321825b28013af403590"
+    },
+    "threatModel": {
+      "assets": [
+        "Server process and its reachable files/credentials",
+        "Prompt definitions and evaluation data",
+        "Model-provider quota/cost",
+        "API availability and in-memory job results"
+      ],
+      "assumptions": [
+        "Review covers immutable commit 5c51333fe4cbfc3f2ac5b3271ad3766ffc68e8ab only.",
+        "Production exposure, upstream controls, credentials, and quotas are unknown."
+      ],
+      "attackerCapabilities": [
+        "Submit JSON requests if network-reachable",
+        "Select prompt/model inputs and task/version values",
+        "Poll a job ID returned to the caller"
+      ],
+      "securityObjectives": [
+        "Keep caller prompt text inert",
+        "Confine YAML reads to the registry directory",
+        "Bound model work and retained job state"
+      ],
+      "summary": "A caller able to reach the FastAPI service can submit prompt/evolution JSON, task/version values, model selections, and unbounded work requests; handlers render templates, load YAML, call models, retain jobs, and return results.",
+      "trustBoundaries": [
+        "Unauthenticated HTTP clients to FastAPI",
+        "Caller-controlled prompt text to Jinja",
+        "Caller-controlled task/version values to registry file reads",
+        "Requests to model adapters",
+        "Job results to browser output"
+      ]
+    }
+  },
+  "schemaVersion": "1.0"
+}

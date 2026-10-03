@@ -1,0 +1,601 @@
+{
+  "documentType": "codex-security.findings",
+  "findings": [
+    {
+      "attackPath": {
+        "dataflow": {
+          "evidenceRefs": [
+            "prompt-input",
+            "prompt-propagation",
+            "evolver-render",
+            "jinja-sink"
+          ],
+          "outcome": "Template expression execution in API process",
+          "sink": "`jinja2.Template(...).render()`",
+          "source": "Caller-controlled prompt string",
+          "summary": "`custom_prompt` -> `run_evolution_job()` -> `evolve_prompt()` -> `render_prompt()` -> Jinja render"
+        },
+        "evidenceRefs": [
+          "evolve-entry",
+          "prompt-propagation",
+          "evolver-render",
+          "jinja-sink"
+        ],
+        "impact": {
+          "level": "critical",
+          "why": "Successful template escape can run code with the service process's file, environment, and provider-credential access."
+        },
+        "likelihood": {
+          "level": "high",
+          "why": "Request-to-render flow is direct; deployment exposure remains unknown."
+        },
+        "limitations": [
+          "Production network boundary and runtime configuration were not inspected."
+        ],
+        "reachability": {
+          "attacker": "Unauthenticated network caller",
+          "entrypoint": "POST `/api/evolve`",
+          "outcome": "Template evaluation with API process privileges",
+          "preconditions": [
+            "Service is reachable by attacker.",
+            "Jinja dependency is installed in runtime."
+          ],
+          "summary": "Source has no route-level authentication; exploitation requires deployed reachability and no effective upstream authentication."
+        },
+        "summary": "A caller reaches `/api/evolve`, supplies crafted `custom_prompt`, and the background evolution path evaluates it through `render_prompt()` inside the Python process."
+      },
+      "codeEvidence": [
+        {
+          "code": "class EvolutionRequest(BaseModel):\n    task: str\n    version: str\n    model: str\n    optimizer_model: str = \"command-a-03-2025\"\n    max_iterations: int = 3\n    test_case_count: int = 3\n    min_delta: float = 0.25\n    custom_prompt: Optional[str] = None\n    custom_constraints: Optional[dict] = None\n    test_inputs: Optional[List[str]] = None",
+          "endLine": 105,
+          "explanation": "`custom_prompt` is caller-controlled text.",
+          "id": "prompt-input",
+          "label": "Evolution request accepts custom prompt",
+          "language": "python",
+          "path": "app.py",
+          "role": "user_input",
+          "startLine": 95
+        },
+        {
+          "code": "@app.post(\"/api/evolve\")\nasync def evolve_prompt_api(request: EvolutionRequest, bg: BackgroundTasks):\n    job_id = str(uuid.uuid4())\n    jobs[job_id] = {\n        \"status\": \"running\",\n        \"progress\": 0,\n        \"results\": None,\n        \"error\": None,\n        \"started_at\": datetime.utcnow().isoformat()\n    }\n    bg.add_task(run_evolution_job, job_id, request)\n    return {\"job_id\": job_id, \"status\": \"started\"}",
+          "endLine": 222,
+          "explanation": "The route accepts the model directly and has no route-level authentication dependency.",
+          "id": "evolve-entry",
+          "label": "Evolution route queues caller request",
+          "language": "python",
+          "path": "app.py",
+          "role": "entrypoint",
+          "startLine": 211
+        },
+        {
+          "code": "if request.custom_prompt:\n    base_prompt = request.custom_prompt\n    constraints = request.custom_constraints or {\"temperature\": 0.0, \"max_tokens\": 256}\n    task_type = \"generation\"\n    input_vars = [\"text\"]\nelse:\n    meta = registry.load_with_metadata(request.task, request.version)\n    base_prompt = meta[\"template\"]",
+          "endLine": 415,
+          "explanation": "The request string is copied unchanged into `base_prompt`.",
+          "id": "prompt-propagation",
+          "label": "Custom prompt becomes base template",
+          "language": "python",
+          "path": "app.py",
+          "role": "propagation",
+          "startLine": 406
+        },
+        {
+          "code": "for text in task_inputs:\n    rendered = render_prompt(\n        prompt_template,\n        {input_var: text}\n    )\n\n    result = model.run(rendered, constraints)",
+          "endLine": 22,
+          "explanation": "The request-derived prompt reaches the shared renderer.",
+          "id": "evolver-render",
+          "label": "Evolution passes template to renderer",
+          "language": "python",
+          "path": "optimization/evolver.py",
+          "role": "propagation",
+          "startLine": 16
+        },
+        {
+          "code": "from jinja2 import Template\n\ndef render_prompt(prompt_template: str, variables: dict) -> str:\n    template = Template(prompt_template)\n    return template.render(**variables)",
+          "endLine": 5,
+          "explanation": "The default `Template` evaluates expressions without a sandbox.",
+          "id": "jinja-sink",
+          "label": "Renderer compiles and evaluates Jinja template",
+          "language": "python",
+          "path": "core/types.py",
+          "role": "sink",
+          "startLine": 1
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Direct source trace connects request input to Jinja Template construction and rendering; dynamic execution was not observed because Jinja2 was unavailable in the review Python environment."
+      },
+      "findingId": "csf_d65bd1d29302110474b2f8cf",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:72cfef7f97eefcd605a6000bd27f62e4efcf1006bb5edec1bbf2190c59f7e957"
+      },
+      "identity": {
+        "anchor": "custom-prompt-to-unsandboxed-jinja-render"
+      },
+      "locations": [
+        {
+          "endLine": 105,
+          "path": "app.py",
+          "role": "attacker-controlled input",
+          "startLine": 95
+        },
+        {
+          "endLine": 415,
+          "path": "app.py",
+          "role": "input propagation",
+          "startLine": 406
+        },
+        {
+          "endLine": 5,
+          "path": "core/types.py",
+          "role": "unsafe template sink",
+          "startLine": 3
+        }
+      ],
+      "occurrenceId": "occ_5f9ad5a28209cff5a03e957f",
+      "preventiveControls": [
+        "Require authentication and authorization for exposed prompt-execution routes.",
+        "Apply request-size limits and structured template validation."
+      ],
+      "provenance": {
+        "source": "local_plugin"
+      },
+      "remediation": "Do not compile caller-controlled prompts with default Jinja `Template`; use a constrained sandbox with a strict allowlist, or treat custom prompt text as literal content.",
+      "remediationTests": [
+        "Submit a template expression that traverses Python objects and assert it is rejected or remains literal.",
+        "Verify `/api/evaluate` and `/api/evolve` share the constrained rendering policy."
+      ],
+      "rootCause": {
+        "evidenceRefs": [
+          "prompt-input",
+          "evolve-entry",
+          "prompt-propagation",
+          "evolver-render",
+          "jinja-sink"
+        ],
+        "summary": "API-supplied prompt text must remain data. Instead, the handler copies it unchanged into `base_prompt`, the evolver forwards it to `render_prompt()`, and that helper compiles it with default Jinja `Template` before rendering; no sandbox or allowlist separates caller syntax from Python objects."
+      },
+      "ruleId": "server-side-template-injection.jinja",
+      "severity": {
+        "changeConditions": "Lower if deployment evidence shows the service is unreachable to untrusted callers or protected by effective upstream authentication.",
+        "level": "critical",
+        "rationale": "If reachable without upstream access control, a remote unauthenticated caller can execute template expressions in the Python process.",
+        "score": 9.8,
+        "scoringSystem": "CVSS:3.1",
+        "vector": "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+      },
+      "summary": "An unauthenticated `/api/evolve` request can place attacker-controlled text in `custom_prompt`; the evolution path sends it to the shared `render_prompt()` helper, which compiles it with default unsandboxed Jinja `Template`. A crafted template can reach server-side code execution. The direct app entrypoint binds to all interfaces, though deployment reachability is unknown.",
+      "taxonomy": {
+        "category": "server-side-template-injection",
+        "cwe": [
+          "CWE-1336",
+          "CWE-94"
+        ]
+      },
+      "title": "Client-supplied prompt templates can execute code in the server process",
+      "validation": {
+        "assertions": [
+          "`custom_prompt` becomes `base_prompt` without sanitization.",
+          "`render_prompt()` constructs `jinja2.Template` and calls `render()`.",
+          "The route has no route-level authentication dependency."
+        ],
+        "evidenceRefs": [
+          "prompt-input",
+          "evolve-entry",
+          "prompt-propagation",
+          "evolver-render",
+          "jinja-sink"
+        ],
+        "limitations": [
+          "No live service or upstream authentication boundary was tested.",
+          "Dynamic execution was not observed because Jinja2 was unavailable in the review environment."
+        ],
+        "method": "Static source trace; dynamic reproduction unavailable",
+        "summary": "The route-to-render path is direct in source. A dynamic template-expression check could not run because Jinja2 was unavailable in the review Python environment."
+      }
+    },
+    {
+      "attackPath": {
+        "dataflow": {
+          "evidenceRefs": [
+            "task-version-input",
+            "registry-path",
+            "registry-metadata",
+            "registry-output"
+          ],
+          "outcome": "Selected YAML prompt metadata disclosure",
+          "sink": "Filesystem open outside prompt root",
+          "source": "Caller-controlled task/version strings",
+          "summary": "`task/version` -> `PromptRegistry.load()` -> `open()`/`safe_load()` -> metadata -> evolution job"
+        },
+        "evidenceRefs": [
+          "registry-caller",
+          "registry-path",
+          "registry-output"
+        ],
+        "impact": {
+          "level": "medium",
+          "why": "Confidentiality of selected compatible prompt metadata can be lost; no file modification or arbitrary raw-file disclosure was established."
+        },
+        "likelihood": {
+          "level": "medium",
+          "why": "Traversal is source-confirmed, but a sensitive compatible file and deployment reachability were not verified."
+        },
+        "limitations": [
+          "No particular secret or sensitive external file is established as readable."
+        ],
+        "reachability": {
+          "attacker": "Unauthenticated network caller",
+          "entrypoint": "POST `/api/evolve`, then poll returned job ID",
+          "outcome": "Read selected metadata from a compatible YAML file outside `prompts/versions`",
+          "preconditions": [
+            "Service is reachable by attacker.",
+            "A compatible readable YAML mapping exists outside the intended directory."
+          ],
+          "summary": "The route has no route-level authentication; live exposure and upstream controls are unknown."
+        },
+        "summary": "A caller submits `/api/evolve` without `custom_prompt`, uses traversal in `task` or `version`, and receives prompt history from a compatible YAML file outside the registry root."
+      },
+      "codeEvidence": [
+        {
+          "code": "class EvolutionRequest(BaseModel):\n    task: str\n    version: str\n    model: str\n    optimizer_model: str = \"command-a-03-2025\"\n    max_iterations: int = 3\n    test_case_count: int = 3\n    min_delta: float = 0.25\n    custom_prompt: Optional[str] = None\n    custom_constraints: Optional[dict] = None\n    test_inputs: Optional[List[str]] = None",
+          "endLine": 105,
+          "explanation": "The request model does not constrain `task` or `version` to registered identifiers.",
+          "id": "task-version-input",
+          "label": "Request accepts task and version strings",
+          "language": "python",
+          "path": "app.py",
+          "role": "user_input",
+          "startLine": 95
+        },
+        {
+          "code": "def load(self, task: str, version: str):\n    key = f\"{task}:{version}\"\n    if key in self._cache:\n        return self._cache[key]\n\n    path = PROMPT_BASE_PATH / task / f\"{version}.yaml\"\n    if not path.exists():\n        raise FileNotFoundError(f\"Prompt not found: {path}\")\n\n    with open(path, \"r\") as f:\n        prompt = yaml.safe_load(f)\n\n    self._cache[key] = prompt\n    return prompt",
+          "endLine": 23,
+          "explanation": "The path is opened without resolving it against the registry root or checking containment.",
+          "id": "registry-path",
+          "label": "Registry joins values and opens resulting file",
+          "language": "python",
+          "path": "prompts/registry.py",
+          "role": "sink",
+          "startLine": 10
+        },
+        {
+          "code": "def load_with_metadata(self, task: str, version: str) -> dict:\n    prompt_def = self.load(task, version)\n\n    metadata = {\n        \"task\": prompt_def.get(\"task\"),\n        \"task_type\": prompt_def.get(\"task_type\"),\n        \"input_variables\": prompt_def.get(\"input_variables\", []),\n        \"schema_fields\": (\n            prompt_def.get(\"output_schema\", {})\n            .get(\"fields\", [])\n        ),\n        \"constraints\": prompt_def.get(\"constraints\", {}),\n        \"template\": prompt_def.get(\"template\")\n    }\n\n    return metadata",
+          "endLine": 40,
+          "explanation": "Selected fields, including `template`, flow into the evolution job.",
+          "id": "registry-metadata",
+          "label": "Loaded YAML template is copied into metadata",
+          "language": "python",
+          "path": "prompts/registry.py",
+          "role": "outcome",
+          "startLine": 25
+        },
+        {
+          "code": "if request.custom_prompt:\n    base_prompt = request.custom_prompt\n    constraints = request.custom_constraints or {\"temperature\": 0.0, \"max_tokens\": 256}\n    task_type = \"generation\"\n    input_vars = [\"text\"]\nelse:\n    meta = registry.load_with_metadata(request.task, request.version)\n    base_prompt = meta[\"template\"]",
+          "endLine": 415,
+          "explanation": "Without `custom_prompt`, caller values reach `load_with_metadata()`.",
+          "id": "registry-caller",
+          "label": "Evolution uses request values for registry load",
+          "language": "python",
+          "path": "app.py",
+          "role": "propagation",
+          "startLine": 406
+        },
+        {
+          "code": "jobs[job_id].update({\n    \"status\": \"completed\",\n    \"progress\": 100,\n    \"results\": {\n        \"history\": history,\n        \"initial_score\": history[0][\"score\"],\n        \"final_score\": history[-1][\"score\"],\n        \"improvement\": history[-1][\"score\"] - history[0][\"score\"],\n        \"final_prompt\": history[-1][\"prompt\"]\n    },",
+          "endLine": 463,
+          "explanation": "The requestor can retrieve the job ID returned by the route and receive prompt history.",
+          "id": "registry-output",
+          "label": "Evolution result contains prompt history",
+          "language": "python",
+          "path": "app.py",
+          "role": "outcome",
+          "startLine": 454
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Path construction and file open are explicit; harmless stdlib path composition confirmed escape is possible. Actual sensitive file contents and deployment reachability are unknown."
+      },
+      "findingId": "csf_a58bf803914903a5e6ec5bfc",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:72f41284a46490156a0513b1c19691ba0df6070f6b33672e39e5db1e46b08ff4"
+      },
+      "identity": {
+        "anchor": "request-task-version-to-unconfined-prompt-file-read"
+      },
+      "locations": [
+        {
+          "endLine": 105,
+          "path": "app.py",
+          "role": "attacker-controlled path components",
+          "startLine": 95
+        },
+        {
+          "endLine": 20,
+          "path": "prompts/registry.py",
+          "role": "filesystem path construction and read",
+          "startLine": 10
+        },
+        {
+          "endLine": 38,
+          "path": "prompts/registry.py",
+          "role": "selected metadata",
+          "startLine": 25
+        }
+      ],
+      "occurrenceId": "occ_a697b3fcf4ef999b99973ee7",
+      "preventiveControls": [
+        "Route all prompt-file reads through one helper that enforces canonical root containment."
+      ],
+      "provenance": {
+        "source": "local_plugin"
+      },
+      "remediation": "Resolve the candidate path and reject it unless it is a descendant of `PROMPT_BASE_PATH.resolve()`; restrict `task` and `version` to approved registry identifiers.",
+      "remediationTests": [
+        "Verify valid registered prompts load.",
+        "Verify absolute paths and `../` in either path component are rejected before file access."
+      ],
+      "rootCause": {
+        "evidenceRefs": [
+          "task-version-input",
+          "registry-caller",
+          "registry-path",
+          "registry-metadata",
+          "registry-output"
+        ],
+        "summary": "`PromptRegistry.load()` treats caller-controlled `task` and `version` as path components, opens the joined path without canonicalizing or checking that it stays under the registry root, and returns selected YAML fields to evolution. Results expose the prompt history."
+      },
+      "ruleId": "path-traversal.prompt-registry",
+      "severity": {
+        "changeConditions": "Lower if upstream access control prevents untrusted requests or filesystem permissions make compatible sensitive YAML unavailable.",
+        "level": "medium",
+        "rationale": "A reachable caller may disclose selected fields from a compatible YAML file outside the intended registry; write and availability impact were not established.",
+        "score": 5.3,
+        "scoringSystem": "CVSS:3.1",
+        "vector": "AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+      },
+      "summary": "An unauthenticated evolution request controls `task` and `version`; `PromptRegistry.load()` joins them into a filesystem path without canonical containment validation. Traversal can make the service load a compatible YAML file outside `prompts/versions`; selected template metadata can then appear in the evolution result. No sensitive external file was read during review.",
+      "taxonomy": {
+        "category": "path-traversal",
+        "cwe": [
+          "CWE-22"
+        ]
+      },
+      "title": "Prompt registry accepts paths outside its versions directory",
+      "validation": {
+        "assertions": [
+          "Path construction uses request values without canonical containment checks.",
+          "Loaded YAML `template` flows into job results."
+        ],
+        "evidenceRefs": [
+          "task-version-input",
+          "registry-caller",
+          "registry-path",
+          "registry-metadata",
+          "registry-output"
+        ],
+        "limitations": [
+          "Disclosure requires a readable compatible YAML mapping outside the registry root.",
+          "No sensitive external file was read; deployment reachability is unknown."
+        ],
+        "method": "Static source trace and harmless path composition",
+        "summary": "Source confirms request-controlled components reach `open()` without containment validation. A standard-library path composition check showed traversal can escape; no external file was opened or disclosed."
+      }
+    },
+    {
+      "attackPath": {
+        "dataflow": {
+          "evidenceRefs": [
+            "eval-fields",
+            "evolution-fields",
+            "job-scheduling",
+            "model-input-loop",
+            "job-map"
+          ],
+          "outcome": "Availability degradation and possible provider quota/spend exhaustion",
+          "sink": "Model adapter calls, process CPU/memory, and global job storage",
+          "source": "Request arrays and integer work limits",
+          "summary": "Unbounded JSON fields -> job allocation -> nested model/input work -> retained job outputs"
+        },
+        "evidenceRefs": [
+          "eval-fields",
+          "job-scheduling",
+          "model-input-loop",
+          "job-map",
+          "job-read"
+        ],
+        "impact": {
+          "level": "high",
+          "why": "Repeated requests can consume shared server resources; configured external model credentials may also incur cost or exhaust quota."
+        },
+        "likelihood": {
+          "level": "medium",
+          "why": "The code accepts and schedules unbounded work, but deployed request controls and credentials are unknown."
+        },
+        "limitations": [
+          "Provider-cost impact is conditional on active credentials and billing configuration."
+        ],
+        "reachability": {
+          "attacker": "Unauthenticated network caller",
+          "entrypoint": "POST `/api/evaluate`, `/api/compare`, `/api/evolve`, or `/api/test-cases/generate`",
+          "outcome": "Unbounded background work and retained result growth",
+          "preconditions": [
+            "Service is reachable by attacker.",
+            "No upstream access, body-size, rate, or concurrency control caps the workload."
+          ],
+          "summary": "No in-handler authentication or quota is present in reviewed routes; exposure and upstream protections are unknown."
+        },
+        "summary": "A network caller submits large/repeated evaluation or evolution requests; background tasks consume model and server resources while results accumulate in the process-global job map."
+      },
+      "codeEvidence": [
+        {
+          "code": "class EvaluationRequest(BaseModel):\n    task: str\n    version: str\n    models: List[str]\n    test_inputs: Optional[List[str]] = None\n    generate_test_cases: bool = True\n    test_case_count: int = 3\n    custom_prompt: Optional[str] = None\n    custom_constraints: Optional[dict] = None",
+          "endLine": 84,
+          "explanation": "`models`, `test_inputs`, and `test_case_count` have no maximum bounds.",
+          "id": "eval-fields",
+          "label": "Evaluation request has unbounded arrays and count",
+          "language": "python",
+          "path": "app.py",
+          "role": "user_input",
+          "startLine": 76
+        },
+        {
+          "code": "class EvolutionRequest(BaseModel):\n    task: str\n    version: str\n    model: str\n    optimizer_model: str = \"command-a-03-2025\"\n    max_iterations: int = 3\n    test_case_count: int = 3\n    min_delta: float = 0.25\n    custom_prompt: Optional[str] = None\n    custom_constraints: Optional[dict] = None\n    test_inputs: Optional[List[str]] = None",
+          "endLine": 105,
+          "explanation": "The caller controls iteration/count values and an optional input list without enforced bounds.",
+          "id": "evolution-fields",
+          "label": "Evolution request has unbounded limits and inputs",
+          "language": "python",
+          "path": "app.py",
+          "role": "user_input",
+          "startLine": 95
+        },
+        {
+          "code": "@app.post(\"/api/evaluate\")\nasync def evaluate_prompt(request: EvaluationRequest, bg: BackgroundTasks):\n    job_id = str(uuid.uuid4())\n    jobs[job_id] = {\n        \"status\": \"running\",\n        \"progress\": 0,\n        \"results\": None,\n        \"error\": None,\n        \"started_at\": datetime.utcnow().isoformat()\n    }\n    bg.add_task(run_evaluation_job, job_id, request)\n    return {\"job_id\": job_id, \"status\": \"started\"}",
+          "endLine": 194,
+          "explanation": "Each accepted request allocates memory and schedules work without a visible handler-level queue or quota check.",
+          "id": "job-scheduling",
+          "label": "Each evaluation request allocates and queues a job",
+          "language": "python",
+          "path": "app.py",
+          "role": "entrypoint",
+          "startLine": 183
+        },
+        {
+          "code": "results = []\ntotal = len(request.models)\n\nfor i, model_name in enumerate(request.models):\n    model = get_model(model_name)\n    model_outputs = []\n\n    for text in inputs:\n        rendered = render_prompt(base_prompt, {input_var: text})\n        raw = model.run(rendered, constraints)\n        score = evaluate(raw[\"output\"], constraints, text, task_type)\n\n        model_outputs.append({\n            \"input\": text,\n            \"output\": raw[\"output\"],\n            \"score\": score.score,\n            \"breakdown\": score.breakdown,\n            \"tokens\": raw[\"tokens\"],\n            \"latency_ms\": raw[\"latency_ms\"]\n        })",
+          "endLine": 318,
+          "explanation": "Each model/input pair triggers a provider call and stores an output.",
+          "id": "model-input-loop",
+          "label": "Work scales across request-selected models and inputs",
+          "language": "python",
+          "path": "app.py",
+          "role": "sink",
+          "startLine": 289
+        },
+        {
+          "code": "# GLOBAL STATE\njobs = {}\nregistry = PromptRegistry()\nexecutor = PromptExecutor()",
+          "endLine": 65,
+          "explanation": "Jobs and completed results are written to `jobs`; repository-wide search found no eviction/deletion path.",
+          "id": "job-map",
+          "label": "Job state is held in a process-global map",
+          "language": "python",
+          "path": "app.py",
+          "role": "root_control",
+          "startLine": 60
+        },
+        {
+          "code": "@app.get(\"/api/jobs/{job_id}\")\nasync def get_job(job_id: str):\n    job = jobs.get(job_id)\n    if not job:\n        raise HTTPException(status_code=404, detail=\"Job not found\")\n    return job",
+          "endLine": 180,
+          "explanation": "The requestor receives the returned job ID and can poll the stored data.",
+          "id": "job-read",
+          "label": "Job endpoint returns stored result",
+          "language": "python",
+          "path": "app.py",
+          "role": "outcome",
+          "startLine": 175
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "rationale": "Source directly shows unbounded request dimensions, per-request background tasks, nested model/input loops, and global job retention; live impact was not measured."
+      },
+      "findingId": "csf_abc82f886728272fccbcb123",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:5b1d5f3d3936ffd968b8b9959d5c033bc20a2e7faf4470a1f621c4457a9e9f8f"
+      },
+      "identity": {
+        "anchor": "unauthenticated-unbounded-background-prompt-jobs"
+      },
+      "locations": [
+        {
+          "endLine": 84,
+          "path": "app.py",
+          "role": "unbounded request fields",
+          "startLine": 76
+        },
+        {
+          "endLine": 194,
+          "path": "app.py",
+          "role": "background-work entrypoint",
+          "startLine": 183
+        },
+        {
+          "endLine": 64,
+          "path": "app.py",
+          "role": "global job storage",
+          "startLine": 63
+        }
+      ],
+      "occurrenceId": "occ_060511ae9f31581a8f58a21e",
+      "preventiveControls": [
+        "Alert on provider spend and per-caller job volume.",
+        "Use provider quotas and a circuit breaker for model calls."
+      ],
+      "provenance": {
+        "source": "local_plugin"
+      },
+      "remediation": "Require authentication and per-caller quotas, bound request sizes and numeric work fields, run jobs through a bounded queue with concurrency/time limits, and expire completed job records and outputs.",
+      "remediationTests": [
+        "Reject arrays and iteration/test-case counts above explicit limits before queuing.",
+        "Verify concurrent submissions are bounded.",
+        "Verify completed jobs and outputs expire after the configured retention window."
+      ],
+      "rootCause": {
+        "evidenceRefs": [
+          "eval-fields",
+          "evolution-fields",
+          "job-scheduling",
+          "model-input-loop",
+          "job-map",
+          "job-read"
+        ],
+        "summary": "The API accepts arrays and numeric work limits without bounds, schedules a background task for each request, and runs nested loops that call model adapters. There is no visible authentication, quota, or bounded worker queue in these handlers. Job records and results are stored in global `jobs`, and repository-wide search found no cleanup path."
+      },
+      "ruleId": "uncontrolled-resource-consumption.prompt-jobs",
+      "severity": {
+        "changeConditions": "Lower if effective upstream authentication, request limits, concurrency controls, quotas, and job expiry exist in deployment.",
+        "level": "high",
+        "rationale": "Repeated requests can multiply model/input loops and grow retained state, affecting service availability; provider spend is conditional on configured credentials and quotas.",
+        "score": 7.5,
+        "scoringSystem": "CVSS:3.1",
+        "vector": "AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      },
+      "summary": "Evaluation/evolution requests accept unbounded collections and numeric work limits, then enqueue model calls as background tasks without route-level authentication, rate limits, or visible concurrency bounds. Jobs and outputs are held in a process-global map with no cleanup path found. A reachable attacker can consume service resources and, if credentials are enabled, model quota or spend.",
+      "taxonomy": {
+        "category": "uncontrolled-resource-consumption",
+        "cwe": [
+          "CWE-400"
+        ]
+      },
+      "title": "Unauthenticated callers can queue unbounded model work and retain results",
+      "validation": {
+        "assertions": [
+          "Request model arrays and work-count integers have no maximum bounds.",
+          "The evaluation loop calls `model.run()` per model/input pair.",
+          "Each accepted request allocates state and queues background work.",
+          "No job cleanup path was found."
+        ],
+        "evidenceRefs": [
+          "eval-fields",
+          "evolution-fields",
+          "job-scheduling",
+          "model-input-loop",
+          "job-map",
+          "job-read"
+        ],
+        "limitations": [
+          "Live availability impact and upstream request controls were not measured.",
+          "Active provider credentials and quotas are unknown."
+        ],
+        "method": "Static source trace and repository-wide reference search",
+        "summary": "Review connected unbounded request dimensions to per-model/per-input provider calls and persistent in-memory job results. Search found initialization and access of `jobs` but no deletion/eviction operation."
+      }
+    }
+  ],
+  "scanId": "e430979a-88b7-4399-a6df-f2d7329ec698",
+  "schemaVersion": "1.0"
+}

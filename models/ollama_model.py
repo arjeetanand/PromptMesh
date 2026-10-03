@@ -1,6 +1,10 @@
 import time
 import ollama
 from models.base import BaseLLM
+from core.security import MODEL_REQUEST_TIMEOUT_SECONDS
+
+
+client = ollama.Client(timeout=MODEL_REQUEST_TIMEOUT_SECONDS)
 
 
 class OllamaModel(BaseLLM):
@@ -10,7 +14,7 @@ class OllamaModel(BaseLLM):
     def run(self, prompt: str, params: dict):
         start = time.time()
 
-        response = ollama.chat(
+        response = client.chat(
             model=self.model_name,
             messages=[{"role": "user", "content": prompt}],
             options={

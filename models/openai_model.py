@@ -1,8 +1,9 @@
 import time
 from openai import OpenAI
 from models.base import BaseLLM
+from core.security import MODEL_REQUEST_TIMEOUT_SECONDS
 
-client = OpenAI()
+client = OpenAI(timeout=MODEL_REQUEST_TIMEOUT_SECONDS)
 
 class OpenAIModel(BaseLLM):
     def __init__(self, model_name: str):

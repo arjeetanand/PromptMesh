@@ -1,0 +1,432 @@
+{
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/schemas/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "automationDetails": {
+        "id": "e430979a-88b7-4399-a6df-f2d7329ec698"
+      },
+      "properties": {
+        "codexSecuritySchemaVersion": "1.0",
+        "codexSecurityTargetKind": "git_revision"
+      },
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "message": {
+                "text": "unbounded request fields"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 84,
+                  "startLine": 76
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "background-work entrypoint"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 194,
+                  "startLine": 183
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "global job storage"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 64,
+                  "startLine": 63
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:evolution-fields"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 105,
+                  "startLine": 95
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:model-input-loop"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 318,
+                  "startLine": 289
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:job-map"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 65,
+                  "startLine": 60
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:job-read"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 180,
+                  "startLine": 175
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Unauthenticated callers can queue unbounded model work and retain results\n\nEvaluation/evolution requests accept unbounded collections and numeric work limits, then enqueue model calls as background tasks without route-level authentication, rate limits, or visible concurrency bounds. Jobs and outputs are held in a process-global map with no cleanup path found. A reachable attacker can consume service resources and, if credentials are enabled, model quota or spend.\n\nSeverity: high\n\nCategory: Uncontrolled resource consumption\n\nWeaknesses: CWE-400\n\nRemediation:\nRequire authentication and per-caller quotas, bound request sizes and numeric work fields, run jobs through a bounded queue with concurrency/time limits, and expire completed job records and outputs.\n\nRemediation tests:\n- Reject arrays and iteration/test-case counts above explicit limits before queuing.\n- Verify concurrent submissions are bounded.\n- Verify completed jobs and outputs expire after the configured retention window.\n\nPreventive controls:\n- Alert on provider spend and per-caller job volume.\n- Use provider quotas and a circuit breaker for model calls."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:5b1d5f3d3936ffd968b8b9959d5c033bc20a2e7faf4470a1f621c4457a9e9f8f"
+          },
+          "properties": {
+            "category": "uncontrolled-resource-consumption",
+            "confidence": "high",
+            "findingId": "csf_abc82f886728272fccbcb123",
+            "occurrenceId": "occ_060511ae9f31581a8f58a21e",
+            "severity": "high"
+          },
+          "ruleId": "uncontrolled-resource-consumption.prompt-jobs",
+          "ruleIndex": 2
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "message": {
+                "text": "attacker-controlled input"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 105,
+                  "startLine": 95
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "input propagation"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 415,
+                  "startLine": 406
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "unsafe template sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "core/types.py"
+                },
+                "region": {
+                  "endLine": 5,
+                  "startLine": 3
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:evolve-entry"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 222,
+                  "startLine": 211
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:evolver-render"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "optimization/evolver.py"
+                },
+                "region": {
+                  "endLine": 22,
+                  "startLine": 16
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:jinja-sink"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "core/types.py"
+                },
+                "region": {
+                  "endLine": 5,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Client-supplied prompt templates can execute code in the server process\n\nAn unauthenticated `/api/evolve` request can place attacker-controlled text in `custom_prompt`; the evolution path sends it to the shared `render_prompt()` helper, which compiles it with default unsandboxed Jinja `Template`. A crafted template can reach server-side code execution. The direct app entrypoint binds to all interfaces, though deployment reachability is unknown.\n\nSeverity: critical\n\nCategory: Server side template injection\n\nWeaknesses: CWE-1336, CWE-94\n\nRemediation:\nDo not compile caller-controlled prompts with default Jinja `Template`; use a constrained sandbox with a strict allowlist, or treat custom prompt text as literal content.\n\nRemediation tests:\n- Submit a template expression that traverses Python objects and assert it is rejected or remains literal.\n- Verify `/api/evaluate` and `/api/evolve` share the constrained rendering policy.\n\nPreventive controls:\n- Require authentication and authorization for exposed prompt-execution routes.\n- Apply request-size limits and structured template validation."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:72cfef7f97eefcd605a6000bd27f62e4efcf1006bb5edec1bbf2190c59f7e957"
+          },
+          "properties": {
+            "category": "server-side-template-injection",
+            "confidence": "high",
+            "findingId": "csf_d65bd1d29302110474b2f8cf",
+            "occurrenceId": "occ_5f9ad5a28209cff5a03e957f",
+            "severity": "critical"
+          },
+          "ruleId": "server-side-template-injection.jinja",
+          "ruleIndex": 1
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "message": {
+                "text": "attacker-controlled path components"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 105,
+                  "startLine": 95
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "filesystem path construction and read"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "prompts/registry.py"
+                },
+                "region": {
+                  "endLine": 20,
+                  "startLine": 10
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "selected metadata"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "prompts/registry.py"
+                },
+                "region": {
+                  "endLine": 38,
+                  "startLine": 25
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:registry-path"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "prompts/registry.py"
+                },
+                "region": {
+                  "endLine": 23,
+                  "startLine": 10
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:registry-metadata"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "prompts/registry.py"
+                },
+                "region": {
+                  "endLine": 40,
+                  "startLine": 25
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:registry-caller"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 415,
+                  "startLine": 406
+                }
+              }
+            },
+            {
+              "message": {
+                "text": "evidence:registry-output"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py"
+                },
+                "region": {
+                  "endLine": 463,
+                  "startLine": 454
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Prompt registry accepts paths outside its versions directory\n\nAn unauthenticated evolution request controls `task` and `version`; `PromptRegistry.load()` joins them into a filesystem path without canonical containment validation. Traversal can make the service load a compatible YAML file outside `prompts/versions`; selected template metadata can then appear in the evolution result. No sensitive external file was read during review.\n\nSeverity: medium\n\nCategory: Path traversal\n\nWeaknesses: CWE-22\n\nRemediation:\nResolve the candidate path and reject it unless it is a descendant of `PROMPT_BASE_PATH.resolve()`; restrict `task` and `version` to approved registry identifiers.\n\nRemediation tests:\n- Verify valid registered prompts load.\n- Verify absolute paths and `../` in either path component are rejected before file access.\n\nPreventive controls:\n- Route all prompt-file reads through one helper that enforces canonical root containment."
+          },
+          "partialFingerprints": {
+            "codexSecurity/v1": "codex-security/v1:sha256:72f41284a46490156a0513b1c19691ba0df6070f6b33672e39e5db1e46b08ff4"
+          },
+          "properties": {
+            "category": "path-traversal",
+            "confidence": "high",
+            "findingId": "csf_a58bf803914903a5e6ec5bfc",
+            "occurrenceId": "occ_a697b3fcf4ef999b99973ee7",
+            "severity": "medium"
+          },
+          "ruleId": "path-traversal.prompt-registry",
+          "ruleIndex": 0
+        }
+      ],
+      "tool": {
+        "driver": {
+          "name": "Codex Security",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Path traversal: Prompt registry. Categories: Path traversal. Weaknesses: CWE-22."
+              },
+              "help": {
+                "markdown": "Path traversal: Prompt registry. Categories: Path traversal. Weaknesses: CWE-22.\n\n## Remediation\n\nResolve the candidate path and reject it unless it is a descendant of `PROMPT_BASE_PATH.resolve()`; restrict `task` and `version` to approved registry identifiers.",
+                "text": "Path traversal: Prompt registry. Categories: Path traversal. Weaknesses: CWE-22.\n\nRemediation:\n\nResolve the candidate path and reject it unless it is a descendant of `PROMPT_BASE_PATH.resolve()`; restrict `task` and `version` to approved registry identifiers."
+              },
+              "id": "path-traversal.prompt-registry",
+              "name": "Path traversal: Prompt registry",
+              "properties": {
+                "security-severity": "5.3",
+                "tags": [
+                  "external/cwe/cwe-022",
+                  "path-traversal",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Path traversal: Prompt registry"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Server side template injection: Jinja. Categories: Server side template injection. Weaknesses: CWE-1336, CWE-94."
+              },
+              "help": {
+                "markdown": "Server side template injection: Jinja. Categories: Server side template injection. Weaknesses: CWE-1336, CWE-94.\n\n## Remediation\n\nDo not compile caller-controlled prompts with default Jinja `Template`; use a constrained sandbox with a strict allowlist, or treat custom prompt text as literal content.",
+                "text": "Server side template injection: Jinja. Categories: Server side template injection. Weaknesses: CWE-1336, CWE-94.\n\nRemediation:\n\nDo not compile caller-controlled prompts with default Jinja `Template`; use a constrained sandbox with a strict allowlist, or treat custom prompt text as literal content."
+              },
+              "id": "server-side-template-injection.jinja",
+              "name": "Server side template injection: Jinja",
+              "properties": {
+                "security-severity": "9.8",
+                "tags": [
+                  "external/cwe/cwe-094",
+                  "external/cwe/cwe-1336",
+                  "security",
+                  "server-side-template-injection"
+                ]
+              },
+              "shortDescription": {
+                "text": "Server side template injection: Jinja"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Uncontrolled resource consumption: Prompt jobs. Categories: Uncontrolled resource consumption. Weaknesses: CWE-400."
+              },
+              "help": {
+                "markdown": "Uncontrolled resource consumption: Prompt jobs. Categories: Uncontrolled resource consumption. Weaknesses: CWE-400.\n\n## Remediation\n\nRequire authentication and per-caller quotas, bound request sizes and numeric work fields, run jobs through a bounded queue with concurrency/time limits, and expire completed job records and outputs.",
+                "text": "Uncontrolled resource consumption: Prompt jobs. Categories: Uncontrolled resource consumption. Weaknesses: CWE-400.\n\nRemediation:\n\nRequire authentication and per-caller quotas, bound request sizes and numeric work fields, run jobs through a bounded queue with concurrency/time limits, and expire completed job records and outputs."
+              },
+              "id": "uncontrolled-resource-consumption.prompt-jobs",
+              "name": "Uncontrolled resource consumption: Prompt jobs",
+              "properties": {
+                "security-severity": "7.5",
+                "tags": [
+                  "external/cwe/cwe-400",
+                  "security",
+                  "uncontrolled-resource-consumption"
+                ]
+              },
+              "shortDescription": {
+                "text": "Uncontrolled resource consumption: Prompt jobs"
+              }
+            }
+          ],
+          "version": "0.1.31"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

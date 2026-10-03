@@ -196,6 +196,11 @@ def generate_test_cases(
     print(f"Requested: {n} test cases")
     print(f"Base inputs provided: {len(base_inputs)}")
 
+    if n <= 0:
+        return []
+    if not base_inputs:
+        raise ValueError("At least one base input is required")
+
     # If we already have enough, return them
     if len(base_inputs) >= n:
         print(f"[INFO] Using provided base inputs (sufficient)")
@@ -264,6 +269,8 @@ def generate_test_cases(
 
 def create_smart_variations(base_inputs: List[str], n: int, task_type: str) -> List[str]:
     """Create intelligent variations when LLM generation fails"""
+    if n <= 0 or not base_inputs:
+        return []
     variations = list(base_inputs)
 
     # Simple transformation strategies based on task type

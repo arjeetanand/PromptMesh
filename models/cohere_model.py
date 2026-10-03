@@ -1,8 +1,9 @@
 import time
 import cohere
 from models.base import BaseLLM
+from core.security import MODEL_REQUEST_TIMEOUT_SECONDS
 
-co = cohere.Client()  # Uses COHERE_API_KEY env var
+co = cohere.Client(timeout=MODEL_REQUEST_TIMEOUT_SECONDS)  # Uses COHERE_API_KEY env var
 
 
 class CohereModel(BaseLLM):

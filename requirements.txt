@@ -2,7 +2,6 @@
 ollama
 oci
 cohere
-jinja2
 pyyaml
 
 # New for RAG

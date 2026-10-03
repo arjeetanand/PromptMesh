@@ -1,0 +1,65 @@
+{
+  "completeness": "complete",
+  "deferred": [],
+  "documentType": "codex-security.coverage",
+  "excludePaths": [],
+  "explicitExclusions": [],
+  "includePaths": [
+    "."
+  ],
+  "inventoryStrategy": "repository",
+  "mode": "repository",
+  "openQuestions": [],
+  "scanId": "e430979a-88b7-4399-a6df-f2d7329ec698",
+  "schemaVersion": "1.0",
+  "surfaces": [
+    {
+      "disposition": "reported",
+      "id": "api-prompt-rendering",
+      "label": "FastAPI prompt evaluation and Jinja rendering",
+      "notes": "Unsandboxed Jinja receives caller-controlled custom prompts.",
+      "receiptRefs": [],
+      "riskArea": "Untrusted template execution"
+    },
+    {
+      "disposition": "reported",
+      "id": "prompt-registry-paths",
+      "label": "Prompt registry path construction and YAML loading",
+      "notes": "Caller task/version strings reach path construction without containment validation.",
+      "receiptRefs": [],
+      "riskArea": "Filesystem containment"
+    },
+    {
+      "disposition": "reported",
+      "id": "background-jobs-model-calls",
+      "label": "Request-driven model work and job retention",
+      "notes": "Unbounded work and retained results; deployed controls and credentials unknown.",
+      "receiptRefs": [],
+      "riskArea": "Resource consumption"
+    },
+    {
+      "disposition": "rejected",
+      "id": "browser-output",
+      "label": "Browser rendering of evaluation/evolution output",
+      "notes": "Unescaped innerHTML candidate had no cross-user delivery path; it requires victim-induced attacker prompt input and was treated as self-XSS.",
+      "receiptRefs": [],
+      "riskArea": "Cross-site scripting"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "secrets-data-artifacts",
+      "label": "Tracked text and SQLite data artifacts",
+      "notes": "Read-only review found no directly recognizable credential values; deployment secrets were not inspected.",
+      "receiptRefs": [],
+      "riskArea": "Credential or sensitive-data exposure"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "database-yaml-handling",
+      "label": "SQLite queries and YAML loading",
+      "notes": "No SQL injection confirmed; registry uses yaml.safe_load.",
+      "receiptRefs": [],
+      "riskArea": "Injection and unsafe deserialization"
+    }
+  ]
+}

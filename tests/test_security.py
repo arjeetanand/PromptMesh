@@ -1,0 +1,303 @@
+import importlib
+import sys
+import types
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+from starlette.testclient import TestClient
+
+from core.security import (
+    CallerJobLimitError,
+    JobStore,
+    RequestBodyLimitMiddleware,
+    RequestRateLimiter,
+    ServerJobLimitError,
+)
+from core.types import render_prompt
+from prompts.registry import PromptRegistry
+
+
+# Keep API tests independent of optional model-provider packages and credentials.
+_fake_model_registry = types.ModuleType("models.registry")
+_fake_model_registry.MODEL_DEFINITIONS = {"safe-test-model": {"type": "test"}}
+
+class _FakeModel:
+    def run(self, *args, **kwargs):
+        raise AssertionError("model calls are not expected in request-boundary tests")
+
+
+_fake_model_registry.get_model = lambda name: _FakeModel()
+sys.modules["models.registry"] = _fake_model_registry
+_fake_scorer = types.ModuleType("evaluation.scorer")
+_fake_scorer.evaluate = lambda *args, **kwargs: None
+sys.modules["evaluation.scorer"] = _fake_scorer
+promptmesh_app = importlib.import_module("app")
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 0
+
+    def __call__(self):
+        return self.now
+
+
+class PromptRenderingTests(unittest.TestCase):
+    def test_simple_placeholders_preserve_normal_prompt_use(self):
+        self.assertEqual(
+            render_prompt("Classify: {{text}} / {{ text }}", {"text": "good"}),
+            "Classify: good / good",
+        )
+
+    def test_template_expressions_and_control_blocks_are_not_executed(self):
+        for template in (
+            "{{ 7 * 7 }}",
+            "{{ cycler.__init__.__globals__ }}",
+            "prefix {{text}} {{ caller.__class__ }}",
+            "{% for item in text %}{{ item }}{% endfor %}",
+        ):
+            with self.subTest(template=template):
+                with self.assertRaises(ValueError):
+                    render_prompt(template, {"text": "input"})
+
+    def test_rendered_prompt_has_a_hard_output_limit(self):
+        with self.assertRaisesRegex(ValueError, "Rendered prompts"):
+            render_prompt("{{text}}" * 9, {"text": "x" * 4_000})
+
+
+class PromptRegistryTests(unittest.TestCase):
+    def test_loads_a_valid_prompt_and_lists_versions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "versions"
+            prompt_dir = root / "classification"
+            prompt_dir.mkdir(parents=True)
+            (prompt_dir / "v1.yaml").write_text("task: classification\ntemplate: '{{text}}'\n")
+            with patch("prompts.registry.PROMPT_BASE_PATH", root):
+                registry = PromptRegistry()
+                self.assertEqual(registry.load("classification", "v1")["task"], "classification")
+                self.assertEqual(registry.list_versions("classification"), ["v1"])
+
+    def test_rejects_traversal_before_cache_lookup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "versions"
+            root.mkdir()
+            registry = PromptRegistry()
+            with patch("prompts.registry.PROMPT_BASE_PATH", root):
+                registry._cache["unused"] = {"task": "cached"}
+                for task, version in (("../outside", "v1"), ("valid", "../../outside"), ("/tmp", "v1")):
+                    with self.subTest(task=task, version=version):
+                        with self.assertRaises(FileNotFoundError):
+                            registry.load(task, version)
+                with self.assertRaises(FileNotFoundError):
+                    registry.list_versions("../outside")
+
+    def test_rejects_symlink_escape(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "versions"
+            prompt_dir = root / "task"
+            prompt_dir.mkdir(parents=True)
+            secret = Path(directory) / "outside.yaml"
+            secret.write_text("task: outside\n")
+            (prompt_dir / "escape.yaml").symlink_to(secret)
+            with patch("prompts.registry.PROMPT_BASE_PATH", root):
+                with self.assertRaises(FileNotFoundError):
+                    PromptRegistry().load("task", "escape")
+
+
+class WorkLimitTests(unittest.TestCase):
+    def test_jobs_enforce_global_and_per_caller_active_caps(self):
+        store = JobStore(max_active=2, max_active_per_caller=1, max_retained=4)
+        first = store.create("alice")
+        with self.assertRaises(CallerJobLimitError):
+            store.create("alice")
+        second = store.create("bob")
+        with self.assertRaises(ServerJobLimitError):
+            store.reserve("carol")
+        store.update(first, {"status": "completed", "results": ["ok"]})
+        self.assertIsNone(store.get(first, "bob"))
+        self.assertEqual(store.get(first, "alice")["results"], ["ok"])
+        self.assertIsNotNone(store.get(second, "bob"))
+
+    def test_completed_jobs_expire_and_retention_is_bounded(self):
+        clock = FakeClock()
+        store = JobStore(
+            max_active=3,
+            max_active_per_caller=3,
+            max_retained=2,
+            retention_seconds=10,
+            clock=clock,
+        )
+        first = store.create("alice")
+        store.update(first, {"status": "completed"})
+        second = store.create("alice")
+        store.update(second, {"status": "failed"})
+        third = store.create("alice")
+        self.assertIsNone(store.get(first, "alice"))
+        self.assertIsNotNone(store.get(second, "alice"))
+        clock.now = 11
+        self.assertIsNone(store.get(second, "alice"))
+        self.assertIsNotNone(store.get(third, "alice"))
+
+    def test_rate_limit_expires_and_caps_caller_tracking(self):
+        clock = FakeClock()
+        limiter = RequestRateLimiter(limit=2, window_seconds=60, max_callers=2, clock=clock)
+        self.assertTrue(limiter.allow("alice"))
+        self.assertTrue(limiter.allow("alice"))
+        self.assertFalse(limiter.allow("alice"))
+        clock.now = 61
+        self.assertTrue(limiter.allow("alice"))
+        self.assertLessEqual(len(limiter._requests), 2)
+
+    def test_request_body_middleware_rejects_oversized_requests(self):
+        async def accept(request):
+            return JSONResponse({"size": len(await request.body())})
+
+        app = Starlette(routes=[Route("/api/test", accept, methods=["POST"])])
+        app.add_middleware(RequestBodyLimitMiddleware, max_bytes=4)
+        with TestClient(app) as client:
+            response = client.post("/api/test", content=b"12345")
+        self.assertEqual(response.status_code, 413)
+
+
+class ApiBoundaryTests(unittest.TestCase):
+    def setUp(self):
+        self.previous_api_key = promptmesh_app.API_KEY
+        self.previous_allowed_origins = promptmesh_app.ALLOWED_ORIGINS
+        self.previous_jobs = promptmesh_app.jobs
+        promptmesh_app.API_KEY = "security-test-key-that-is-at-least-32-chars"
+        promptmesh_app.jobs = JobStore()
+        self.client = TestClient(promptmesh_app.app)
+
+    def tearDown(self):
+        self.client.close()
+        promptmesh_app.API_KEY = self.previous_api_key
+        promptmesh_app.ALLOWED_ORIGINS = self.previous_allowed_origins
+        promptmesh_app.jobs = self.previous_jobs
+
+    def test_remote_api_requests_require_the_bearer_key(self):
+        self.assertEqual(self.client.get("/api/tasks").status_code, 401)
+        response = self.client.get(
+            "/api/tasks",
+            headers={"Authorization": f"Bearer {promptmesh_app.API_KEY}"},
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_server_rejects_excessive_work_before_queueing(self):
+        headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}
+        payload = {
+            "task": "generation",
+            "version": "v1",
+            "models": ["model"] * 6,
+            "custom_prompt": "Hello {{text}}",
+        }
+        response = self.client.post("/api/evaluate", json=payload, headers=headers)
+        self.assertEqual(response.status_code, 422)
+
+    def test_server_caps_custom_provider_output_tokens(self):
+        headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}
+        payload = {
+            "task": "generation",
+            "version": "v1",
+            "models": ["model"],
+            "test_inputs": ["hello"],
+            "custom_prompt": "Hello {{text}}",
+            "custom_constraints": {"max_tokens": 2049},
+        }
+        response = self.client.post("/api/evaluate", json=payload, headers=headers)
+        self.assertEqual(response.status_code, 422)
+
+    def test_valid_evaluation_job_can_be_submitted_and_polled(self):
+        headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}
+        original_runner = promptmesh_app.run_evaluation_job
+
+        def finish_without_provider(job_id, request):
+            promptmesh_app.jobs.update(
+                job_id,
+                {"status": "completed", "progress": 100, "results": []},
+            )
+
+        promptmesh_app.run_evaluation_job = finish_without_provider
+        try:
+            response = self.client.post(
+                "/api/evaluate",
+                json={
+                    "task": "generation",
+                    "version": "v1",
+                    "models": ["safe-test-model"],
+                    "test_inputs": ["hello"],
+                    "generate_test_cases": False,
+                    "custom_prompt": "Hello {{text}}",
+                },
+                headers=headers,
+            )
+            self.assertEqual(response.status_code, 200)
+            job_id = response.json()["job_id"]
+            job = self.client.get(f"/api/jobs/{job_id}", headers=headers)
+            self.assertEqual(job.status_code, 200)
+            self.assertEqual(job.json()["status"], "completed")
+        finally:
+            promptmesh_app.run_evaluation_job = original_runner
+
+    def test_test_case_generation_runs_in_a_worker_thread(self):
+        headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}
+        cases = ["hello", "hello, with a detail"]
+        with patch.object(
+            promptmesh_app, "run_in_threadpool", new=AsyncMock(return_value=cases)
+        ) as worker:
+            response = self.client.post(
+                "/api/test-cases/generate",
+                json={"task_type": "generation", "base_inputs": ["hello"], "count": 2},
+                headers=headers,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["test_cases"], cases)
+        worker.assert_awaited_once_with(
+            promptmesh_app.generate_test_cases,
+            task_type="generation",
+            input_variables=["text"],
+            base_inputs=["hello"],
+            schema_fields=None,
+            n=2,
+        )
+
+    def test_unconfigured_remote_api_is_denied(self):
+        promptmesh_app.API_KEY = None
+        with TestClient(promptmesh_app.app, base_url="http://remote.example") as remote:
+            response = remote.get("/api/tasks")
+        self.assertEqual(response.status_code, 403)
+
+    def test_loopback_api_rejects_cross_site_browser_requests(self):
+        promptmesh_app.API_KEY = None
+        promptmesh_app.ALLOWED_ORIGINS = ["https://attacker.example"]
+        with TestClient(
+            promptmesh_app.app,
+            base_url="http://localhost:8000",
+            client=("127.0.0.1", 49152),
+        ) as local:
+            blocked = local.get("/api/tasks", headers={"Origin": "https://attacker.example"})
+            allowed = local.get("/api/tasks", headers={"Origin": "http://localhost:8000"})
+        self.assertEqual(blocked.status_code, 403)
+        self.assertEqual(allowed.status_code, 200)
+
+
+class TestCaseGenerationTests(unittest.TestCase):
+    def test_empty_input_fallback_cannot_loop_forever(self):
+        # Avoid importing external model adapters; the empty-input guard runs first.
+        fake_registry = types.ModuleType("models.registry")
+        fake_registry.get_model = lambda name: self.fail("model access should not occur")
+        with patch.dict(sys.modules, {"models.registry": fake_registry}):
+            from optimization.testcase_generator import create_smart_variations, generate_test_cases
+
+            self.assertEqual(create_smart_variations([], 3, "generation"), [])
+            with self.assertRaises(ValueError):
+                generate_test_cases("generation", ["text"], [], n=3)
+
+
+if __name__ == "__main__":
+    unittest.main()

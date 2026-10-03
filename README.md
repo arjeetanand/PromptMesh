@@ -283,6 +283,40 @@ Returns:
 
 ---
 
+## API access and request limits
+
+The default `python app.py` launcher listens only on `127.0.0.1`. When no API key
+is configured, API requests are accepted only from a loopback address.
+
+To expose the API on a network interface, set a private key of at least 32
+characters and then bind Uvicorn to the required interface:
+
+```bash
+export PROMPTMESH_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+The browser UI asks for this key when the server requires it. API clients must
+send it as `Authorization: Bearer <key>`. Keep it private and use HTTPS for
+remote deployments. Same-origin browser access needs no CORS configuration. If
+the browser UI is hosted separately, set `PROMPTMESH_ALLOWED_ORIGINS` to a
+comma-separated list of exact frontend origins; wildcard origins are not
+accepted.
+
+The API rejects request bodies over 128 KiB, limits each caller to 10 work
+requests per minute and 2 active jobs, and allows at most 4 active model jobs
+per server process. It retains at most 100 completed job records and expires
+them after 30 minutes. Model/input counts and output tokens are bounded by the
+API request schemas, and model-provider HTTP calls time out after 240 seconds.
+Synchronous test-case generation runs in a worker thread and uses the same
+active-work limits, so a slow provider call does not block the HTTP event loop.
+
+Prompt templates support simple placeholders such as `{{text}}` or
+`{{ text }}`. Jinja expressions, filters, calls, and control blocks are not
+executed.
+
+---
+
 ## ▶️ Running CLI Pipeline (Standalone Mode)
 
 For debugging and batch experiments:
