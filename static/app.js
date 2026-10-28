@@ -842,11 +842,14 @@ function loadJobHistory() {
 
 function validJobType(type) { return ["evaluation", "comparison", "evolution"].includes(type); }
 function typeLabel(type) { return ({ evaluation: "Evaluation", comparison: "Prompt comparison", evolution: "Prompt evolution" })[type] || "Model run"; }
+function historyEmptyMarkup(title, description) {
+  return '<div class="empty-inline empty-inline--illustrated"><img class="empty-inline__art" src="static/images/promptmesh-companion-thinking.webp" alt="" aria-hidden="true" width="1345" height="1169" loading="lazy"><div><strong>' + escapeHTML(title) + '</strong><p>' + escapeHTML(description) + '</p></div></div>';
+}
 
 function renderHistory() {
   const container = $("historyList");
   if (!state.jobHistory.length) {
-    container.innerHTML = '<div class="empty-inline"><span class="empty-mark" aria-hidden="true">—</span><div><strong>No completed runs</strong><p>Evaluation, comparison, and evolution summaries will appear here.</p></div></div>';
+    container.innerHTML = historyEmptyMarkup("No completed runs", "Evaluation, comparison, and evolution summaries will appear here.");
     return;
   }
   container.innerHTML = state.jobHistory.map((item) => "<div class=\"history-row\"><strong>" + escapeHTML(typeLabel(item.type)) + "</strong><span>" + escapeHTML(formatDate(item.completedAt)) + "</span><span>" + escapeHTML(String(item.count || 0)) + " result" + (item.count === 1 ? "" : "s") + "</span><span class=\"history-score\">" + (item.score === null ? "—" : formatNumber(item.score)) + "</span><button class=\"text-button\" type=\"button\" data-view-job=\"" + escapeHTML(item.id) + "\">Open</button></div>").join("");
@@ -856,7 +859,7 @@ function renderHistory() {
 function renderOverviewHistory() {
   const container = $("overviewHistory");
   if (!state.jobHistory.length) {
-    container.innerHTML = '<div class="empty-inline"><span class="empty-mark" aria-hidden="true">—</span><div><strong>No runs yet</strong><p>Your completed evaluations will appear here.</p></div></div>';
+    container.innerHTML = historyEmptyMarkup("No runs yet", "Your completed evaluations will appear here.");
     return;
   }
   container.innerHTML = state.jobHistory.slice(0, 4).map((item) => "<div class=\"recent-row\"><span class=\"recent-kind\">" + escapeHTML(typeLabel(item.type)) + "</span><span class=\"recent-meta\">" + escapeHTML(String(item.count || 0)) + " results</span><span class=\"recent-score\">" + (item.score === null ? "—" : formatNumber(item.score)) + "</span></div>").join("");

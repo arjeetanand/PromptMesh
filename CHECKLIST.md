@@ -15,3 +15,11 @@
 - [x] Complete a one-epoch synthetic LoRA/SFT run on MPS, show its held-out results in the UI, and load the saved adapter through the model registry. The demo scores are workflow evidence only, not a quality claim.
 - [x] Commit and push the LoRA/SFT implementation and design-token follow-up (`8a4e0db`, `31ba8a0`, `7767a81`) to PR #1; do not merge it.
 - [ ] Reconfirm the live PR target is `main` when the GitHub API is reachable.
+
+## Illustration follow-up
+
+- [x] Read the referenced illustration task and inspect PromptMesh's hero and true empty states.
+- [x] Generate an original two-pose PromptMesh companion and optimize the transparent images as WebP.
+- [x] Add the companion to the overview and empty run-history states with reduced-motion-aware animation.
+- [x] Verify image loading, desktop/mobile rendering, and the history empty state in the browser.
+- [ ] Commit this follow-up locally on `codex/promptmesh-illustrations`; do not push or merge without approval.

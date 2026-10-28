@@ -241,6 +241,13 @@ held-out scores. This covers the local dataset-validation and evaluation parts
 of FineTuneDB's workflow; PromptMesh does not collect production logs, support
 shared dataset editing, or host model training and serving.
 
+### Illustrations and motion
+
+The overview hero and the empty run-history states use original transparent
+PromptMesh companion artwork in `static/images/`. Its small float and thought
+animations are decorative, and the shared reduced-motion rule disables them
+for users who request less motion.
+
 The API provides `GET /api/training/datasets`, `GET /api/training/adapters`,
 and `POST /api/training/jobs`. The POST accepts only a dataset ID stored under
 `training/datasets/`, with bounded epochs, learning rate, and LoRA rank; it does

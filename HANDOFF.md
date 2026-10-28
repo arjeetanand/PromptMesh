@@ -11,6 +11,15 @@
 - Applied the requested black frame, white work surface, `#0F41F3` actions, and limited `#F9B318` highlights.
 - Added focused unit tests, documented the local training setup, and retained the safe launcher on ports 4004/5004/6004.
 
+## Illustration follow-up
+
+- Generated two original transparent mascot poses in the PromptMesh palette: a thinking hero pose and a compact run-history pose. Optimized WebP assets are in `static/images/` (about 384 KB combined).
+- Replaced the overview's static process diagram with the hero companion and added the alternate pose to both empty run-history states. Loading and API error placeholders remain text-led.
+- Added gentle character float and thought-dot animation; the existing `prefers-reduced-motion` rule disables it.
+- Browser verification passed at 1600px desktop and 390px mobile widths. Both poses loaded (1345px source width), neither view had horizontal overflow, and the run-history empty state rendered its alternate pose.
+- Confirmed the reduced-motion rule is present. `node --check static/app.js`, `bash -n run.sh`, and `git diff --check` passed.
+- Branch: `codex/promptmesh-illustrations`, based on `1e9c543`; local commit details will be recorded after committing. This follow-up has not been pushed or merged.
+
 ## Concepts and interview framing
 
 - **Prompt evolution** edits instructions while keeping model weights unchanged.
@@ -47,7 +56,7 @@
 
 ## Run instructions and next action
 
-- Current local server: `http://127.0.0.1:4004`; `/api/health` returned `healthy` during handoff.
+- Current local server: `http://127.0.0.1:4004`; start with `source .venv/bin/activate && ./run.sh` in this environment. `/api/health` returned `healthy` during handoff.
 - Create/activate `.venv`, then run `pip install -r requirements.txt`.
 - Main: `./run.sh` → `http://127.0.0.1:4004`; test and preview ports are 5004 and 6004.
 - Next: verify PR #1 still targets `main` when the GitHub API is reachable; do not merge it.
