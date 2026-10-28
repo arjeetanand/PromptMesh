@@ -104,6 +104,8 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
     base_revision: "pinned-revision",
     hardware: { device: "mps" },
     adapter_run_id: "adapter-run",
+    adapter_environment: { device: "cpu", python_version: "3.11.9", packages: { torch: "2.0.0" } },
+    prompt_selection_environment: { device: "cuda", python_version: "3.12.0", packages: { torch: "2.1.0" } },
     metrics: {
       base_initial_prompt: { record_exact_match: 0.1, field_accuracy: 0.2, json_valid_rate: 0.5 },
       base_validation_selected_prompt: { record_exact_match: 0.2, field_accuracy: 0.3, json_valid_rate: 0.6 },
@@ -113,6 +115,7 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
       }
     },
     performance: { lora_full_precision: { load_seconds: 2, inference_seconds: 3, tokens_per_second: 12, model_footprint_bytes: 800000000 } },
+    environment: { device: "mps", python_version: "3.12.1", platform: "macOS-test", machine: "arm64", packages: { torch: "2.14.1", transformers: "5.1.0", bitsandbytes: "0.50.0" } },
     quantized_inference: {
       backend: "bitsandbytes",
       backend_version: "0.50.0",
@@ -135,4 +138,24 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
   assert.match(html, /not QLoRA training/);
   assert.match(html, /0\.37 GiB/);
   assert.match(html, /8\.00 tok\/s/);
+  assert.match(elements.get("frozenBenchmarkEnvironment").textContent, /Training adapter: cpu · Python 3\.11\.9/);
+  assert.match(elements.get("frozenBenchmarkEnvironment").textContent, /Validation selection: cuda · Python 3\.12\.0/);
+  assert.match(elements.get("frozenBenchmarkEnvironment").textContent, /Frozen benchmark: mps · Python 3\.12\.1/);
+  assert.match(elements.get("frozenBenchmarkEnvironment").title, /macOS-test/);
+});
+
+test("prompt selection results show the validation runtime", () => {
+  const { context, elements } = loadApp();
+  vm.runInContext("displayPromptSelection({validation_examples:30, selected_prompt_id:'candidate-1', environment:{device:'mps',python_version:'3.12.1',packages:{torch:'2.14.1'}}})", context);
+
+  assert.match(elements.get("promptSelectionEnvironment").textContent, /Validation selection: mps · Python 3\.12\.1 · torch 2\.14\.1/);
+});
+
+test("runtime labels distinguish missing metadata from measured environments", () => {
+  const { context } = loadApp();
+  const measured = vm.runInContext("runtimeSummary({device:'mps', python_version:'3.12.1', packages:{torch:'2.14.1', transformers:'5.1.0'}})", context);
+  const missing = vm.runInContext("runtimeSummary(null) || 'Runtime versions not recorded (legacy run)'", context);
+
+  assert.equal(measured, "mps · Python 3.12.1 · torch 2.14.1 · transformers 5.1.0");
+  assert.equal(missing, "Runtime versions not recorded (legacy run)");
 });

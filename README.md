@@ -323,6 +323,14 @@ checks the card fields and exact data fingerprint; this local self-attestation
 cannot independently prove that a human reviewed the labels. The UI states this
 limit beside readiness and selection controls.
 
+New schema-v3 adapter manifests, validation prompt-selection records, and frozen
+benchmark reports record the Python, platform, machine, device, and installed
+versions of the training and inference packages. The Fine-tune page surfaces
+the training, selection, and benchmark environments separately and labels
+legacy runs when their environment was not recorded. This is run provenance,
+not a locked dependency environment; `requirements.txt` is not yet a full
+reproducible lockfile.
+
 After reviewing labels using the versioned annotation guide, fill
 `training/datasets/<dataset_id>.card.json` from the template. Validation and
 held-out test splits must each contain at least 30 examples across 10 source

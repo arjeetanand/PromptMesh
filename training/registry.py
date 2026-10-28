@@ -86,6 +86,7 @@ def list_adapters():
             "dataset_sha256": manifest["dataset_sha256"],
             "created_at": manifest["created_at"],
             "metrics_split": manifest.get("metrics_split", "legacy_test"),
+            "environment": manifest.get("environment"),
             "benchmark_manifest_ready": (
                 manifest.get("schema_version") == 3
                 and manifest.get("metrics_split") == "validation"

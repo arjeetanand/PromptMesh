@@ -166,7 +166,7 @@
               <div class="field"><label for="benchmarkCandidatePrompt">Candidate prompt template</label><textarea id="benchmarkCandidatePrompt" rows="6" required placeholder="You are a careful information extraction system. Return only the requested JSON fields.&#10;&#10;Text:&#10;{{text}}"></textarea><small class="field-hint">Include <code>{{text}}</code>. PromptMesh compares this candidate with extraction/v1 using validation labels.</small></div>
               <div class="form-actions"><span id="benchmarkWorkflowNote" class="form-note" role="status" aria-live="polite">A matching review card is required; its review status is self-attested.</span><button id="promptSelectionSubmit" class="button button-primary" type="submit" disabled>Choose prompt on validation</button></div>
             </form>
-            <section id="promptSelectionResults" class="benchmark-result" hidden><div class="results-heading"><div><h3>Validation prompt selection</h3><p id="promptSelectionSummary"></p></div></div><div id="promptSelectionMetrics" class="training-metrics"></div>
+            <section id="promptSelectionResults" class="benchmark-result" hidden><div class="results-heading"><div><h3>Validation prompt selection</h3><p id="promptSelectionSummary"></p></div></div><p id="promptSelectionEnvironment" class="field-hint"></p><div id="promptSelectionMetrics" class="training-metrics"></div>
               <fieldset id="quantizationOptions" class="quantization-options">
                 <legend>Optional quantized inference</legend>
                 <p>Choose these before the one-time test run. Extra variants increase run time; every selected method uses the same test rows as the full-precision LoRA control.</p>
@@ -176,7 +176,7 @@
               </fieldset>
               <button id="runFrozenBenchmarkBtn" class="button button-primary" type="button" disabled>Run frozen test benchmark once</button>
             </section>
-            <section id="frozenBenchmarkResults" class="benchmark-result" hidden><div class="results-heading"><div><h3>Frozen benchmark report</h3><p id="frozenBenchmarkSummary"></p></div></div><div id="frozenBenchmarkStats" class="result-stats"></div><div id="frozenBenchmarkMetrics" class="training-metrics"></div></section>
+            <section id="frozenBenchmarkResults" class="benchmark-result" hidden><div class="results-heading"><div><h3>Frozen benchmark report</h3><p id="frozenBenchmarkSummary"></p></div></div><div id="frozenBenchmarkStats" class="result-stats"></div><p id="frozenBenchmarkEnvironment" class="field-hint"></p><div id="frozenBenchmarkMetrics" class="training-metrics"></div></section>
           </section>
           <section id="savedAdapters" class="results-panel" hidden><div class="results-heading"><div><h2>Saved local adapters</h2><p>Completed adapters can also be selected on the evaluation page.</p></div></div><div id="savedAdapterList" class="adapter-list"></div></section>
         </section>

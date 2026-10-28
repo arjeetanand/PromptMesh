@@ -13,6 +13,7 @@ from training.datasets import (
     split_counts,
     split_dataset,
 )
+from training.environment import runtime_metadata
 from training.metrics import score_predictions
 from training.registry import RUNS_DIR, artifact_tree_sha256
 
@@ -188,6 +189,7 @@ def run_lora_training(job_id, request, jobs):
             "split_counts": counts,
             "metrics_split": "validation",
             "test_split_used": False,
+            "environment": runtime_metadata(device),
             "hyperparameters": {
                 "method": "LoRA + supervised fine-tuning",
                 "lora_rank": request.lora_rank,

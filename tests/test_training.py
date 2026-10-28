@@ -274,6 +274,7 @@ class AdapterRegistryTests(unittest.TestCase):
                 "dataset_sha256": "b" * 64,
                 "created_at": "2026-10-28T00:00:00+00:00",
                 "metrics_split": "validation",
+                "environment": {"device": "mps", "python_version": "3.12.1", "packages": {"torch": "2.14.1"}},
                 "metrics": {"adapter": {"record_exact_match": 0.5}},
             }), encoding="utf-8")
 
@@ -281,6 +282,7 @@ class AdapterRegistryTests(unittest.TestCase):
                 adapters = list_adapters()
 
         self.assertEqual(adapters[0]["metrics_split"], "validation")
+        self.assertEqual(adapters[0]["environment"]["device"], "mps")
 
     def test_cohere_credentials_are_not_required_to_create_a_local_model(self):
         with patch("models.cohere_model.cohere.Client") as client:

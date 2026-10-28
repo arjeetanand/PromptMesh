@@ -90,6 +90,13 @@
 - [x] Add regression checks for source grouping, safe writes, symlink rejection, and loopback-only access even with an API key.
 - [ ] Review candidates against sources, confirm reuse permissions, diversify years, and create an authorized benchmark dataset/card.
 - [x] Verify the new Fine-tune queue in the browser at 1440px, 768px, and 390px; confirm group navigation and mobile menu behavior. No physical phone test was performed.
+
+## Runtime reproducibility follow-up
+
+- [x] Record Python, platform, device, and installed training/inference package versions in adapter, validation-selection, and frozen-benchmark records.
+- [x] Surface training, selection, and benchmark runtime metadata in the Fine-tune UI and distinguish older runs with missing metadata.
+- [ ] Add and verify a pinned local training dependency lock; environment metadata alone does not guarantee a repeatable install.
+
 ## Navigation and background-job follow-up
 
 - [x] Add a Back to overview control to every non-overview page.

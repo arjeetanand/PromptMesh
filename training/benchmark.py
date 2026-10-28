@@ -13,6 +13,7 @@ from pathlib import Path
 
 from prompts.registry import PROMPT_BASE_PATH, PromptRegistry
 from training.datasets import benchmark_card_status, load_dataset_snapshot, split_dataset
+from training.environment import runtime_metadata
 from training.metrics import score_predictions
 from training.quantization import QUANTIZATION_METHODS, bitsandbytes_config, quantization_runtime
 from training.registry import get_benchmark_adapter
@@ -265,6 +266,7 @@ def run_prompt_selection(job_id, request, jobs):
             "selected_prompt": scored[chosen_index]["prompt"],
             "selected_prompt_sha256": scored[chosen_index]["prompt_sha256"],
             "device": device,
+            "environment": runtime_metadata(device),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         selection["selection_sha256"] = _json_digest(selection)
@@ -282,6 +284,7 @@ def run_prompt_selection(job_id, request, jobs):
                 "validation_examples": len(validation_rows),
                 "selected_prompt_id": selection["selected_prompt_id"],
                 "selected_prompt_sha256": selection["selected_prompt_sha256"],
+                "environment": selection["environment"],
                 "candidates": [
                     {"id": item["id"], "prompt_sha256": item["prompt_sha256"], "metrics": item["metrics"]}
                     for item in scored
@@ -554,6 +557,8 @@ def run_frozen_benchmark(job_id, request, jobs):
             "initial_prompt_source_sha256": selection["initial_prompt_source_sha256"],
             "adapter_run_id": request.adapter_run_id,
             "adapter_sha256": adapter["adapter_sha256"],
+            "adapter_environment": adapter.get("environment"),
+            "prompt_selection_environment": selection.get("environment"),
             "selected_prompt_id": selection["selected_prompt_id"],
             "selected_prompt_sha256": selection["selected_prompt_sha256"],
             "metrics_split": "test",
@@ -575,6 +580,7 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "processor": platform.processor() or None,
                 "torch_version": str(torch.__version__),
             },
+            "environment": runtime_metadata(device),
             "metrics": {
                 "base_initial_prompt": {**baseline_metrics, "record_exact_match_95ci": baseline_ci},
                 "base_validation_selected_prompt": {**selected_metrics, "record_exact_match_95ci": selected_ci},

@@ -768,6 +768,10 @@ function renderSavedAdapters() {
     const fingerprint = adapter.dataset_sha256 ? " · data " + adapter.dataset_sha256.slice(0, 12) : "";
     const metricLabel = adapter.metrics_split === "validation" ? "validation exact match " : "legacy test metric (previously exposed) ";
     copy.innerHTML = "<strong>" + escapeHTML(adapter.dataset_id) + "</strong><span>" + escapeHTML(adapter.id + fingerprint) + " · " + metricLabel + formatPercent(adapter.metrics?.record_exact_match) + "</span>";
+    const runtime = document.createElement("span");
+    runtime.textContent = runtimeSummary(adapter.environment) || "Runtime versions not recorded (legacy run)";
+    runtime.title = runtimeDetails(adapter.environment);
+    copy.append(runtime);
     const button = document.createElement("button");
     button.className = "button button-secondary";
     button.type = "button";
@@ -1262,6 +1266,9 @@ function displayPromptSelection(result) {
   state.lastPromptSelection = result;
   $("promptSelectionResults").hidden = false;
   $("promptSelectionSummary").textContent = result.validation_examples + " validation examples · selected " + result.selected_prompt_id + " · final test not accessed";
+  const runtime = $("promptSelectionEnvironment");
+  runtime.textContent = "Validation selection: " + (runtimeSummary(result.environment) || "runtime versions not recorded.");
+  runtime.title = runtimeDetails(result.environment);
   $("promptSelectionMetrics").innerHTML = (result.candidates || []).map((candidate) => {
     const metrics = candidate.metrics || {};
     return "<article class=\"training-metric\"><span>" + escapeHTML(candidate.id) + "</span><div><small>Record exact match</small><strong>" + formatPercent(metrics.record_exact_match) + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics.field_accuracy) + "</strong></div><b>" + formatPercent(metrics.json_valid_rate) + " valid JSON</b></article>";
@@ -1280,6 +1287,14 @@ function displayFrozenBenchmark(report, created = true) {
     + statMarkup("Device", report.hardware?.device)
     + statMarkup("LoRA adapter", report.adapter_run_id)
     + statMarkup("Dataset SHA-256", fingerprint);
+  const runtime = $("frozenBenchmarkEnvironment");
+  const environments = [
+    ["Training adapter", report.adapter_environment],
+    ["Validation selection", report.prompt_selection_environment],
+    ["Frozen benchmark", report.environment]
+  ];
+  runtime.textContent = environments.map(([stage, environment]) => stage + ": " + (runtimeSummary(environment) || "runtime versions not recorded")).join(" · ");
+  runtime.title = environments.map(([stage, environment]) => stage + ": " + (runtimeDetails(environment) || "runtime versions not recorded")).join("\n");
   const labels = [
     ["Base · extraction/v1", report.metrics?.base_initial_prompt],
     ["Base · validation-selected prompt", report.metrics?.base_validation_selected_prompt],
@@ -1312,6 +1327,24 @@ function displayFrozenBenchmark(report, created = true) {
     $("frozenBenchmarkMetrics").innerHTML = metricCards;
   }
   updateBenchmarkControls();
+}
+
+function runtimeSummary(environment) {
+  if (!environment) return "";
+  const packages = environment.packages || {};
+  return [
+    environment.device,
+    environment.python_version && "Python " + environment.python_version,
+    packages.torch && "torch " + packages.torch,
+    packages.transformers && "transformers " + packages.transformers,
+    packages.bitsandbytes && "bitsandbytes " + packages.bitsandbytes
+  ].filter(Boolean).join(" · ");
+}
+
+function runtimeDetails(environment) {
+  if (!environment) return "";
+  const packages = Object.entries(environment.packages || {}).map(([name, version]) => name + " " + (version || "not installed"));
+  return [environment.platform, environment.machine, ...packages].filter(Boolean).join(" · ");
 }
 
 function quantizationMetricCard(label, metrics = {}, performance = {}) {

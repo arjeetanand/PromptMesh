@@ -82,6 +82,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             "metrics_split": "validation",
             "test_split_used": False,
             "adapter_sha256": artifact_tree_sha256(adapter_dir),
+            "environment": {"device": "cpu", "python_version": "3.12-test", "packages": {"torch": "test"}},
         }
         (run_dir / "manifest.json").write_text(json.dumps(self.adapter_manifest), encoding="utf-8")
         self.adapter_run_id = run_id
@@ -121,12 +122,15 @@ class FrozenBenchmarkTests(unittest.TestCase):
         return result["selection_id"], jobs
 
     def test_prompt_selection_uses_validation_gold_and_persists_hashes(self):
-        selection_id, _ = self._select_prompt()
+        selection_id, jobs = self._select_prompt()
         selection = benchmark.load_prompt_selection(selection_id)
 
         self.assertEqual(selection["metrics_split"], "validation")
         self.assertFalse(selection["test_split_used"])
         self.assertEqual(selection["selected_prompt_id"], "candidate-1")
+        self.assertEqual(selection["environment"]["device"], "cpu")
+        result = next(changes["result"] for _job_id, changes in jobs.updates if "result" in changes)
+        self.assertEqual(result["environment"]["device"], "cpu")
         self.assertEqual(len(selection["selection_sha256"]), 64)
         self.assertNotIn("Private source text", json.dumps(selection))
 
@@ -152,6 +156,9 @@ class FrozenBenchmarkTests(unittest.TestCase):
             self.assertEqual(report["metrics"]["lora_validation_selected_prompt"]["record_exact_match"], 1.0)
             self.assertEqual(report["test_examples"], 30)
             self.assertEqual(report["test_source_groups"], 30)
+            self.assertEqual(report["adapter_environment"]["python_version"], "3.12-test")
+            self.assertEqual(report["prompt_selection_environment"]["device"], "cpu")
+            self.assertEqual(report["environment"]["device"], "cpu")
             self.assertEqual(report["metrics"]["lora_validation_selected_prompt"]["record_exact_match_95ci"]["method"], "source-group bootstrap percentile interval")
             report_path = self.benchmarks_dir / "reviewed" / self.dataset_digest / "final.json"
             reservation_path = self.benchmarks_dir / "reviewed" / self.dataset_digest / "reservation.json"
@@ -211,6 +218,8 @@ class FrozenBenchmarkTests(unittest.TestCase):
 
         report = next(changes["result"]["report"] for job_id, changes in jobs.updates if job_id == "quantized-job" and "result" in changes)
         variant = report["quantized_inference"]["variants"][0]
+        self.assertEqual(report["environment"]["device"], "cpu")
+        self.assertIn("torch", report["environment"]["packages"])
         self.assertEqual(loader_calls, ["bnb_nf4", None, None, "bnb_nf4"])
         self.assertEqual(generated_inputs[0], (8, [None]))
         self.assertEqual(generated_inputs[-1][1], generated_inputs[-2][1])
