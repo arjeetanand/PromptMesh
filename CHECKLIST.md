@@ -91,6 +91,8 @@
 - [x] Add regression checks for source grouping, safe writes, symlink rejection, and loopback-only access even with an API key.
 - [ ] Review candidates against sources, confirm reuse permissions, diversify years, and create an authorized benchmark dataset/card.
 - [x] Verify the new Fine-tune queue in the browser at 1440px, 768px, and 390px; confirm group navigation and mobile menu behavior. No physical phone test was performed.
+- [x] Audit the live candidate-review form: all visible controls are named, tab order is logical, status regions and heading structure are present, key text contrast is at least 4.5:1, and there is no horizontal overflow at 320px, 390px, 768px, 1024px, or 1440px.
+- [ ] Verify the review flow with a screen reader and an automated axe-core scan; neither was run in this manual browser audit.
 
 ## Runtime reproducibility follow-up
 

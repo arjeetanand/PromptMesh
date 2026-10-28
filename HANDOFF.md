@@ -221,3 +221,11 @@
 - This snapshot does not pin app-only dependencies from `requirements.txt`, is not portable to Linux/Windows, and has not been installed in a clean environment. That clean-install check remains open.
 - README now shows how to install the app requirements together with this lock on the recorded platform and states its limits. The existing `requirements-quantization.txt` remains the optional backend entry point for other environments.
 - Lock commit `e2de5fc` is pushed to `codex/promptmesh-validation-selection`; PR #2 was verified open against `main` at head `e2de5fc` after the push. It was not merged.
+
+## Fine-tune review accessibility audit — 2026-10-29
+
+- Inspected the live local Fine-tune page on preview port 6004; the API was connected and the candidate queue showed 246 rows / 82 source groups with zero reviewed labels. The accessibility tree exposed the linked source, all three variants, labeled organization/year/claim fields, separate reuse controls, and save status. No review decision was saved.
+- Keyboard traversal through the review form followed source group, previous/next, source link, each candidate's organization/year/claim/note/decision fields, reuse decision/evidence, and save. All visible controls had accessible names; headings followed H1/H2/H3 order; status feedback used polite status regions; no duplicate IDs were found.
+- The candidate review panel had no horizontal overflow at CSS viewport widths 320, 390, 768, 1024, and 1440. The mobile navigation toggle exposed `Open navigation` / `Close navigation` and changed `aria-expanded`. The browser reported no console warnings or errors.
+- Measured text contrast for the candidate summary, guidance, pending status, draft labels, source focus, and primary save button ranged from 6.29:1 to 17.37:1. This was a targeted manual check, not a whole-app contrast audit or accessibility certification. No screen-reader session or axe-core scan was run.
+- The task browser viewport was restored after testing. Human label review, reuse-rights decisions, a balanced benchmark corpus, and the clean-install test for the environment lock remain open.
