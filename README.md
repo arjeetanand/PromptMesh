@@ -17,6 +17,7 @@ It enables:
 * Automated test generation
 * Prompt evolution with feedback loops
 * Real-time job tracking and result inspection
+* Local Qwen3-0.6B LoRA/SFT runs for structured entity extraction
 
 All long-running operations execute asynchronously with progress reporting and result persistence in memory.
 
@@ -115,6 +116,7 @@ core/           → Prompt rendering and execution engine
 comparison/     → Prompt comparison logic
 evaluation/     → Judge and scoring logic
 optimization/   → Failure analysis and evolution engine
+training/       → Grouped datasets, LoRA jobs, held-out metrics, local adapters
 static/         → Frontend UI assets
 app.py          → FastAPI backend server
 main.py         → CLI experiment runner
@@ -207,13 +209,46 @@ For isolated instances, `PROMPTMESH_PORT=5004 ./run.sh` starts a test instance;
 serves the UI and its API from the same process. `python app.py` remains
 available on Windows and for the legacy port `8000` workflow.
 
-The redesigned UI provides model evaluation, two-prompt comparison, prompt
-evolution, generated test cases, JSON result export, and local run summaries.
-Prompt evolution edits instructions; it does not train model weights. LoRA or
-other fine-tuning is not connected to the current API, and the UI labels that
-boundary explicitly. A credible training extension should add a separate
-dataset and training pipeline, then compare the adapter against the base model
-on a held-out benchmark.
+The redesigned UI provides model evaluation, prompt comparison and evolution,
+test-case generation, JSON export, local run summaries, and local LoRA/SFT
+training. Prompt evolution edits instructions; fine-tuning changes adapter
+weights. The training flow compares Qwen3-0.6B before and after training on the
+same deterministic, group-held-out examples using JSON validity, record exact
+match, and field accuracy. These held-out metrics are deterministic and do not
+use PromptMesh's configured LLM judge.
+
+### Local LoRA/SFT workflow
+
+Create a labeled JSONL file in `training/datasets/`; follow
+[`training/datasets/README.md`](training/datasets/README.md). Each row needs a
+`group_id`, `input`, and gold `output` object with `organization`, `year`, and
+`claim`. Keep paraphrases or chunks from one source under the same group ID.
+PromptMesh assigns complete groups to deterministic train, validation, and test
+splits, requires at least 12 distinct groups, and records the dataset SHA-256
+with the adapter. Private dataset files and trained runs are ignored by Git.
+
+Open **Fine-tune** in the UI to choose a dataset, epoch count, LoRA rank, and
+learning rate. The first run downloads the Qwen3-0.6B checkpoint from Hugging
+Face (about 1.5 GB); model training and held-out scoring then run locally. The
+synthetic `entity_extraction_demo` set checks the workflow only; it is not a
+benchmark or résumé evidence. Use a reviewed, representative dataset and a
+fresh held-out set before reporting any model improvement.
+
+The Fine-tune page shows schema readiness, example and source-group counts,
+train/validation/test sizes, and a short SHA-256 dataset fingerprint. Completed
+runs keep that fingerprint with the adapter and show aggregate plus per-field
+held-out scores. This covers the local dataset-validation and evaluation parts
+of FineTuneDB's workflow; PromptMesh does not collect production logs, support
+shared dataset editing, or host model training and serving.
+
+The API provides `GET /api/training/datasets`, `GET /api/training/adapters`,
+and `POST /api/training/jobs`. The POST accepts only a dataset ID stored under
+`training/datasets/`, with bounded epochs, learning rate, and LoRA rank; it does
+not accept arbitrary file paths or upload dataset contents. The local runner
+saves adapter files under ignored `training/runs/` and registers them as
+`trained:<run-id>` models. PromptMesh's general evaluation page uses the
+configured judge model, which may be remote; use it only with data that may be
+sent to that provider.
 
 ---
 
@@ -241,6 +276,9 @@ GET /api/tasks/{task}/versions
 ```
 GET /api/models
 ```
+
+Local training datasets and saved adapters are listed by
+`GET /api/training/datasets` and `GET /api/training/adapters`.
 
 ---
 
@@ -281,6 +319,17 @@ Runs automated optimization loop.
 ```
 POST /api/test-cases/generate
 ```
+
+### Local fine-tuning
+
+```text
+POST /api/training/jobs
+```
+
+Starts one local LoRA/SFT job; poll its job ID through the existing
+`GET /api/jobs/{job_id}` route. Training is disabled until the local training
+dependencies are available. Only one training job can use the local model
+resources at a time.
 
 ---
 

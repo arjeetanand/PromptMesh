@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f5f4ef">
+  <meta name="theme-color" content="#0b0b0d">
   <meta name="description" content="A focused workspace for evaluating and improving language-model prompts.">
   <title>PromptMesh — Evaluation workspace</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -46,6 +46,9 @@
           <p class="nav-label">Improve</p>
           <button class="nav-btn" type="button" data-tab="evolve">
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 14.5c2.2-5.4 4.3-8.2 6.4-8.2 2.5 0 3.3 4.9 7.6 1.2M3 14.5h4m-4 0v-4m14-3h-4m4 0v4"/></svg><span>Prompt evolution</span>
+          </button>
+          <button class="nav-btn" type="button" data-tab="finetune">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h12M7 3v4m6 1v4m-4 1v4"/></svg><span>Fine-tune</span>
           </button>
           <button class="nav-btn" type="button" data-tab="testcases">
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3.5h8m-8 3h8m-8 3h5m-5 3h8m-9.5-11h-1v15h13v-15h-1"/></svg><span>Test cases</span>
@@ -109,7 +112,30 @@
               <button class="workflow-step" type="button" data-go="evolve"><span class="step-number">03</span><span><strong>Improve</strong><small>Use failures to guide prompt revisions.</small></span><span class="step-arrow" aria-hidden="true">↗</span></button>
             </div>
           </section>
-          <aside class="roadmap-note"><span class="roadmap-rule" aria-hidden="true"></span><div><strong>Model fine-tuning comes after the benchmark.</strong><p>This version runs inference and evolves prompts; weight training is not connected to the API yet. A held-out test set will let you measure LoRA fine-tuning honestly when that stage is added.</p></div></aside>
+          <aside class="roadmap-note"><span class="roadmap-rule" aria-hidden="true"></span><div><strong>Prompt changes and weight changes are separate experiments.</strong><p>Prompt evolution edits instructions. Fine-tuning trains a local LoRA adapter and compares it with the base model on held-out examples.</p></div></aside>
+        </section>
+
+        <section id="finetune-tab" class="tab-content" aria-labelledby="fineTuneTitle" hidden>
+          <div class="page-heading heading-row"><div><h1 id="fineTuneTitle">Fine-tune a small model</h1><p>Train a local LoRA adapter for structured entity extraction, then compare held-out results with its base model.</p></div><span class="page-chip"><span class="status-dot"></span>Local SFT</span></div>
+          <div class="workbench-grid">
+            <form id="fineTuneForm" class="form-panel">
+              <div class="form-section">
+                <div class="form-section-heading"><span class="step-number">01</span><div><h2>Choose labeled data</h2><p>Related examples stay together when PromptMesh creates the held-out splits.</p></div></div>
+                <div class="field"><label for="fineTuneDataset">Dataset</label><select id="fineTuneDataset" required><option value="">Loading local datasets…</option></select><small id="fineTuneDatasetNote" class="field-hint">Each JSONL row is schema-checked and split by source group.</small><div id="fineTuneDatasetReadiness" class="dataset-readiness" role="status" aria-live="polite" hidden></div></div>
+              </div>
+              <div class="form-section">
+                <div class="form-section-heading"><span class="step-number">02</span><div><h2>Set a small training run</h2><p>Only adapter weights are trained; the base checkpoint stays intact.</p></div></div>
+                <div class="field-grid training-fields"><div class="field"><label for="fineTuneEpochs">Epochs</label><input id="fineTuneEpochs" type="number" min="1" max="3" step="1" value="1" required><small class="field-hint">1–3 epochs per run</small></div><div class="field"><label for="fineTuneRank">LoRA rank</label><select id="fineTuneRank"><option value="4">4 · smaller adapter</option><option value="8" selected>8 · balanced</option><option value="16">16 · more capacity</option></select></div><div class="field"><label for="fineTuneLearningRate">Learning rate</label><input id="fineTuneLearningRate" type="number" min="0.000001" max="0.0005" step="0.000001" value="0.0002" required><small class="field-hint">Allowed range: 0.000001–0.0005</small></div></div>
+              </div>
+              <div class="form-actions"><span class="form-note" id="fineTuneRuntimeNote">Checking local training runtime…</span><button id="fineTuneSubmit" type="submit" class="button button-primary" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 9 6-9 6V4Z"/></svg>Start local training</button></div>
+            </form>
+            <aside class="side-column">
+              <section class="side-panel"><h2>What this run measures</h2><p>The same fixed test groups score the base checkpoint before training and the LoRA adapter after training.</p><div class="side-rule"></div><dl class="measure-list"><div><dt>JSON validity</dt><dd>Exact output schema</dd></div><div><dt>Record exact match</dt><dd>All three fields correct</dd></div><div><dt>Field accuracy</dt><dd>Each field scored separately</dd></div></dl></section>
+              <section class="side-panel side-panel-muted"><p class="side-eyebrow">Local run details</p><p>Training and held-out scoring run on this machine. The first run downloads Qwen3-0.6B weights from Hugging Face; your dataset stays local. The general evaluation page uses its configured judge model, which may be remote.</p></section>
+            </aside>
+          </div>
+          <section id="fineTuneResults" class="results-panel" hidden><div class="results-heading"><div><h2>Base model vs. trained adapter</h2><p id="fineTuneSummary">Held-out test results</p></div><button id="evaluateAdapterBtn" class="button button-secondary" type="button">Use adapter in evaluation</button></div><div id="fineTuneStats" class="result-stats"></div><div id="fineTuneMetrics" class="training-metrics"></div><div class="training-loss-panel"><div><h3>Training progress</h3><p>Training and validation loss by logged step</p></div><div id="fineTuneLossChart" class="loss-chart"></div></div></section>
+          <section id="savedAdapters" class="results-panel" hidden><div class="results-heading"><div><h2>Saved local adapters</h2><p>Completed adapters can also be selected on the evaluation page.</p></div></div><div id="savedAdapterList" class="adapter-list"></div></section>
         </section>
 
         <section id="evaluate-tab" class="tab-content" aria-labelledby="evaluateTitle" hidden>
@@ -158,7 +184,7 @@
             <div class="form-section"><div class="form-section-heading"><span class="step-number">02</span><div><h2>Choose the evaluation set</h2><p>Supply examples the optimizer can use to find weaknesses.</p></div></div><div class="field"><div class="label-row"><label for="evolveTestInputs">Test inputs</label><button class="text-button" type="button" onclick="loadExampleTestInputs('evolve')">Load examples</button></div><textarea id="evolveTestInputs" rows="6" required placeholder="One case per line."></textarea><small class="field-hint">For final quality claims, evaluate the selected prompt on held-out data.</small></div></div>
             <div class="form-section"><div class="form-section-heading"><span class="step-number">03</span><div><h2>Choose models and limits</h2><p>The execution model answers; the optimizer proposes edits.</p></div></div><div class="field-grid"><div class="field"><label for="evolveModel">Execution model</label><select id="evolveModel" required><option value="">Select a model</option></select></div><div class="field"><label for="evolveOptimizer">Optimizer model</label><select id="evolveOptimizer"><option value="command-a-03-2025">Command-A</option><option value="qwen2.5:latest">Qwen 2.5</option></select></div></div><div class="field compact-field"><label for="evolveIterations">Maximum iterations</label><input id="evolveIterations" type="number" value="3" min="1" max="10"></div></div>
             <div class="form-actions"><span class="form-note">Prompt text changes; model weights do not.</span><button class="button button-primary" type="submit"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 14.5c2.2-5.4 4.3-8.2 6.4-8.2 2.5 0 3.3 4.9 7.6 1.2M3 14.5h4m-4 0v-4m14-3h-4m4 0v4"/></svg>Start evolution</button></div>
-          </form><aside class="side-column"><section class="side-panel"><h2>What evolution changes</h2><p>PromptMesh uses evaluation failures to guide candidate instructions, then keeps revisions that improve the score.</p><div class="side-rule"></div><p class="side-small">This is prompt optimization. Fine-tuning updates model weights and needs a separate training pipeline.</p></section></aside></div>
+          </form><aside class="side-column"><section class="side-panel"><h2>What evolution changes</h2><p>PromptMesh uses evaluation failures to guide candidate instructions, then keeps revisions that improve the score.</p><div class="side-rule"></div><p class="side-small">This is prompt optimization. Fine-tuning changes model weights through the separate local LoRA workflow.</p></section></aside></div>
           <section id="evolveResults" class="results-panel" hidden><div class="results-heading"><div><h2>Evolution history</h2><p>Review each accepted prompt and its score.</p></div><button class="button button-secondary" type="button" onclick="exportResults('evolution')">Export JSON</button></div><div id="evolutionStats" class="result-stats"></div><div id="evolutionTimeline" class="evolution-timeline"></div></section>
         </section>
 
@@ -182,7 +208,7 @@
     <div class="dialog-mark" aria-hidden="true"><span></span><span></span><span></span></div>
     <h2 id="progressTitle">Starting your run</h2><p id="progressText">Waiting for the model job.</p>
     <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
-    <p class="dialog-footnote">You can keep this tab open while the models respond.</p>
+    <p id="progressFootnote" class="dialog-footnote">You can keep this tab open while the models respond.</p>
   </dialog>
   <div id="toastContainer" class="toast-container" role="status" aria-live="polite"></div>
   <script src="/static/app.js" defer></script>

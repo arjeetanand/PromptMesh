@@ -1,44 +1,51 @@
-# PromptMesh UI redesign handoff
+# PromptMesh UI and local LoRA handoff
 
 ## Change inventory
 
-- Replaced the legacy interface with a responsive overview, evaluation, prompt comparison, prompt evolution, test-case generation, and run-history workspace.
-- Reconnected the frontend forms to the current FastAPI schemas and job response fields, including evolution's object-shaped result payload.
-- Added per-case evaluation and prompt-comparison breakdowns, top-model summary, evolution history, JSON export, and browser-local run summaries. Full results remain in the API's in-memory job store for 30 minutes.
-- Added `run.sh` with safe PID/command/working-directory checks and port assignments 4004 (main), 5004 (test), and 6004 (preview).
-- Added missing FastAPI/Uvicorn requirements and documented setup and the current training boundary.
-- Saved the chosen visual direction in `.taste-skill/direction.json` (framed sheet, IBM Plex, muted warm frame, teal data accent).
+- Replaced the legacy form-first interface with a responsive experiment workspace for evaluation, prompt comparison/evolution, test-case generation, and run history.
+- Added a Fine-tune page and API for local Qwen3-0.6B LoRA supervised fine-tuning. It exposes dataset discovery, bounded run settings, progress, saved adapters, loss curves, and base-versus-adapter held-out metrics.
+- Added a JSONL dataset contract and deterministic source-group split so paraphrases from one source cannot appear in both train and test sets. Private dataset files and run artifacts are ignored by Git; the synthetic demo remains tracked.
+- Added local adapter model registration so completed runs can be selected in existing model workflows.
+- Added dataset readiness details and a SHA-256 fingerprint to the Fine-tune page; adapter manifests and saved-adapter rows retain the fingerprint for run lineage.
+- Added per-field held-out comparison for organization, year, and claim.
+- Applied the requested black frame, white work surface, `#0F41F3` actions, and limited `#F9B318` highlights.
+- Added focused unit tests, documented the local training setup, and retained the safe launcher on ports 4004/5004/6004.
 
-## Model-workflow terminology
+## Concepts and interview framing
 
-- **Evaluation:** score model outputs on the same inputs; inspect quality, latency, and token counts.
-- **Prompt comparison:** compare two prompt versions against a shared input and model set.
-- **Prompt evolution:** use observed failures to revise instructions; this changes prompt text, not model weights.
-- **Fine-tuning:** not implemented. SFT/LoRA needs a dataset, training adapter, checkpoint handling, and a held-out base-versus-adapter evaluation.
+- **Prompt evolution** edits instructions while keeping model weights unchanged.
+- **SFT/LoRA** trains a small set of adapter weights on labeled prompt/answer examples while preserving the base checkpoint.
+- The training job scores the base checkpoint and adapter on the same untouched, grouped test examples. It records JSON-valid rate, record exact match, per-field accuracy, train/validation loss, dataset hash, split counts, model revision, and selected hyperparameters. The held-out scores use deterministic parsing, not an LLM judge.
+- Interview description: “I built a local, reproducible SFT experiment for structured extraction: grouped data splits prevent source leakage, LoRA adapts a small model, and a fixed held-out set compares the adapter against its base model with schema and exact-match metrics.”
+- Do not claim a gain from the tracked 48-example synthetic demo. A résumé result requires a reviewed domain dataset, a separate test set, repeated runs or uncertainty analysis, and an observed improvement.
+- LoRA is the implemented low-resource choice. QLoRA is a memory-saving option for larger checkpoints; full fine-tuning updates all weights and costs more memory; RAG adds retrieved context at inference, DPO needs preference pairs, and distillation trains a smaller student from a teacher. Those methods are not implemented in this stage.
 
-For an interview, describe the first three as implemented workflows and identify fine-tuning as the next engineering milestone. Do not claim the UI trains models.
+## Data and runtime notes
+
+- `training/datasets/entity_extraction_demo.jsonl` is synthetic workflow data only. Add private JSONL files beside it using `training/datasets/README.md`; those files are gitignored.
+- The first training run downloads the Qwen3-0.6B checkpoint from Hugging Face (approximately 1.5 GB). Training and the fine-tune page's held-out scoring are local. The general PromptMesh evaluation endpoint can use a remote judge model; its UI path now identifies that distinction.
+- Adapter output is stored under `training/runs/` and can be selected by `trained:<run-id>`. Local runs are gitignored.
+- Completed the bundled synthetic demo on MPS: 36 train / 6 validation / 6 held-out examples, one epoch, LoRA rank 8, 70.8 seconds. Base: 0% valid JSON, 0% exact records, 0% field accuracy. Adapter: 100% valid JSON, 0% exact records, 66.7% field accuracy (organization/year 100%, claim 0%); validation loss 0.3336. With only six synthetic test examples, these numbers demonstrate the workflow and are not a quality result or résumé claim.
+- Loaded the saved adapter through `models.registry.get_model()` and completed a local synthetic extraction inference. The checkpoint download is cached on this machine, outside the repository.
 
 ## Verification
 
-- `node --check static/app.js`: passed.
-- `bash -n run.sh`: passed.
-- `python3 -m py_compile app.py`: passed.
-- `git diff --check`: passed at the last check.
-- API endpoint and payload/response shapes were inspected in `app.py`.
-- Browser rendering was reviewed at desktop and 480px mobile widths, including mobile navigation and custom-prompt mode. The temporary static preview served the HTML/CSS/JS; API calls were unavailable in that preview.
-- `./run.sh` was attempted and could not start the API: `No module named uvicorn`. FastAPI/Uvicorn are listed in `requirements.txt` but were not installed.
+- `./.venv/bin/python -m unittest discover -s tests -p 'test_training.py' -v`: 7 tests passed, including dataset path confinement, SHA-256 fingerprints, grouped split isolation, metric parsing, adapter path validation, lazy Cohere client construction, and Transformers batch generation.
+- Python compilation, `node --check static/app.js`, `bash -n run.sh`, and `git diff --check`: passed.
+- Loopback API checks for health, datasets, adapters, models, and tasks passed. The dataset endpoint returns the 64-character SHA-256 and MPS runtime; an unknown dataset returned 404 and an epoch count of 4 returned 422.
+- Browser review passed at desktop and 480px mobile width with no horizontal overflow. The Fine-tune page shows the readiness card and dataset fingerprint; the mobile drawer opens and closes without changing the current tab.
+- A UI-started local run completed on MPS and rendered the base/adapter comparison and loss history. Saved adapter inference through the model registry also passed. The six-example synthetic test remains workflow evidence only.
+- The first end-to-end attempt exposed Transformers 5 batch handling in both held-out scoring and adapter inference; both callers now pass `input_ids` and `attention_mask` to `generate`, and the regression test covers those paths.
 
-## Branch and launch
+## Branch and pull request
 
 - Branch: `codex/promptmesh-ui-redesign`.
-- UI implementation commit: `2c574ef` (`Redesign PromptMesh experiment workspace UI`).
-- Branch is pushed to `origin/codex/promptmesh-ui-redesign`.
-- Pull request: [#1 — Redesign PromptMesh experiment workspace UI](https://github.com/arjeetanand/PromptMesh/pull/1), targeting `main`.
-- Setup: create/activate `.venv`, then `pip install -r requirements.txt`.
-- Main: `./run.sh` → `http://127.0.0.1:4004`.
-- Test: `PROMPTMESH_PORT=5004 ./run.sh`.
-- Preview: `PROMPTMESH_PORT=6004 ./run.sh`.
+- Pull request: [#1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1), targeting `main`.
+- Existing PR commits: `2c574ef`, `043a3e8`, and `877cacf`. The user asked to keep changes in a PR targeting `main`; the current work is ready to commit and push to PR #1.
+- Do not merge PR #1.
 
-## Next action
+## Run instructions and next action
 
-Install the documented Python dependencies in the intended environment, launch the API, and run a real evaluation using a configured local or cloud model. Then add a separate, bounded LoRA/SFT training pipeline if model-weight tuning is still in scope.
+- Create/activate `.venv`, then run `pip install -r requirements.txt`.
+- Main: `./run.sh` → `http://127.0.0.1:4004`; test and preview ports are 5004 and 6004.
+- Next: inspect the staged diff, commit task-owned changes on this branch, push to update PR #1, and confirm its target remains `main`.

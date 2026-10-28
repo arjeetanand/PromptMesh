@@ -62,5 +62,9 @@ Thumbs.db
 # Generated artifacts
 # ============================
 project_dump.txt
+training/runs/
+training/datasets/*
+!training/datasets/README.md
+!training/datasets/entity_extraction_demo.jsonl
 
 combine_project_to_txt.py

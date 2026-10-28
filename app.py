@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
-from typing import List, Optional
+from typing import List, Literal, Optional
 from pathlib import Path
 from datetime import datetime
 import asyncio
@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import ipaddress
 import os
+import threading
 
 
 # ============================================================
@@ -42,6 +43,9 @@ from optimization.failure_analysis import analyze_failure
 from optimization.evolver import evolve_prompt
 from optimization.testcase_generator import generate_test_cases
 from models.registry import get_model
+from training.datasets import list_datasets, load_dataset, split_dataset
+from training.runner import run_lora_training, training_runtime
+from training.registry import list_adapters
 
 
 # ============================================================
@@ -92,6 +96,7 @@ if API_KEY and len(API_KEY) < 32:
     raise RuntimeError("PROMPTMESH_API_KEY must contain at least 32 characters")
 
 jobs = JobStore()
+TRAINING_LOCK = threading.Lock()
 registry = PromptRegistry()
 executor = PromptExecutor()
 request_limiter = RequestRateLimiter(limit=MAX_REQUESTS_PER_MINUTE)
@@ -204,6 +209,14 @@ def _run_admitted_job(job_id, runner, request_model):
         jobs.finish(job_id)
 
 
+def _run_admitted_training_job(job_id, request_model):
+    try:
+        run_lora_training(job_id, request_model, jobs)
+    finally:
+        jobs.finish(job_id)
+        TRAINING_LOCK.release()
+
+
 async def _expire_jobs():
     while True:
         await asyncio.sleep(60)
@@ -274,6 +287,13 @@ class TestCaseGenerationRequest(BaseModel):
     base_inputs: List[str] = Field(min_length=1, max_length=MAX_TEST_INPUTS)
     schema_fields: Optional[List[str]] = Field(default=None, max_length=32)
     count: int = Field(default=5, ge=1, le=MAX_TEST_INPUTS)
+
+
+class FineTuneRequest(BaseModel):
+    dataset_id: str = Field(min_length=1, max_length=64)
+    epochs: int = Field(default=1, ge=1, le=3)
+    learning_rate: float = Field(default=0.0002, gt=0, le=0.0005)
+    lora_rank: Literal[4, 8, 16] = 8
 
 
 class ApiSessionRequest(BaseModel):
@@ -362,12 +382,50 @@ async def get_task_versions(task: str):
 @app.get("/api/models")
 async def get_models():
     from models.registry import MODEL_DEFINITIONS
+    trained = [adapter["id"] for adapter in list_adapters()]
     return {
         "fast": ["llama3.2:latest"],
         "mid": ["qwen2.5:latest"],
         "heavy": ["command-a-03-2025"],
-        "all": list(MODEL_DEFINITIONS.keys())
+        "all": list(MODEL_DEFINITIONS.keys()) + trained,
     }
+
+
+@app.get("/api/training/datasets")
+async def get_training_datasets():
+    return {"datasets": list_datasets(), "runtime": training_runtime()}
+
+
+@app.get("/api/training/adapters")
+async def get_training_adapters():
+    return {"adapters": list_adapters()}
+
+
+@app.post("/api/training/jobs")
+async def start_training(request: FineTuneRequest, bg: BackgroundTasks, http_request: Request):
+    runtime = training_runtime()
+    if not runtime["available"]:
+        missing = ", ".join(runtime["missing"])
+        raise HTTPException(status_code=503, detail=f"Local training dependencies are missing: {missing}")
+    try:
+        split_dataset(load_dataset(request.dataset_id))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Training dataset not found") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if not TRAINING_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="A local fine-tuning job is already running")
+    job_id = None
+    try:
+        job_id = _admit_job(http_request)
+        bg.add_task(_run_admitted_training_job, job_id, request)
+    except Exception:
+        if job_id:
+            jobs.finish(job_id)
+        TRAINING_LOCK.release()
+        raise
+    return {"job_id": job_id, "status": "started"}
 
 
 @app.get("/api/jobs/{job_id}")

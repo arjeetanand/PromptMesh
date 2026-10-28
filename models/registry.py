@@ -91,6 +91,16 @@ def get_model(model_name: str):
 
         raise ValueError(f"Invalid model type for registered model: {model_name}")
 
+    # Trained adapters are addressed only by the run ids created locally.
+    if model_name.startswith("trained:"):
+        run_id = model_name.partition(":")[2]
+        from training.registry import get_adapter_path
+
+        get_adapter_path(run_id)
+        from training.model import TrainedAdapterModel
+
+        return TrainedAdapterModel(run_id)
+
     # 2) accept direct Ollama model identifiers (common form: "model:tag")
     if ":" in model_name:
         return OllamaModel(model_name)

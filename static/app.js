@@ -3,6 +3,10 @@ const HISTORY_KEY = "promptmesh.run-summaries.v1";
 const state = {
   tasks: [],
   models: {},
+  trainingDatasets: [],
+  trainingRuntime: null,
+  trainedAdapters: [],
+  activeAdapterModel: null,
   activeTab: "overview",
   pollingTimer: null,
   jobBusy: false,
@@ -92,11 +96,22 @@ function setEmptySelectors(message) {
 }
 
 async function loadInitialData() {
-  const [tasksResult, modelsResult] = await Promise.allSettled([apiCall("tasks"), apiCall("models")]);
+  const [tasksResult, modelsResult, trainingResult] = await Promise.allSettled([
+    apiCall("tasks"), apiCall("models"), apiCall("training/datasets")
+  ]);
   if (tasksResult.status === "fulfilled") state.tasks = tasksResult.value.tasks || [];
   if (modelsResult.status === "fulfilled") state.models = modelsResult.value || {};
+  if (trainingResult.status === "fulfilled") {
+    state.trainingDatasets = trainingResult.value.datasets || [];
+    state.trainingRuntime = trainingResult.value.runtime || null;
+  } else {
+    state.trainingDatasets = [];
+    state.trainingRuntime = null;
+  }
   populateTaskDropdowns();
   populateModelSelectors();
+  populateTrainingDatasets();
+  await loadSavedAdapters();
   $("overviewTaskCount").textContent = String(state.tasks.length);
   $("overviewModelCount").textContent = String((state.models.all || []).length);
   const unavailable = [tasksResult, modelsResult].some((result) => result.status === "rejected");
@@ -215,7 +230,7 @@ function setupNavigation() {
   activateTab(validTab(initial) ? initial : "overview", false);
 }
 
-function validTab(tab) { return ["overview", "evaluate", "compare", "evolve", "testcases", "history"].includes(tab); }
+function validTab(tab) { return ["overview", "evaluate", "compare", "evolve", "finetune", "testcases", "history"].includes(tab); }
 
 function activateTab(tab, updateHash) {
   if (!validTab(tab)) tab = "overview";
@@ -290,10 +305,167 @@ function setupForms() {
   $("compareForm").addEventListener("submit", handleCompare);
   $("evolveForm").addEventListener("submit", handleEvolve);
   $("testcasesForm").addEventListener("submit", handleTestcase);
+  $("fineTuneForm").addEventListener("submit", handleFineTune);
+  $("fineTuneDataset").addEventListener("change", updateFineTuneDatasetNote);
+  $("evaluateAdapterBtn").addEventListener("click", () => useAdapterInEvaluation(state.activeAdapterModel));
+  $("savedAdapterList").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-model]");
+    if (button) useAdapterInEvaluation(button.dataset.model);
+  });
   $("connectApiBtn").addEventListener("click", connectAPI);
   $("refreshBtn").addEventListener("click", checkAPIHealth);
   $("clearHistoryBtn").addEventListener("click", clearHistory);
   $("progressModal").addEventListener("cancel", (event) => event.preventDefault());
+}
+
+function populateTrainingDatasets() {
+  const select = $("fineTuneDataset");
+  const prior = select.value;
+  select.replaceChildren(new Option("Select a local dataset", ""));
+  state.trainingDatasets.forEach((dataset) => {
+    const label = dataset.error
+      ? dataset.id + " · invalid"
+      : dataset.id + (dataset.synthetic ? " · synthetic demo" : "") + " · " + dataset.examples + " examples";
+    const option = new Option(label, dataset.id);
+    option.disabled = Boolean(dataset.error);
+    select.add(option);
+  });
+  if (state.trainingDatasets.some((dataset) => dataset.id === prior && !dataset.error)) select.value = prior;
+  else if (state.trainingDatasets.some((dataset) => dataset.id === "entity_extraction_demo" && !dataset.error)) select.value = "entity_extraction_demo";
+  updateFineTuneDatasetNote();
+  const runtime = state.trainingRuntime;
+  const note = $("fineTuneRuntimeNote");
+  if (!runtime) {
+    note.textContent = "Local training runtime is unavailable.";
+  } else if (!runtime.available) {
+    note.textContent = "Install project dependencies to enable training.";
+    note.title = "Missing packages: " + runtime.missing.join(", ");
+  } else {
+    note.textContent = runtime.device.toUpperCase() + " · " + runtime.base_model;
+    note.title = "Training and evaluation run on this machine.";
+  }
+  updateFineTuneSubmit();
+}
+
+function updateFineTuneDatasetNote() {
+  const dataset = state.trainingDatasets.find((item) => item.id === $("fineTuneDataset").value);
+  const note = $("fineTuneDatasetNote");
+  if (!dataset) {
+    note.textContent = "Add reviewed JSONL examples under training/datasets/.";
+  } else if (dataset.error) {
+    note.textContent = dataset.error;
+  } else if (dataset.synthetic) {
+    note.textContent = "Synthetic demo only; it is not a model-quality benchmark.";
+  } else {
+    note.textContent = "Local JSONL dataset. Review labels before training.";
+  }
+  renderFineTuneDatasetReadiness(dataset);
+  updateFineTuneSubmit();
+}
+
+function renderFineTuneDatasetReadiness(dataset) {
+  const container = $("fineTuneDatasetReadiness");
+  container.replaceChildren();
+  container.hidden = !dataset;
+  if (!dataset) return;
+
+  const heading = document.createElement("div");
+  heading.className = "dataset-quality-heading";
+  const title = document.createElement("strong");
+  title.textContent = "Dataset readiness";
+  const status = document.createElement("span");
+  status.className = "dataset-quality-status" + (dataset.error ? " is-warning" : " is-ready");
+  status.textContent = dataset.error ? "Needs repair" : "Ready";
+  heading.append(title, status);
+  container.append(heading);
+
+  if (dataset.error) {
+    const error = document.createElement("p");
+    error.className = "dataset-quality-error";
+    error.textContent = dataset.error;
+    container.append(error);
+    return;
+  }
+
+  const splits = dataset.splits || {};
+  const stats = document.createElement("dl");
+  stats.className = "dataset-quality-stats";
+  [["Examples", dataset.examples], ["Source groups", dataset.groups]].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    const term = document.createElement("dt");
+    term.textContent = label;
+    const count = document.createElement("dd");
+    count.textContent = value == null ? "—" : String(value);
+    item.append(term, count);
+    stats.append(item);
+  });
+  container.append(stats);
+
+  const validation = document.createElement("p");
+  validation.className = "dataset-validation-note";
+  validation.textContent = "Schema validated · source groups stay together across splits";
+  container.append(validation);
+
+  const splitList = document.createElement("div");
+  splitList.className = "dataset-split-list";
+  [["Train", splits.train], ["Validation", splits.validation], ["Test", splits.test]].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    item.className = "dataset-split-item";
+    const term = document.createElement("span");
+    term.textContent = label;
+    const count = document.createElement("strong");
+    count.textContent = value == null ? "—" : String(value);
+    item.append(term, count);
+    splitList.append(item);
+  });
+  container.append(splitList);
+
+  const fingerprint = document.createElement("p");
+  fingerprint.className = "dataset-fingerprint";
+  const label = document.createElement("span");
+  label.textContent = "Dataset version";
+  const digest = document.createElement("code");
+  digest.textContent = dataset.sha256 ? dataset.sha256.slice(0, 12) : "Unavailable";
+  digest.title = dataset.sha256 || "Dataset fingerprint unavailable";
+  fingerprint.append(label, digest);
+  container.append(fingerprint);
+}
+
+function updateFineTuneSubmit() {
+  const dataset = state.trainingDatasets.find((item) => item.id === $("fineTuneDataset").value);
+  $("fineTuneSubmit").disabled = state.jobBusy || !state.trainingRuntime?.available || !dataset || Boolean(dataset.error);
+}
+
+async function loadSavedAdapters() {
+  try {
+    const result = await apiCall("training/adapters");
+    state.trainedAdapters = result.adapters || [];
+    renderSavedAdapters();
+  } catch {
+    state.trainedAdapters = [];
+    $("savedAdapters").hidden = true;
+  }
+}
+
+function renderSavedAdapters() {
+  const section = $("savedAdapters");
+  const list = $("savedAdapterList");
+  section.hidden = state.trainedAdapters.length === 0;
+  list.replaceChildren();
+  state.trainedAdapters.forEach((adapter) => {
+    const row = document.createElement("article");
+    row.className = "adapter-row";
+    const copy = document.createElement("div");
+    const fingerprint = adapter.dataset_sha256 ? " · data " + adapter.dataset_sha256.slice(0, 12) : "";
+    copy.innerHTML = "<strong>" + escapeHTML(adapter.dataset_id) + "</strong><span>" + escapeHTML(adapter.id + fingerprint) + " · held-out exact match " + formatPercent(adapter.metrics?.record_exact_match) + "</span>";
+    const button = document.createElement("button");
+    button.className = "button button-secondary";
+    button.type = "button";
+    button.dataset.model = adapter.id;
+    button.textContent = "Evaluate";
+    row.append(copy, button);
+    list.append(row);
+  });
 }
 
 async function connectAPI() {
@@ -388,6 +560,29 @@ async function handleTestcase(event) {
   finally { if (button) button.disabled = false; }
 }
 
+async function handleFineTune(event) {
+  event.preventDefault();
+  if (state.jobBusy) return showToast("Wait for the current model run to finish.", "warning");
+  const payload = {
+    dataset_id: $("fineTuneDataset").value,
+    epochs: Number($("fineTuneEpochs").value),
+    learning_rate: Number($("fineTuneLearningRate").value),
+    lora_rank: Number($("fineTuneRank").value)
+  };
+  if (!payload.dataset_id) return showToast("Choose a local training dataset.", "error");
+  state.jobBusy = true;
+  setExperimentButtonsDisabled(true);
+  try {
+    const result = await apiCall("training/jobs", { method: "POST", body: JSON.stringify(payload) });
+    if (!result.job_id) throw new Error("The API did not return a training job ID.");
+    startPolling(result.job_id, "training");
+  } catch (error) {
+    state.jobBusy = false;
+    setExperimentButtonsDisabled(false);
+    showToast("Could not start local training: " + error.message, "error");
+  }
+}
+
 async function submitJob(endpoint, payload, type) {
   if (state.jobBusy) return showToast("Wait for the current model run to finish.", "warning");
   state.jobBusy = true;
@@ -408,13 +603,14 @@ function setExperimentButtonsDisabled(disabled) {
     const button = $(id).querySelector('button[type="submit"]');
     if (button) button.disabled = disabled;
   });
+  updateFineTuneSubmit();
 }
 
 function startPolling(jobId, type) {
   clearInterval(state.pollingTimer);
   showProgressModal(type);
   let polls = 0;
-  const maxPolls = 150;
+  const maxPolls = type === "training" ? 1800 : 150;
   state.pollingTimer = window.setInterval(async () => {
     polls += 1;
     if (polls > maxPolls) {
@@ -424,9 +620,19 @@ function startPolling(jobId, type) {
     }
     try {
       const job = await apiCall("jobs/" + encodeURIComponent(jobId));
-      updateProgress(job.progress, job.status);
+      updateProgress(job.progress, job.status, job.stage);
       if (job.status === "completed") {
         stopPolling();
+        if (type === "training") {
+          if (!job.result) {
+            showToast("Training completed without an adapter result.", "warning");
+            return;
+          }
+          displayFineTuneRun(job.result);
+          await loadInitialData();
+          showToast("Local adapter trained and saved.", "success");
+          return;
+        }
         const hasResults = Array.isArray(job.results)
           ? job.results.length > 0
           : type === "evolution" && Array.isArray(job.results?.history) && job.results.history.length > 0;
@@ -457,17 +663,25 @@ function stopPolling() {
 }
 
 function showProgressModal(type) {
-  const labels = { evaluation: "Running model evaluation", comparison: "Comparing prompt versions", evolution: "Evolving the prompt" };
+  const labels = { evaluation: "Running model evaluation", comparison: "Comparing prompt versions", evolution: "Evolving the prompt", training: "Training a local LoRA adapter" };
   $("progressTitle").textContent = labels[type] || "Running your job";
-  $("progressText").textContent = "The API is waiting for model responses.";
+  $("progressText").textContent = type === "training" ? "Loading the local base model and preparing held-out evaluation." : "The API is waiting for model responses.";
+  $("progressFootnote").textContent = type === "training" ? "The first run may download model weights. Keep this tab open while training runs." : "You can keep this tab open while the models respond.";
   $("progressFill").style.width = "0%";
   if (!$("progressModal").open) $("progressModal").showModal();
 }
 
-function updateProgress(percent, status) {
+function updateProgress(percent, status, stage) {
   const amount = Number(percent);
   $("progressFill").style.width = (Number.isFinite(amount) ? Math.max(0, Math.min(amount, 100)) : 0) + "%";
-  $("progressText").textContent = status === "running" ? "Models are processing the selected inputs." : (status || "Working…");
+  const labels = {
+    loading_model: "Loading the base model on this machine.",
+    evaluating_base: "Scoring the base model on held-out examples.",
+    training: "Training LoRA weights and measuring validation loss.",
+    evaluating_adapter: "Scoring the adapter on the same held-out examples.",
+    completed: "Training and held-out evaluation are complete."
+  };
+  $("progressText").textContent = labels[stage] || (status === "running" ? "Models are processing the selected inputs." : (status || "Working…"));
 }
 
 function handleJobResult(type, results) {
@@ -509,6 +723,82 @@ function displayEvolution(results) {
   const delta = Number.isFinite(Number(change)) ? (Number(change) >= 0 ? "+" : "") + Number(change).toFixed(2) : "—";
   $("evolutionStats").innerHTML = statMarkup("Iterations", Math.max(0, history.length - 1)) + statMarkup("Starting score", formatNumber(first)) + statMarkup("Change", delta);
   $("evolutionTimeline").innerHTML = history.map((item, index) => "<article class=\"evolution-item\"><span>Iteration " + escapeHTML(item.iteration ?? index) + "</span><pre>" + escapeHTML(item.prompt || "No prompt text was returned.") + "</pre><strong>" + formatNumber(item.score) + "</strong></article>").join("");
+}
+
+function displayFineTuneRun(result) {
+  state.activeAdapterModel = result.model_id;
+  const splits = result.split_counts || {};
+  const base = result.metrics?.base || {};
+  const adapter = result.metrics?.adapter || {};
+  const fingerprint = result.dataset_sha256 ? " · data " + result.dataset_sha256.slice(0, 12) : "";
+  $("fineTuneResults").hidden = false;
+  $("fineTuneSummary").textContent = result.dataset_id + fingerprint + " · " + (splits.test || 0) + " held-out examples · " + (result.elapsed_seconds || 0) + " seconds";
+  $("fineTuneStats").innerHTML = statMarkup("Base checkpoint", result.base_model)
+    + statMarkup("Adapter", result.model_id)
+    + statMarkup("Training examples", splits.train || 0)
+    + statMarkup("Validation examples", splits.validation || 0)
+    + statMarkup("Test examples", splits.test || 0)
+    + statMarkup("Device", result.device || "—");
+  $("fineTuneMetrics").innerHTML = [
+    trainingMetricMarkup("Record exact match", base.record_exact_match, adapter.record_exact_match),
+    trainingMetricMarkup("Field accuracy", base.field_accuracy, adapter.field_accuracy),
+    trainingMetricMarkup("Valid JSON", base.json_valid_rate, adapter.json_valid_rate),
+    ...["organization", "year", "claim"].map((field) => trainingMetricMarkup(field + " exact", base.field_exact_match?.[field], adapter.field_exact_match?.[field]))
+  ].join("");
+  renderLossChart(result.training_loss || [], result.validation_loss || []);
+}
+
+function trainingMetricMarkup(label, base, adapter) {
+  const delta = (Number(adapter) - Number(base)) * 100;
+  const change = Number.isFinite(delta) ? (delta > 0 ? "+" : "") + delta.toFixed(1) + " pp" : "—";
+  return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span><div><small>Base</small><strong>" + formatPercent(base) + "</strong></div><div><small>LoRA</small><strong>" + formatPercent(adapter) + "</strong></div><b>" + escapeHTML(change) + "</b></article>";
+}
+
+function renderLossChart(trainingLoss, validationLoss) {
+  const series = [
+    { label: "Training", values: trainingLoss, className: "loss-train" },
+    { label: "Validation", values: validationLoss, className: "loss-validation" }
+  ].map((item) => ({ ...item, values: item.values.map(Number).filter(Number.isFinite) })).filter((item) => item.values.length);
+  const container = $("fineTuneLossChart");
+  if (!series.length) {
+    container.textContent = "Loss history was not returned.";
+    return;
+  }
+  const values = series.flatMap((item) => item.values).map(Number).filter(Number.isFinite);
+  const max = Math.max(...values, 0.01);
+  const width = 540, height = 130, left = 30, top = 12, plotWidth = 495, plotHeight = 92;
+  const polylines = series.map((item) => {
+    const points = item.values.map((value, index) => {
+      const x = left + (item.values.length === 1 ? 0 : index / (item.values.length - 1) * plotWidth);
+      const y = top + plotHeight - (Math.max(0, Number(value)) / max * plotHeight);
+      return x.toFixed(1) + "," + y.toFixed(1);
+    }).join(" ");
+    return "<polyline class=\"" + item.className + "\" points=\"" + points + "\"></polyline>";
+  }).join("");
+  const legend = series.map((item) => "<span class=\"" + item.className + "\">" + item.label + "</span>").join("");
+  container.innerHTML = "<div class=\"loss-legend\">" + legend + "</div><svg viewBox=\"0 0 " + width + " " + height + "\" role=\"img\" aria-label=\"Training and validation loss trend\"><path class=\"loss-axis\" d=\"M" + left + " " + top + "V" + (top + plotHeight) + "H" + (left + plotWidth) + "\"></path>" + polylines + "<text x=\"" + left + "\" y=\"121\">start</text><text x=\"" + (left + plotWidth) + "\" y=\"121\" text-anchor=\"end\">progress</text></svg>";
+}
+
+async function useAdapterInEvaluation(modelId) {
+  if (!modelId) return showToast("Train or select a saved adapter first.", "warning");
+  try {
+    state.models = await apiCall("models");
+    populateModelSelectors();
+    const modelInputs = Array.from($("evalModels").querySelectorAll("input"));
+    const trainedModel = modelInputs.find((input) => input.value === modelId);
+    if (!trainedModel) throw new Error("The trained adapter is no longer registered.");
+    modelInputs.forEach((input) => { input.checked = input === trainedModel; });
+    if (state.tasks.includes("extraction")) {
+      $("evalTask").value = "extraction";
+      await loadVersionsForTask("extraction", "evalVersion");
+      if (Array.from($("evalVersion").options).some((option) => option.value === "v1")) $("evalVersion").value = "v1";
+    }
+    activateTab("evaluate", true);
+    $("evalTestInputs").focus({ preventScroll: true });
+    showToast("Adapter selected. Add a separate held-out input set before evaluating.", "success");
+  } catch (error) {
+    showToast("Could not select adapter: " + error.message, "error");
+  }
 }
 
 function breakdownMarkup(breakdown) {
@@ -636,6 +926,7 @@ function readLines(id) { return $(id).value.split(/\r?\n/).map((line) => line.tr
 function statMarkup(label, value) { return "<div class=\"result-stat\"><span>" + escapeHTML(label) + "</span><strong>" + escapeHTML(String(value)) + "</strong></div>"; }
 function mean(values) { return values.reduce((total, value) => total + value, 0) / values.length; }
 function formatNumber(value, digits = 2) { const number = value === null || value === undefined || value === "" ? NaN : Number(value); return Number.isFinite(number) ? number.toFixed(digits) : "—"; }
+function formatPercent(value) { const number = value === null || value === undefined || value === "" ? NaN : Number(value); return Number.isFinite(number) ? (number * 100).toFixed(1) + "%" : "—"; }
 function formatDate(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? "Unknown time" : date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
 function escapeHTML(value) { return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]); }
 
