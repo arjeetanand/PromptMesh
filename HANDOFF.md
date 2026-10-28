@@ -211,6 +211,7 @@
 - New adapter manifests and validation selections carry their own source state. Frozen reports keep separate adapter-training, prompt-selection, and benchmark source states. The existing schemas remain backward compatible because these are optional environment fields.
 - Fine-tune runtime summaries show the short code revision and dirty/clean state; the details tooltip retains the full revision. Older environment records still render normally.
 - Verification: 70 Python `unittest` tests and 12 Node UI tests passed; Python compilation, JavaScript syntax, `run.sh` syntax, and `git diff --check` passed. In the local browser at `http://127.0.0.1:4004/#finetune`, the page loaded with API connected and the unchanged review packet showed 351 rows / 117 groups / 0 reviewed. Existing adapter records are legacy and do not have source metadata, so no real record with the new label was available in the browser; the focused UI test covers it.
+- `./run.sh` restarted the current main instance, which remains available at `http://127.0.0.1:4004`.
 - No model-training, prompt-selection, frozen-benchmark, or quantized-inference job ran. The public-source candidate labels and reuse rights remain unreviewed, so no model-quality or calibration claim is supported.
 - Implementation commit `8db6b58` was pushed to `codex/promptmesh-validation-selection`, which updates existing PR #2. PR #2's target `main` was previously confirmed; the current GitHub API query failed because `api.github.com` was unreachable.
 
