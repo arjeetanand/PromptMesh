@@ -221,6 +221,8 @@
 - Fine-tune results place year slices in accessible expandable sections; sparse one-group slices explicitly show that an interval is unavailable. Older schema-v3 reports remain readable without slices and are not rerun on a previously reserved test set.
 - Verification: full Python suite passed (71 tests); UI suite passed (12 tests); Python/JavaScript syntax, `run.sh` syntax, and `git diff --check` passed. The updated app connected in a browser at `http://127.0.0.1:4004/#finetune`, where the review packet correctly shows 351 draft rows, 0 reviewed labels, and synthetic-demo-only training readiness. No real frozen report was available to render because no candidate labels or reuse permissions have been human-reviewed.
 - Year slices include organization, year, and claim accuracy alongside record exact match, aggregate field accuracy, JSON validity, counts, and any available grouped interval. No real benchmark data was used; candidate labels and reuse permissions still require human review.
+- Delivery: implementation commit `b1c90cf` is pushed on `codex/promptmesh-validation-selection`; existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2) is open and targets `main`. No merge or deployment occurred.
+- Next: human-review the public-source labels and reuse evidence, build an authorized dataset/card, then train a fresh adapter, select on validation, and run the frozen benchmark once. Inspect per-year results before making any quality or quantization claim.
 
 ## Year-diverse public-source candidates — 2026-10-29
 
