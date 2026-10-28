@@ -98,7 +98,7 @@
 - [x] Add regression checks for source grouping, safe writes, symlink rejection, and loopback-only access even with an API key.
 - [x] Verify the export gate, held-out split floors, no-overwrite behavior, rollback, and “no training or test scoring” UI message; no dataset was exported because the current packet has zero eligible groups.
 - [x] Open the updated Fine-tune page in the local browser and confirm the export fields have accessible names, the readiness text is announced, and the button stays disabled at zero eligible groups.
-- [ ] Inspect the export panel at 320px, 390px, and tablet widths in a rendered browser; only the desktop accessibility tree and responsive CSS were checked in this follow-up.
+- [x] Inspect the export panel at 320px, 390px, and tablet width in a rendered browser; the fields stack on mobile, controls and text fit, and no document overflow appears at 320px, 390px, or 767px.
 - [ ] Review candidates against sources, confirm reuse permissions, address topic/source-type imbalance, and create an authorized benchmark dataset/card.
 - [x] Verify the new Fine-tune queue in the browser at 1440px, 768px, and 390px; confirm group navigation and mobile menu behavior. No physical phone test was performed.
 - [x] Audit the live candidate-review form: all visible controls are named, tab order is logical, status regions and heading structure are present, key text contrast is at least 4.5:1, and there is no horizontal overflow at 320px, 390px, 768px, 1024px, or 1440px.
