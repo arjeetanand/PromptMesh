@@ -86,8 +86,8 @@
 ## Branch and pull request
 
 - Previous implementation branch: `codex/promptmesh-evaluation-reliability`, evaluation reliability commit `913e392`.
-- Current validation-selection work is on `codex/promptmesh-validation-selection`, commit `68204e1`, based on PR head `745bf89`.
-- [PR #1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1) is open, targets `main`, and uses its existing head branch `codex/promptmesh-ui-redesign`. The validation-selection commit is being added to that PR.
+- Validation-selection implementation commit `68204e1` and handoff commit `ce69f21` are on `codex/promptmesh-validation-selection`, based on PR head `745bf89`.
+- [PR #1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1) is open, targets `main`, and uses its existing head branch `codex/promptmesh-ui-redesign`. Commits `68204e1` and `ce69f21` are pushed to that PR.
 - Do not merge PR #1.
 
 ## Run instructions and next action
