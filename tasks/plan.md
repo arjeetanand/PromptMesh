@@ -18,7 +18,7 @@ Tasks and checkpoints are tracked in the repository's existing `CHECKLIST.md`.
 
 ### Phase 1: Stop test-set feedback during selection
 
-1. **Fine-tuning selection metrics:** score the base and LoRA adapter on validation rows during training; reserve the test rows; label old adapter results as legacy test metrics. Add a regression that proves the training comparison receives validation rows. (Implemented in the current branch; verification is complete, commit pending.)
+1. **Fine-tuning selection metrics:** score the base and LoRA adapter on validation rows during training; reserve the test rows; label old adapter results as legacy test metrics. Add a regression that proves the training comparison receives validation rows. (Implemented, verified, and committed as `68204e1`.)
 2. **Prompt-evolution split:** keep candidate generation and selection on an optimization set, then add a separate, explicit final evaluation path that reports deterministic gold metrics only after prompt selection is frozen. The current UI labels optimization inputs and LLM-judge heuristics; it cannot enforce separation from a future benchmark yet.
 
 ### Checkpoint: selection boundary
