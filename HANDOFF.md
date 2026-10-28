@@ -345,3 +345,12 @@
 - Browser at `http://127.0.0.1:4004/#finetune` showed API connected, the 351-row / 117-group review queue with zero reviewed labels and eligible groups, plus the synthetic-only label on benchmark adapter choices and saved cards. The evaluation page also showed the label on each trained-model checkbox. The private review CSV was unchanged.
 - Commit `20f0e35` (`Label synthetic adapter evidence in UI`) was pushed to `origin/codex/promptmesh-validation-selection`, updating existing PR #2 (previously confirmed to target `main`). A fresh `gh pr view 2` check failed because it could not connect to `api.github.com`; no merge or deployment occurred.
 - Remaining: the synthetic adapter metrics are workflow evidence only; no human-reviewed benchmark or real quality/quantized comparison exists. Review source labels and reuse rights before creating that benchmark.
+
+## Benchmark gate and draft-split audit — 2026-10-29
+
+- Current local review packet remains 351 rows / 117 groups: zero reviewed rows, zero resolved groups, zero eligible groups. No labels, rights decisions, datasets, adapters, or benchmark artifacts were changed.
+- Read-only audit found the validation and frozen-test gates still require the same dataset/card fingerprint, validation-only adapter provenance, held-out group floors, and exclusive test reservation. No leakage-gate defect was found; the card's human-review and rights claims are still local self-attestations.
+- Structural projection using the unreviewed proposed labels gives validation years 2020–2025 = 2 / 2 / 1 / 1 / 10 / 2 groups and test = 2 / 1 / 2 / 2 / 10 / 1. This makes 2024 10 of 18 groups in both held-out splits; do not call it representative without curation and disclosure.
+- Spot-checked the first six year-interleaved official source pages against the draft headline and core-claim fields. The facts broadly match, but this is an assistant spot-check, not the requested human review; all reuse rights remain unresolved and every paraphrase still needs reviewer approval.
+- Verification: full Python suite passed (76 tests); UI suite passed (16 tests). The in-app browser at `http://127.0.0.1:4004/#finetune` showed API connected and the unchanged 0-eligible review state. No provider calls, training jobs, or benchmark runs were started.
+- Next: human-review labels and reuse terms, then curate the cohort to address the 2024 skew before exporting a versioned dataset/card. Only afterward train, select on validation, reserve and score the test once, and run quantized inference.

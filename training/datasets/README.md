@@ -63,6 +63,19 @@ years are still imbalanced: 66 groups are from 2024, ten each from 2020, 2021,
 2022, 2023, and 2025, and one is undated. The packet remains review-only and
 is not representative. Review each source, label, split, and reuse condition
 before using any examples.
+
+The current seed-42 split projection from those **unreviewed proposed years**
+is:
+
+| Split | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Undated |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Train groups | 6 | 7 | 7 | 7 | 46 | 7 | 1 |
+| Validation groups | 2 | 2 | 1 | 1 | 10 | 2 | 0 |
+| Test groups | 2 | 1 | 2 | 2 | 10 | 1 | 0 |
+
+This preview is structural only, not the eventual reviewed benchmark composition.
+Both held-out sets are dominated by 2024, and some year slices contain only one
+source group. Curate a more balanced cohort before making broad quality claims.
 Use **Fine-tune → Review source candidates** to review the local CSV by source
 group. Check each wording against its linked source, edit labels, and record
 reuse permission separately with evidence. The queue saves only to the ignored

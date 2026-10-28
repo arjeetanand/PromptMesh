@@ -155,7 +155,9 @@ in 117 source groups. Each group contains three phrasings of one source claim,
 not three independent facts. It covers 2020–2025 with one undated group; 66
 groups are dated 2024, so this is still not a representative benchmark. Every
 candidate label and reuse decision remains pending human review, and the packet
-does not establish model-quality gains.
+does not establish model-quality gains. In the current draft split projection,
+10 of 18 groups in both validation and test are from 2024; this projection uses
+unreviewed proposed years and must not be presented as benchmark composition.
 
 For datasets with at least 30 source groups, the split keeps each group intact
 and stratifies by its event-year signature. Signatures with at least three

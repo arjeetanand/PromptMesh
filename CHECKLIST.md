@@ -150,6 +150,12 @@
 - [x] Add a focused UI regression; all 16 UI tests pass, with JavaScript syntax and diff checks clean.
 - [x] Reload the Fine-tune page on port 4004 and confirm the updated UI is served; inspect evaluation model labels too.
 
+## Draft benchmark split audit — 2026-10-29
+
+- [x] Compute the seed-42 validation/test year composition from draft labels and document that 2024 contributes 10 of 18 groups to each held-out split.
+- [x] Recheck selection and frozen-test gates; full Python suite (76) and UI suite (16) pass.
+- [ ] Human-review labels and reuse rights, then curate a balanced cohort before exporting or claiming representative benchmark results.
+
 ## Navigation and background-job follow-up
 
 - [x] Add a Back to overview control to every non-overview page.
