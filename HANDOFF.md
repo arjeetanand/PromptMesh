@@ -237,3 +237,8 @@
 - No evaluation, prompt generation, case generation, training, review save, or history deletion was triggered. This is browser navigation/layout evidence, not an end-to-end model workflow or production-site check.
 - The user confirmed that extraction `organization` labels should identify the claim actor. The private candidate packet already uses that definition; its labels and source-reuse decisions remain unreviewed.
 - The task browser viewport was restored. Whole-workspace screen-reader/axe review, real provider-backed workflow checks, human label review, and reuse-rights decisions remain open.
+
+## Public URL check — 2026-10-29
+
+- Read-only fetch of `https://finetunedb.com/` returned a FinetuneDB marketing page that announces its acquisition by Opper AI and links to a separate app host. The fetched page did not identify or serve the PromptMesh workspace.
+- This does not establish whether the domain is associated with the repository or whether PromptMesh is deployed elsewhere. The app host, authenticated flows, and any PromptMesh production deployment were not inspected.
