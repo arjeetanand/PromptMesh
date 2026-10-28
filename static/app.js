@@ -1363,7 +1363,7 @@ function displayFrozenBenchmark(report, created = true) {
     const exact = formatPercent(metrics?.record_exact_match);
     const interval = metrics?.record_exact_match_95ci;
     const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
-    return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span><div><small>Record exact match</small><strong>" + exact + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics?.field_accuracy) + "</strong></div><div><small>Valid JSON</small><strong>" + formatPercent(metrics?.json_valid_rate) + "</strong></div><b>95% grouped CI " + escapeHTML(ciText) + "</b>" + pairedDeltaMarkup(metrics) + "</article>";
+    return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span><div><small>Record exact match</small><strong>" + exact + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics?.field_accuracy) + "</strong></div><div><small>Valid JSON</small><strong>" + formatPercent(metrics?.json_valid_rate) + "</strong></div><b>95% grouped CI " + escapeHTML(ciText) + "</b>" + pairedDeltaMarkup(metrics) + goldYearSlicesMarkup(metrics?.by_gold_year) + "</article>";
   }).join("");
   const quantized = report.quantized_inference;
   if (quantized?.variants?.length) {
@@ -1425,6 +1425,24 @@ function pairedDeltaMarkup(metrics) {
     + escapeHTML(formatDeltaPoints(delta.estimate)) + " (" + escapeHTML(interval) + ")</strong></div>";
 }
 
+function goldYearSlicesMarkup(slices) {
+  const entries = Object.entries(slices || {}).sort(([left], [right]) => {
+    if (left === "undated") return 1;
+    if (right === "undated") return -1;
+    return Number(left) - Number(right);
+  });
+  if (!entries.length) return "";
+  const rows = entries.map(([year, metrics]) => {
+    const interval = metrics.record_exact_match_95ci;
+    const ciText = interval
+      ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper)
+      : "unavailable (<2 groups)";
+    const fields = metrics.field_exact_match || {};
+    return "<div class=\"gold-year-slice\"><strong>" + escapeHTML(year) + "</strong><span>" + escapeHTML(metrics.source_groups) + " source groups · " + escapeHTML(metrics.examples) + " examples</span><span>Exact match " + formatPercent(metrics.record_exact_match) + " · 95% group CI " + escapeHTML(ciText) + "</span><span>Organization " + formatPercent(fields.organization) + " · Year " + formatPercent(fields.year) + " · Claim " + formatPercent(fields.claim) + "</span><span>Field accuracy " + formatPercent(metrics.field_accuracy) + " · Valid JSON " + formatPercent(metrics.json_valid_rate) + "</span></div>";
+  }).join("");
+  return "<details class=\"gold-year-slices\"><summary>Test results by gold year</summary><div class=\"gold-year-slice-list\"><p class=\"gold-year-slice-note\">Group counts are per year slice; a source with multiple event years may appear more than once.</p>" + rows + "</div></details>";
+}
+
 function quantizationMetricCard(label, metrics = {}, performance = {}) {
   const interval = metrics.record_exact_match_95ci;
   const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
@@ -1442,7 +1460,9 @@ function quantizationMetricCard(label, metrics = {}, performance = {}) {
     + "<div><small>Load</small><strong>" + seconds(performance.load_seconds) + "</strong></div>"
     + "<div><small>Inference</small><strong>" + seconds(performance.inference_seconds) + "</strong></div>"
     + "<div><small>Generation</small><strong>" + rate + "</strong></div>"
-    + "<div><small>Model footprint</small><strong>" + footprint + "</strong></div></article>";
+    + "<div><small>Model footprint</small><strong>" + footprint + "</strong></div>"
+    + goldYearSlicesMarkup(metrics.by_gold_year)
+    + "</article>";
 }
 
 function trainingMetricMarkup(label, base, adapter) {

@@ -65,6 +65,7 @@
 - [x] Compare extraction/v1 and a candidate prompt on gold validation data only, and save a hash-checked selection record tied to a validation-only schema-v3 LoRA adapter.
 - [x] Reserve the frozen test set before inference, then compare base+initial prompt, base+selected prompt, and LoRA+selected prompt on identical test rows; include aggregate metrics and source-group bootstrap intervals.
 - [x] Add paired source-group bootstrap intervals for exact-match differences across prompt, LoRA, and quantized-inference arms; surface the comparison direction and percentage-point delta in Fine-tune results.
+- [x] Add gold-year test metrics and source-group counts for every frozen benchmark arm; show grouped confidence intervals when each year slice has at least two groups.
 - [x] Store selection/report artifacts locally with private permissions and keep them out of Git.
 - [x] Add Fine-tune UI controls and background-job progress/result states for prompt selection and final benchmarking.
 - [x] Review Fine-tune at desktop in Edge and inspect 1440px, 768px, and 390px layouts; synthetic data is blocked and the inspector reports no horizontal overflow. No physical phone test was performed.

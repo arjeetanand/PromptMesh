@@ -378,6 +378,13 @@ input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent);
 .training-metric small { color: var(--faint); font-size: 11px; }
 .training-metric strong { font-family: var(--mono); font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .training-metric b { justify-self: end; color: var(--accent-strong); font-family: var(--mono); font-size: 11px; font-weight: 500; }
+.gold-year-slices { grid-column: 1 / -1; min-width: 0; }
+.gold-year-slices summary { color: var(--accent-strong); cursor: pointer; font-size: 11px; }
+.gold-year-slice-list { display: grid; gap: 6px; margin-top: 8px; }
+.gold-year-slice-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.gold-year-slice { display: grid; gap: 3px; padding: 8px 10px; border-left: 2px solid var(--rule); background: var(--sheet); }
+.gold-year-slice strong { font-size: 11px; font-weight: 600; }
+.gold-year-slice span { color: var(--muted); font-size: 10px; line-height: 1.4; }
 .training-loss-panel { display: grid; grid-template-columns: 180px minmax(0,1fr); align-items: center; gap: 20px; padding: 17px 20px; border-top: 1px solid var(--rule); }
 .training-loss-panel h3 { margin: 0; font-size: 12px; font-weight: 600; }
 .training-loss-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }

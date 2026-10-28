@@ -149,6 +149,18 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
       lora_validation_selected_prompt: {
         record_exact_match: 0.5, field_accuracy: 0.7, json_valid_rate: 0.9,
         record_exact_match_95ci: { lower: 0.3, upper: 0.7 },
+        by_gold_year: {
+          "2024": {
+            examples: 12, source_groups: 4, record_exact_match: 0.5,
+            field_accuracy: 0.7, json_valid_rate: 0.9,
+            field_exact_match: { organization: 0.5, year: 1, claim: 0.5 },
+            record_exact_match_95ci: { lower: 0.2, upper: 0.8 }
+          },
+          undated: {
+            examples: 1, source_groups: 1, record_exact_match: 0,
+            field_accuracy: 0, json_valid_rate: 1, field_exact_match: { organization: 0, year: 0, claim: 0 }, record_exact_match_95ci: null
+          }
+        },
         paired_record_exact_match_delta_95ci: {
           reference: "Base · validation-selected prompt", estimate: 0.3, lower: 0.1, upper: 0.5
         }
@@ -162,7 +174,11 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
       adapter_training_method: "Full-precision LoRA + SFT; this inference comparison is not QLoRA training.",
       variants: [{
         id: "bnb_nf4", label: "bitsandbytes NF4", weight_bits: 4, compute_dtype: "float16",
-        metrics: { record_exact_match: 0.4, field_accuracy: 0.6, json_valid_rate: 0.8,
+        metrics: {
+          record_exact_match: 0.4, field_accuracy: 0.6, json_valid_rate: 0.8,
+          by_gold_year: {
+            "2024": { examples: 6, source_groups: 2, record_exact_match: 0.4, field_accuracy: 0.6, json_valid_rate: 0.8, field_exact_match: { organization: 0.3, year: 1, claim: 0.3 }, record_exact_match_95ci: { lower: 0.1, upper: 0.7 } }
+          },
           record_exact_match_95ci: { lower: 0.2, upper: 0.6 },
           paired_record_exact_match_delta_95ci: {
             reference: "Full-precision LoRA control", estimate: -0.1, lower: -0.3, upper: 0.1
@@ -183,6 +199,12 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
   assert.match(html, /\+30\.0 pp \(\+10\.0 pp to \+50\.0 pp\)/);
   assert.match(html, /Paired source-group exact-match Δ vs Full-precision LoRA control/);
   assert.match(html, /-10\.0 pp \(-30\.0 pp to \+10\.0 pp\)/);
+  assert.match(html, /Test results by gold year/);
+  assert.match(html, /4 source groups · 12 examples/);
+  assert.match(html, /Organization 50\.0% · Year 100\.0% · Claim 50\.0%/);
+  assert.match(html, /2 source groups · 6 examples/);
+  assert.match(html, /Group counts are per year slice/);
+  assert.match(html, /unavailable \(&lt;2 groups\)/);
   assert.match(html, /0\.37 GiB/);
   assert.match(html, /8\.00 tok\/s/);
   assert.equal(vm.runInContext("pairedDeltaMarkup({})", context), "", "legacy reports render without a paired interval");

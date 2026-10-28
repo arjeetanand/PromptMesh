@@ -182,6 +182,32 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertEqual(interval["estimate"], 0.0)
         self.assertEqual((interval["lower"], interval["upper"]), (0.0, 0.0))
 
+    def test_gold_year_slices_report_group_counts_and_grouped_intervals(self):
+        gold = {"organization": "Northstar", "year": 2024, "claim": "opened a lab"}
+        rows = [
+            {"group_id": "group-a", "output": gold},
+            {"group_id": "group-a", "output": gold},
+            {"group_id": "group-b", "output": gold},
+            {"group_id": "group-c", "output": {**gold, "year": 2023}},
+            {"group_id": "group-d", "output": {**gold, "year": None}},
+        ]
+        predictions = [
+            json.dumps(gold), json.dumps(gold), "not json",
+            json.dumps({**gold, "year": 2023}), json.dumps({**gold, "year": None}),
+        ]
+
+        slices = benchmark._metrics_by_gold_year(rows, predictions)
+
+        self.assertEqual(list(slices), ["2023", "2024", "undated"])
+        self.assertEqual(slices["2024"]["examples"], 3)
+        self.assertEqual(slices["2024"]["source_groups"], 2)
+        self.assertEqual(slices["2024"]["record_exact_match"], 0.6667)
+        self.assertEqual(slices["2024"]["field_exact_match"]["year"], 0.6667)
+        self.assertEqual(slices["2024"]["record_exact_match_95ci"]["source_groups"], 2)
+        self.assertEqual(slices["2023"]["source_groups"], 1)
+        self.assertIsNone(slices["2023"]["record_exact_match_95ci"])
+        self.assertEqual(slices["undated"]["record_exact_match"], 1.0)
+
     def test_frozen_report_compares_matched_arms_and_cannot_be_reused_for_a_sweep(self):
         selection_id, _ = self._select_prompt()
         jobs = JobRecorder()
@@ -201,13 +227,18 @@ class FrozenBenchmarkTests(unittest.TestCase):
             benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
-            self.assertEqual(report["schema_version"], 3)
+            self.assertEqual(report["schema_version"], 4)
             self.assertEqual(report["metrics_split"], "test")
             self.assertEqual(report["split_strategy"], "group-year-stratified-v1")
             self.assertFalse(report["test_split_used_for_selection"])
             self.assertEqual(report["metrics"]["base_initial_prompt"]["record_exact_match"], 0.0)
             self.assertEqual(report["metrics"]["base_validation_selected_prompt"]["record_exact_match"], 1.0)
             self.assertEqual(report["metrics"]["lora_validation_selected_prompt"]["record_exact_match"], 1.0)
+            year_slice = report["metrics"]["lora_validation_selected_prompt"]["by_gold_year"]["2024"]
+            self.assertEqual(year_slice["examples"], 30)
+            self.assertEqual(year_slice["source_groups"], 30)
+            self.assertEqual(year_slice["record_exact_match"], 1.0)
+            self.assertEqual(year_slice["record_exact_match_95ci"]["method"], "source-group bootstrap percentile interval")
             prompt_delta = report["metrics"]["base_validation_selected_prompt"]["paired_record_exact_match_delta_95ci"]
             lora_delta = report["metrics"]["lora_validation_selected_prompt"]["paired_record_exact_match_delta_95ci"]
             self.assertEqual(prompt_delta["estimate"], 1.0)
@@ -294,6 +325,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertFalse(variant["calibration_required"])
         self.assertEqual(variant["model_footprint_bytes"], 123456)
         self.assertEqual(variant["metrics"]["record_exact_match"], 1.0)
+        self.assertEqual(variant["metrics"]["by_gold_year"]["2024"]["source_groups"], 30)
         quantized_delta = variant["metrics"]["paired_record_exact_match_delta_95ci"]
         self.assertEqual(quantized_delta["estimate"], 0.0)
         self.assertEqual(quantized_delta["reference"], "Full-precision LoRA control")

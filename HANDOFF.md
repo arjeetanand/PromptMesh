@@ -215,6 +215,13 @@
 - No model-training, prompt-selection, frozen-benchmark, or quantized-inference job ran. The public-source candidate labels and reuse rights remain unreviewed, so no model-quality or calibration claim is supported.
 - Implementation commit `8db6b58` was pushed to `codex/promptmesh-validation-selection`, which updates existing PR #2. PR #2's target `main` was previously confirmed; the current GitHub API query failed because `api.github.com` was unreachable.
 
+## Gold-year test slices — 2026-10-29
+
+- New frozen benchmark reports use schema version 4 and include per-gold-year metrics for the base initial prompt, validation-selected base prompt, LoRA, and each quantized arm. Each slice records examples, source groups, task metrics, and a source-group exact-match interval when at least two groups are present.
+- Fine-tune results place year slices in accessible expandable sections; sparse one-group slices explicitly show that an interval is unavailable. Older schema-v3 reports remain readable without slices and are not rerun on a previously reserved test set.
+- Verification: full Python suite passed (71 tests); UI suite passed (12 tests); Python/JavaScript syntax, `run.sh` syntax, and `git diff --check` passed. The updated app connected in a browser at `http://127.0.0.1:4004/#finetune`, where the review packet correctly shows 351 draft rows, 0 reviewed labels, and synthetic-demo-only training readiness. No real frozen report was available to render because no candidate labels or reuse permissions have been human-reviewed.
+- Year slices include organization, year, and claim accuracy alongside record exact match, aggregate field accuracy, JSON validity, counts, and any available grouped interval. No real benchmark data was used; candidate labels and reuse permissions still require human review.
+
 ## Year-diverse public-source candidates — 2026-10-29
 
 - Appended 45 rows across 15 groups to the ignored local review packet, using official sources from Apple, United Launch Alliance, Xbox, Google, Microsoft, NIST, OpenAI, NVIDIA, DeepMind, NASA, and Anthropic. The candidates add proposed years 2020, 2021, 2022, 2023, and 2025; all source claims remain unreviewed drafts.

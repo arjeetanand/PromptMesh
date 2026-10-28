@@ -137,6 +137,12 @@ record exact-match differences: selected prompt vs. initial prompt, LoRA vs.
 the validation-selected base prompt, and each quantized variant vs. full-
 precision LoRA. Each resample uses the same sampled source groups in both arms;
 the displayed delta is comparison minus reference in percentage points.
+New frozen reports also show gold-year test slices for each arm, with example
+and source-group counts, record exact match, per-field accuracy, JSON validity,
+and source-group confidence intervals when a slice has at least two groups.
+Single-group slices display their metrics without an interval. Group counts
+are per slice, so a source with claims from multiple event years can appear in
+more than one year.
 
 A local, git-ignored public-source review packet has 351 unreviewed draft rows
 in 117 source groups. Each group contains three phrasings of one source claim,
@@ -360,7 +366,7 @@ cannot independently prove that a human reviewed the labels. The UI states this
 limit beside readiness and selection controls.
 
 Schema-v4 adapter manifests, schema-v2 validation prompt-selection records,
-and schema-v3 frozen benchmark reports record the Python, platform, machine,
+and schema-v4 frozen benchmark reports record the Python, platform, machine,
 device, and installed versions of the training and inference packages, plus
 the PromptMesh Git revision and whether its working tree was dirty when each
 stage finished. Both source fields are `null` when Git metadata is unavailable.

@@ -333,6 +333,24 @@ def _record_accuracy_ci(rows, predictions, seed=42, samples=1000):
     }
 
 
+def _metrics_by_gold_year(rows, predictions):
+    year_slices = {}
+    for row, prediction in zip(rows, predictions):
+        year = row["output"]["year"]
+        current = year_slices.setdefault(year, [[], []])
+        current[0].append(row)
+        current[1].append(prediction)
+
+    results = {}
+    for year in sorted(year_slices, key=lambda value: (value is None, value or 0)):
+        year_rows, year_predictions = year_slices[year]
+        metrics = score_predictions(year_rows, year_predictions)
+        metrics["source_groups"] = len({row["group_id"] for row in year_rows})
+        metrics["record_exact_match_95ci"] = _record_accuracy_ci(year_rows, year_predictions)
+        results[str(year) if year is not None else "undated"] = metrics
+    return results
+
+
 def _record_accuracy_difference_ci(
     rows, reference_predictions, comparison_predictions, reference_label, comparison_label, seed=42, samples=1000
 ):
@@ -530,6 +548,7 @@ def run_frozen_benchmark(job_id, request, jobs):
         baseline_predictions = _generate(base_model, tokenizer, baseline_prompt, test_rows)
         baseline_seconds = time.perf_counter() - baseline_started
         baseline_metrics = score_predictions(test_rows, baseline_predictions)
+        baseline_metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, baseline_predictions)
         if selection["selected_prompt_sha256"] == _prompt_sha256(baseline_prompt):
             selected_predictions = baseline_predictions
             selected_metrics = baseline_metrics
@@ -539,6 +558,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             selected_predictions = _generate(base_model, tokenizer, selected_prompt, test_rows)
             selected_seconds = time.perf_counter() - selected_started
             selected_metrics = score_predictions(test_rows, selected_predictions)
+            selected_metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, selected_predictions)
         baseline_ci = _record_accuracy_ci(test_rows, baseline_predictions)
         selected_ci = baseline_ci if selected_predictions is baseline_predictions else _record_accuracy_ci(test_rows, selected_predictions)
         del base_model
@@ -553,6 +573,7 @@ def run_frozen_benchmark(job_id, request, jobs):
         adapter_predictions = _generate(adapted_model, adapter_tokenizer, selected_prompt, test_rows)
         adapter_inference_seconds = time.perf_counter() - adapter_inference_started
         adapter_metrics = score_predictions(test_rows, adapter_predictions)
+        adapter_metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, adapter_predictions)
         adapter_ci = _record_accuracy_ci(test_rows, adapter_predictions)
         selected_prompt_delta_ci = _record_accuracy_difference_ci(
             test_rows,
@@ -593,6 +614,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             predictions = _generate(quantized_model, quantized_tokenizer, selected_prompt, test_rows)
             inference_seconds = time.perf_counter() - inference_started
             metrics = score_predictions(test_rows, predictions)
+            metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, predictions)
             metrics["record_exact_match_95ci"] = _record_accuracy_ci(test_rows, predictions)
             metrics["paired_record_exact_match_delta_95ci"] = _record_accuracy_difference_ci(
                 test_rows,
@@ -620,7 +642,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             _clear_device_cache(quantized_torch, quantized_device)
 
         report = {
-            "schema_version": 3,
+            "schema_version": 4,
             "status": "completed",
             "dataset_id": selection["dataset_id"],
             "dataset_sha256": dataset_digest,
