@@ -68,7 +68,7 @@
 - [x] Add Fine-tune UI controls and background-job progress/result states for prompt selection and final benchmarking.
 - [x] Review Fine-tune at desktop in Edge and inspect 1440px, 768px, and 390px layouts; synthetic data is blocked and the inspector reports no horizontal overflow. No physical phone test was performed.
 - [x] Rerun the full Python suite (51 passed), UI job checks (8 passed), syntax checks, and whitespace validation.
-- [x] Commit as `ff28abb` and fast-forward the existing PR #1 head branch targeting `main`; leave the PR unmerged.
+- [x] Open PR #2 targeting `main` after verifying PR #1 was already merged; leave PR #2 unmerged.
 - [ ] Supply and human-review an authorized real dataset, train a new schema-v3 adapter, and run a real frozen benchmark; no model-quality result exists yet.
 - [ ] Measure quantized versus unquantized inference on supported hardware after selecting an installed backend.
 ## Navigation and background-job follow-up
