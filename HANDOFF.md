@@ -124,10 +124,10 @@
 
 ## Run instructions and next action
 
-- `http://127.0.0.1:5004` is the verified preview for this change. Main port `4004` is held by Python PID 33390 with this repository as its working directory, but it has no launcher-owned PID record and was left untouched.
+- The existing `http://127.0.0.1:5004` tab displayed the updated Fine-tune markup, but its API process predates the quantization endpoint and left the new controls disabled. A fresh 6004 instance could not be reached from Edge; the existing 4004/5004 host processes were left untouched because their ownership could not be verified from this sandbox.
 - Create/activate `.venv`, then run `pip install -r requirements.txt`.
 - Main: `./run.sh` → `http://127.0.0.1:4004`; test and preview ports are 5004 and 6004.
-- This change's checks: `./.venv/bin/python -m unittest discover -s tests -v` (51 passed), `node --test tests/ui_background_jobs.test.cjs` (8 passed), Python/JavaScript/launcher syntax checks, `git diff --check`, and Edge/inspector review at desktop and 390px mobile widths. No real reviewed corpus, local training run, model inference, or quantization experiment was performed. The saved selection/report JSON remains local; the Fine-tune UI does not restore a previous result after a page reload.
+- The original validation-selection stage passed 51 Python tests and 8 UI tests. The latest quantization follow-up passed 57 Python tests and 9 UI tests; its local inference smoke is documented below. No reviewed corpus or representative quality benchmark exists. Selection/report JSON remains local, and the Fine-tune UI does not restore a previous result after a page reload.
 - Next: provide the authorized reviewed corpus, train a schema-v3 adapter, inspect its frozen benchmark, then run the optional quantized-inference comparison once.
 
 ## Quantized-inference follow-up — 2026-10-28
@@ -142,3 +142,4 @@
 - A fresh `run.sh` attempt reported ready on 6004 inside the isolated command environment, but Edge could not connect to that instance. The existing 4004/5004 host processes were left untouched because their ownership could not be verified from this sandbox. The final branch is not confirmed running on the main port.
 - The adapter-attached NF4/INT8 smoke generated output using a cached Qwen checkpoint, an existing synthetic-demo adapter, and one fixed synthetic input in the CPU-only command environment. The host Fine-tune screen reports MPS, and an earlier base-only BNB smoke passed on MPS, but this new adapter-attached path was not verified on MPS.
 - No real reviewed corpus, frozen test benchmark, quality result, or AWQ/GPTQ calibration experiment exists. Keep the résumé claim to implemented workflow capabilities until that evidence is produced.
+- Quantization implementation commit `7476163` was pushed to `codex/promptmesh-validation-selection`; [PR #2](https://github.com/arjeetanand/PromptMesh/pull/2) is verified open against `main` at head `7476163ee5d59d74d03006c8bbd722cafef02b0a`. It was not merged.
