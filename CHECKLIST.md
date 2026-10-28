@@ -96,7 +96,8 @@
 
 - [x] Record Python, platform, device, and installed training/inference package versions in adapter, validation-selection, and frozen-benchmark records.
 - [x] Surface training, selection, and benchmark runtime metadata in the Fine-tune UI and distinguish older runs with missing metadata.
-- [ ] Add and verify a pinned local training dependency lock; environment metadata alone does not guarantee a repeatable install.
+- [x] Pin the current Python 3.12 / macOS ARM64 LoRA/SFT and bitsandbytes dependency closure; verify every lock pin matches the active `.venv` and `pip check` passes.
+- [ ] Install the local training lock into a clean environment and confirm setup before treating it as a freshly reproduced environment.
 
 ## Navigation and background-job follow-up
 

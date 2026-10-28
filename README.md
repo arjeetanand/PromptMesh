@@ -250,6 +250,20 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+For the currently validated local LoRA/SFT and quantization environment on
+Python 3.12 / Apple Silicon macOS, install the exact training dependency
+snapshot with the app requirements:
+
+```bash
+pip install -r requirements.txt -r requirements-training-macos-arm64.lock
+```
+
+That lock pins the training and bitsandbytes dependency closure only. It is a
+snapshot for macOS ARM64, not a cross-platform or full-application lock; the
+general application dependencies in `requirements.txt` remain unpinned. The
+standalone quantization install remains
+`pip install -r requirements-quantization.txt` on other supported environments.
+
 On Windows, create the environment with `python -m venv .venv` and activate it
 with `.venv\Scripts\activate` before installing requirements.
 
@@ -329,8 +343,10 @@ benchmark reports record the Python, platform, machine, device, and installed
 versions of the training and inference packages. The Fine-tune page surfaces
 the training, selection, and benchmark environments separately and labels
 legacy runs when their environment was not recorded. This is run provenance,
-not a locked dependency environment; `requirements.txt` is not yet a full
-reproducible lockfile.
+and the local training stack has an exact macOS ARM64 snapshot in
+`requirements-training-macos-arm64.lock`. The rest of `requirements.txt` is
+still unpinned, and the lock has not been validated by installing into a clean
+environment.
 
 After reviewing labels using the versioned annotation guide, fill
 `training/datasets/<dataset_id>.card.json` from the template. Validation and

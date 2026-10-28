@@ -213,3 +213,10 @@
 - Public-source facts and dates were checked against the linked official pages. Review notes flag year/announcement distinctions, actor naming such as DeepMind versus Google DeepMind, and NASA/OSIRIS-REx actor boundaries. The candidate inputs are paraphrases, not quoted source passages.
 - Updated README, dataset guidance, checklist, and packet instructions. No application code, training dataset, benchmark card, adapter, or benchmark report changed. Next: review the candidates and wording variants against each page, confirm reuse permissions, then decide whether to expand the dataset further before calibration or model comparison.
 - The tracked documentation update is commit `0bac3d6` on `codex/promptmesh-validation-selection`, pushed to existing PR #2. `gh pr view` verified PR #2 is open against `main` at the time of this handoff check; it was not merged.
+
+## Local training dependency snapshot — 2026-10-29
+
+- Added `requirements-training-macos-arm64.lock` with 47 exact pins for the active LoRA/SFT dependency closure and optional bitsandbytes backend, recorded from the currently working Python 3.12.13 / macOS 26.7.1 ARM64 `.venv`.
+- Compared every lock pin with the installed distribution metadata; all 47 versions match. `pip check` reports no broken requirements. No package was installed or upgraded in this step.
+- This snapshot does not pin app-only dependencies from `requirements.txt`, is not portable to Linux/Windows, and has not been installed in a clean environment. That clean-install check remains open.
+- README now shows how to install the app requirements together with this lock on the recorded platform and states its limits. The existing `requirements-quantization.txt` remains the optional backend entry point for other environments.
