@@ -45,6 +45,14 @@ function loadApp() {
   return { context, elements, timers, setJobResponse(response) { jobResponse = response; } };
 }
 
+test("candidate source changes are announced to assistive technology", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "static", "index.html"), "utf8");
+  const sourceRegion = html.match(/<div\b[^>]*id="reviewPacketSource"[^>]*>/)?.[0] || "";
+
+  assert.match(sourceRegion, /aria-live="polite"/);
+  assert.match(sourceRegion, /aria-atomic="true"/);
+});
+
 test("candidate review coverage exposes draft year and source-host concentration", () => {
   const { context } = loadApp();
   const groups = [
