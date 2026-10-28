@@ -360,11 +360,12 @@ the dataset SHA-256 with the adapter. Private dataset files and trained runs
 are ignored by Git.
 
 Open **Fine-tune** in the UI to choose a dataset, epoch count, LoRA rank, and
-learning rate. The first run downloads the Qwen3-0.6B checkpoint from Hugging
-Face (about 1.5 GB); model training and validation scoring then run locally. The
-synthetic `entity_extraction_demo` set checks the workflow only; it is not a
-benchmark or résumé evidence. Use a reviewed, representative dataset and a
-fresh final-test set before reporting any model improvement. Training is still
+learning rate. The Qwen3-0.6B checkpoint must already be in the local Hugging
+Face cache; training resolves its commit and uses local-only loading. Model
+training and validation scoring run locally. The synthetic
+`entity_extraction_demo` set checks the workflow only; it is not a benchmark or
+résumé evidence. Use a reviewed, representative dataset and a fresh final-test
+set before reporting any model improvement. Training is still
 allowed for experimentation without a review card, but prompt selection and
 final benchmarking require a matching card marked `human_reviewed`. PromptMesh
 checks the card fields and exact data fingerprint; this local self-attestation
