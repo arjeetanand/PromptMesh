@@ -18,14 +18,31 @@
 - Added gentle character float and thought-dot animation; the existing `prefers-reduced-motion` rule disables it.
 - Browser verification passed at 1600px desktop and 390px mobile widths. Both poses loaded (1345px source width), neither view had horizontal overflow, and the run-history empty state rendered its alternate pose.
 - Confirmed the reduced-motion rule is present. `node --check static/app.js`, `bash -n run.sh`, and `git diff --check` passed.
-- Original illustration implementation commit `d1f1625` is included in the updated PR #1 history; PR #1 remains unmerged.
+- Original illustration implementation commit `d1f1625` is included in PR #1 history.
 
 ## Section illustration follow-up
 
 - Added a small companion vignette beside the page title on Evaluate, Compare, Prompt evolution, Fine-tune, Test cases, and Run history. Each uses the existing mascot artwork and a task-specific inline SVG scene (score/check, paired prompts, revision loop, model graph, test cards, or run timeline) in the PromptMesh blue and amber.
 - Kept the form and data areas unchanged; no JavaScript behavior or dependencies were added.
 - Browser verification passed at 1600px desktop and 390px mobile widths. All six images and SVG symbols rendered, with no horizontal overflow.
-- The section markup and styles are included in implementation commit `913e392` on `codex/promptmesh-evaluation-reliability`, based on `107a847`.
+- The section markup and styles were implemented in commit `2723a66` on `codex/promptmesh-section-illustrations`, based on `107a847`.
+
+## Section illustration follow-up
+
+- Added a small companion vignette beside the page title on Evaluate, Compare, Prompt evolution, Fine-tune, Test cases, and Run history. Each uses the existing mascot artwork and a task-specific inline SVG scene (score/check, paired prompts, revision loop, model graph, test cards, or run timeline) in the PromptMesh blue and amber.
+- Kept the form and data areas unchanged; no JavaScript behavior or dependencies were added.
+- Browser verification passed at 1600px desktop and 390px mobile widths. All six images and SVG symbols rendered, with no overlap or horizontal overflow.
+- Preview: `http://127.0.0.1:6004` remains available from this worktree. Restarting through `run.sh` reported an existing listener and stopped nothing; PID 39677 was verified with this worktree as its working directory.
+- Branch: `codex/promptmesh-section-illustrations`, based on `107a847`; implementation commit: `2723a66`, included in PR #1.
+
+## Navigation and background-job follow-up
+
+- Added a visible Back to overview button on each non-overview workspace page. At narrow widths it becomes an arrow-only button next to the active page title.
+- Added **Run in background** to the local LoRA and prompt evolution progress dialog. Closing the dialog leaves the existing poll active in the open browser tab. A top-bar status button shows progress, paused, complete, or failed state. Selecting it reopens progress, retries paused polling, or opens completed results; completion does not switch pages until selected.
+- The browser tab must remain open for progress updates. No LoRA training or evolution job was started during this change.
+- Focused UI verification: visited Evaluate, Compare, Prompt evolution, Fine-tune, Test cases, and Run history, confirmed Back to overview on each, and returned to Overview. At 390px mobile width, the document width remained 390px with no horizontal overflow. `node --test tests/ui_background_jobs.test.cjs` passed four checks covering dialog dismissal/reopening with polling active, the paused-job run lock, and LoRA/evolution completion status/results navigation. Source syntax, test syntax, launcher syntax, and `git diff --check` passed.
+- Preview: `http://127.0.0.1:6004` is already serving this worktree. `run.sh` safely declined to restart the existing listener (PID 39677) because the launcher had no matching PID file; no process was stopped.
+- Branch: `codex/promptmesh-navigation-dismissible-jobs`, based on `310d008`; implementation and regression-test commit `99a4dae`, with documentation commit `fbafd2c`, included in PR #1.
 
 ## Concepts and interview framing
 
@@ -87,8 +104,8 @@
 
 - Previous implementation branch: `codex/promptmesh-evaluation-reliability`, evaluation reliability commit `913e392`.
 - Validation-selection implementation commit `68204e1` and handoff commit `ce69f21` are on `codex/promptmesh-validation-selection`, based on PR head `745bf89`.
-- [PR #1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1) is open, targets `main`, and uses its existing head branch `codex/promptmesh-ui-redesign`. Commits `68204e1` and `ce69f21` are pushed to that PR.
-- Do not merge PR #1.
+- [PR #1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1) targets `main` and uses its existing head branch `codex/promptmesh-ui-redesign`. Its last confirmed head before this update was `046e426`; the navigation and illustration follow-ups are being added to that PR.
+- Standing preference: merge PRs into `main` when their changes are not already present.
 
 ## Run instructions and next action
 

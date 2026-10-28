@@ -13,8 +13,8 @@
 - [x] Run focused training tests, syntax checks, and loopback API checks after the dataset fingerprint and metric display changes.
 - [x] Reinspect the palette and Fine-tune page at desktop and mobile widths; verify the mobile drawer opens and closes without navigating away.
 - [x] Complete a one-epoch synthetic LoRA/SFT run on MPS, show its held-out results in the UI, and load the saved adapter through the model registry. The demo scores are workflow evidence only, not a quality claim.
-- [x] Commit and push the LoRA/SFT implementation and design-token follow-up (`8a4e0db`, `31ba8a0`, `7767a81`) to PR #1; do not merge it.
-- [ ] Reconfirm the live PR target is `main` when the GitHub API is reachable.
+- [x] Commit and push the LoRA/SFT implementation and design-token follow-up (`8a4e0db`, `31ba8a0`, `7767a81`) to PR #1.
+- [x] Confirm the live PR target is `main` (`gh pr view 1`).
 
 ## Illustration follow-up
 
@@ -22,13 +22,13 @@
 - [x] Generate an original two-pose PromptMesh companion and optimize the transparent images as WebP.
 - [x] Add the companion to the overview and empty run-history states with reduced-motion-aware animation.
 - [x] Verify image loading, desktop/mobile rendering, and the history empty state in the browser.
-- [x] Include the original illustration implementation in PR #1 targeting `main`; leave the PR unmerged.
+- [x] Include the original illustration implementation in PR #1 targeting `main`.
 
 ## Section illustration follow-up
 
 - [x] Add a compact companion vignette to every non-overview workspace page, with a motif specific to that page.
 - [x] Verify all six sections at desktop and 390px mobile widths with no horizontal overflow.
-- [x] Include the section illustrations in the current task branch for the existing PR targeting `main`.
+- [x] Include the section illustrations in PR #1 targeting `main`.
 
 ## Evaluation reliability follow-up
 
@@ -38,7 +38,7 @@
 - [x] Add regression tests and clarify the LLM-judge scope in the UI and README.
 - [x] Run the complete suite (29 passed), Python compilation, JavaScript syntax check, and diff check.
 - [x] Verify the Evaluate label, API connection, mobile layout at 390px, and browser console.
-- [x] Commit as `913e392` and update PR #1 targeting `main`; leave the PR unmerged.
+- [x] Commit as `913e392` and update PR #1 targeting `main`.
 
 ## Benchmark integrity follow-up
 
@@ -57,3 +57,11 @@
 - [ ] Compare base, prompt-only, and LoRA results on the same untouched test examples; report task metrics and uncertainty.
 - [ ] Measure quantized versus unquantized inference quality, latency, and memory on a declared backend and hardware.
 - [ ] Publish a reproducible run manifest and demo that distinguish synthetic workflow checks from model-quality evidence.
+## Navigation and background-job follow-up
+
+- [x] Add a Back to overview control to every non-overview page.
+- [x] Allow local LoRA training and prompt evolution progress dialogs to close while polling continues in the open tab.
+- [x] Show running, paused, completed, and failed status in the top bar; link completion to its results without changing the current page.
+- [x] Add four Node regression checks for LoRA/evolution progress dismissal, reopening, completion status, and results navigation.
+- [x] Verify tab navigation and responsive header behavior in the browser.
+- [x] Include the navigation and background-job follow-up in PR #1 targeting `main`.

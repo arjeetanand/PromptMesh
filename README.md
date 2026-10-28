@@ -267,6 +267,14 @@ synthetic `entity_extraction_demo` set checks the workflow only; it is not a
 benchmark or résumé evidence. Use a reviewed, representative dataset and a
 fresh final-test set before reporting any model improvement.
 
+Every workspace page includes a Back to overview control. While local LoRA
+training or prompt evolution runs, choose **Run in background** to close the
+progress dialog and keep working in PromptMesh. The top bar shows progress and
+status; select it to reopen progress or view completed results. Keep the
+browser tab open while the job runs. Run
+`node --test tests/ui_background_jobs.test.cjs` for the background-progress
+regression checks.
+
 The Fine-tune page shows schema readiness, example and source-group counts,
 train/validation/reserved-test sizes, and a short SHA-256 dataset fingerprint.
 Completed runs keep that fingerprint, prompt hash, and validation metric split with the
@@ -282,7 +290,9 @@ serving.
 The overview hero and the empty run-history states use original transparent
 PromptMesh companion artwork in `static/images/`. Its small float and thought
 animations are decorative, and the shared reduced-motion rule disables them
-for users who request less motion.
+for users who request less motion. Evaluate, Compare, Prompt evolution,
+Fine-tune, Test cases, and Run history pair the companion with a small
+task-specific SVG scene.
 
 The API provides `GET /api/training/datasets`, `GET /api/training/adapters`,
 and `POST /api/training/jobs`. The POST accepts only a dataset ID stored under

@@ -10,6 +10,7 @@ const state = {
   activeTab: "overview",
   pollingTimer: null,
   jobBusy: false,
+  backgroundJob: null,
   apiKey: null,
   jobHistory: [],
   lastEvaluationResults: null,
@@ -231,10 +232,12 @@ function setupNavigation() {
 }
 
 function validTab(tab) { return ["overview", "evaluate", "compare", "evolve", "finetune", "testcases", "history"].includes(tab); }
+function canRunInBackground(type) { return type === "training" || type === "evolution"; }
 
 function activateTab(tab, updateHash) {
   if (!validTab(tab)) tab = "overview";
   state.activeTab = tab;
+  $("backToOverview").hidden = tab === "overview";
   document.querySelectorAll(".tab-content").forEach((section) => {
     section.hidden = section.id !== tab + "-tab";
   });
@@ -315,7 +318,11 @@ function setupForms() {
   $("connectApiBtn").addEventListener("click", connectAPI);
   $("refreshBtn").addEventListener("click", checkAPIHealth);
   $("clearHistoryBtn").addEventListener("click", clearHistory);
-  $("progressModal").addEventListener("cancel", (event) => event.preventDefault());
+  $("progressBackgroundBtn").addEventListener("click", () => $("progressModal").close());
+  $("backgroundJobStatus").addEventListener("click", openBackgroundJob);
+  $("progressModal").addEventListener("cancel", (event) => {
+    if (!(state.backgroundJob?.status === "running" && canRunInBackground(state.backgroundJob.type))) event.preventDefault();
+  });
 }
 
 function populateTrainingDatasets() {
@@ -405,6 +412,16 @@ function renderFineTuneDatasetReadiness(dataset) {
   validation.className = "dataset-validation-note";
   validation.textContent = "Schema validated · source groups stay together across splits";
   container.append(validation);
+
+  const benchmark = dataset.benchmark || {};
+  const benchmarkNote = document.createElement("p");
+  benchmarkNote.className = "dataset-validation-note";
+  if (benchmark.ready) {
+    benchmarkNote.textContent = `Final benchmark card: reviewer-attested · ${benchmark.reviewed_examples} examples · ${benchmark.reviewed_source_groups} source groups · dataset hash matched`;
+  } else {
+    benchmarkNote.textContent = "Final benchmark unavailable · " + (benchmark.reason || "Add a reviewer-attested benchmark card.");
+  }
+  container.append(benchmarkNote);
 
   const splitList = document.createElement("div");
   splitList.className = "dataset-split-list";
@@ -607,14 +624,66 @@ function setExperimentButtonsDisabled(disabled) {
   updateFineTuneSubmit();
 }
 
+function updateBackgroundJobStatus() {
+  const job = state.backgroundJob;
+  const button = $("backgroundJobStatus");
+  if (!job || !canRunInBackground(job.type)) { button.hidden = true; return; }
+  const label = job.type === "training" ? "LoRA" : "Evolution";
+  const descriptions = {
+    running: [label + " " + Math.round(job.progress || 0) + "%", "in progress. Select to view progress."],
+    paused: [label + " status paused", "updates paused. Select to retry."],
+    completed: [label + " complete", "completed. Select to view results."],
+    failed: [label + " failed", "failed. Select to view the error."]
+  };
+  const [text, detail] = descriptions[job.status] || descriptions.running;
+  $("backgroundJobStatusText").textContent = text;
+  button.dataset.status = job.status;
+  button.setAttribute("aria-label", (job.type === "training" ? "Local LoRA training " : "Prompt evolution ") + detail);
+  button.title = button.getAttribute("aria-label");
+  button.hidden = false;
+}
+
+function setBackgroundJobStatus(type, status, message) {
+  if (state.backgroundJob?.type !== type) return;
+  state.backgroundJob.status = status;
+  state.backgroundJob.message = message;
+  updateBackgroundJobStatus();
+}
+
+function openBackgroundJob() {
+  const job = state.backgroundJob;
+  if (!job) return;
+  if (job.status === "running") return showProgressModal(job.type);
+  if (job.status === "paused") return startPolling(job.jobId, job.type);
+  if (job.status === "failed") {
+    state.backgroundJob = null;
+    updateBackgroundJobStatus();
+    showToast(job.message || "The background job failed.", "error");
+    return;
+  }
+  const tab = job.type === "training" ? "finetune" : "evolve";
+  state.backgroundJob = null;
+  updateBackgroundJobStatus();
+  activateTab(tab, true);
+  $(tab === "finetune" ? "fineTuneResults" : "evolveResults").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function startPolling(jobId, type) {
   clearInterval(state.pollingTimer);
+  state.jobBusy = true;
+  setExperimentButtonsDisabled(true);
+  if (canRunInBackground(type)) {
+    const previous = state.backgroundJob?.jobId === jobId ? state.backgroundJob : null;
+    state.backgroundJob = { jobId, type, status: "running", progress: previous?.progress || 0, stage: previous?.stage || null, message: previous?.message || "" };
+    updateBackgroundJobStatus();
+  }
   showProgressModal(type);
   let polls = 0;
   const maxPolls = type === "training" ? 1800 : 150;
   state.pollingTimer = window.setInterval(async () => {
     polls += 1;
     if (polls > maxPolls) {
+      setBackgroundJobStatus(type, "paused", "Progress updates timed out. Select the status chip to retry.");
       stopPolling();
       showToast("This job is taking longer than expected. Check API status and run history.", "warning");
       return;
@@ -626,29 +695,37 @@ function startPolling(jobId, type) {
         stopPolling();
         if (type === "training") {
           if (!job.result) {
+            setBackgroundJobStatus(type, "failed", "Training completed without an adapter result.");
             showToast("Training completed without an adapter result.", "warning");
             return;
           }
           displayFineTuneRun(job.result);
+          setBackgroundJobStatus(type, "completed", "Local adapter training completed.");
           await loadInitialData();
-          showToast("Local adapter trained and saved.", "success");
+          showToast("Local LoRA training completed. Results are ready in Fine-tune.", "success");
           return;
         }
         const hasResults = Array.isArray(job.results)
           ? job.results.length > 0
           : type === "evolution" && Array.isArray(job.results?.history) && job.results.history.length > 0;
         if (!hasResults) {
+          setBackgroundJobStatus(type, "failed", "The job completed without results.");
           showToast("The job completed without results.", "warning");
           return;
         }
-        handleJobResult(type, job.results);
+        handleJobResult(type, job.results, type !== "evolution");
         addToHistory(jobId, type, job);
-        showToast("Run completed.", "success");
+        if (type === "evolution") {
+          setBackgroundJobStatus(type, "completed", "Prompt evolution completed.");
+          showToast("Prompt evolution completed. Results are ready in Prompt evolution.", "success");
+        } else showToast("Run completed.", "success");
       } else if (job.status === "failed") {
+        setBackgroundJobStatus(type, "failed", job.error || "The run failed.");
         stopPolling();
         showToast("The run failed: " + (job.error || "No error details were returned."), "error");
       }
     } catch (error) {
+      setBackgroundJobStatus(type, "paused", "Progress could not be retrieved. Select the status chip to retry.");
       stopPolling();
       showToast("Could not retrieve the job: " + error.message, "error");
     }
@@ -666,15 +743,18 @@ function stopPolling() {
 function showProgressModal(type) {
   const labels = { evaluation: "Running model evaluation", comparison: "Comparing prompt versions", evolution: "Evolving the prompt", training: "Training a local LoRA adapter" };
   $("progressTitle").textContent = labels[type] || "Running your job";
-  $("progressText").textContent = type === "training" ? "Loading the local base model and preparing validation metrics." : "The API is waiting for model responses.";
-  $("progressFootnote").textContent = type === "training" ? "The first run may download model weights. Keep this tab open while training runs." : "You can keep this tab open while the models respond.";
-  $("progressFill").style.width = "0%";
+  const backgroundJob = state.backgroundJob?.type === type && state.backgroundJob.status === "running" ? state.backgroundJob : null;
+  $("progressText").textContent = backgroundJob?.message || (type === "training" ? "Loading the local base model and preparing validation metrics." : "The API is waiting for model responses.");
+  $("progressFootnote").textContent = canRunInBackground(type) ? "You can navigate elsewhere in PromptMesh. Keep this browser tab open for progress updates." : "You can keep this tab open while the models respond.";
+  $("progressFill").style.width = (backgroundJob?.progress || 0) + "%";
+  $("progressBackgroundBtn").hidden = !canRunInBackground(type);
   if (!$("progressModal").open) $("progressModal").showModal();
 }
 
 function updateProgress(percent, status, stage) {
   const amount = Number(percent);
-  $("progressFill").style.width = (Number.isFinite(amount) ? Math.max(0, Math.min(amount, 100)) : 0) + "%";
+  const progress = Number.isFinite(amount) ? Math.max(0, Math.min(amount, 100)) : 0;
+  $("progressFill").style.width = progress + "%";
   const labels = {
     loading_model: "Loading the base model on this machine.",
     evaluating_base: "Scoring the base model on validation examples.",
@@ -682,13 +762,20 @@ function updateProgress(percent, status, stage) {
     evaluating_adapter: "Scoring the adapter on the same validation examples.",
     completed: "Training is complete; final-test examples remain reserved."
   };
-  $("progressText").textContent = labels[stage] || (status === "running" ? "Models are processing the selected inputs." : (status || "Working…"));
+  const message = labels[stage] || (status === "running" ? "Models are processing the selected inputs." : (status || "Working…"));
+  $("progressText").textContent = message;
+  if (state.backgroundJob?.status === "running") {
+    state.backgroundJob.progress = progress;
+    state.backgroundJob.stage = stage;
+    state.backgroundJob.message = message;
+    updateBackgroundJobStatus();
+  }
 }
 
-function handleJobResult(type, results) {
+function handleJobResult(type, results, navigate = true) {
   if (type === "evaluation") { state.lastEvaluationResults = results; displayEvaluation(results); activateTab("evaluate", true); }
   if (type === "comparison") { state.lastComparisonResults = results; displayComparison(results); activateTab("compare", true); }
-  if (type === "evolution") { state.lastEvolutionResults = results; displayEvolution(results); activateTab("evolve", true); }
+  if (type === "evolution") { state.lastEvolutionResults = results; displayEvolution(results); if (navigate) activateTab("evolve", true); }
 }
 
 function displayEvaluation(results) {
