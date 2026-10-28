@@ -10,23 +10,28 @@ Add private datasets as additional `.jsonl` files in this directory. They are ig
 
 ## Prepare a reviewed benchmark
 
-Use `entity_extraction_template.jsonl.example` as a row-format guide. Copy it to
-`<dataset_id>.jsonl`, remove the comment, and replace every placeholder with an
-authorized source example and its human-checked labels. Keep related passages
-and paraphrases under the same `group_id`.
+Use [ANNOTATION_GUIDE_v1.md](ANNOTATION_GUIDE_v1.md) as the versioned labeling
+protocol and `entity_extraction_template.jsonl.example` as a row-format guide.
+Copy the row example to `<dataset_id>.jsonl`, remove the comment, and replace
+every placeholder with an authorized source example and labels checked against
+that source by a human. Keep related passages and paraphrases under the same
+`group_id`. The guide's examples are synthetic and must not be copied into a
+benchmark.
 
 Copy `benchmark_card.template.json` to `<dataset_id>.card.json` and fill in the
 dataset ID and SHA-256 shown in dataset readiness, source permission, grouping
 policy, annotation guideline version, review counts, review date, reviewer role,
 and known limitations. A changed JSONL file has a new fingerprint, so update the
 card only after reviewing the changed examples again. Do not add personal names,
-private source URLs, or sensitive text to the card. Both the dataset and filled
-card remain ignored by Git; only these two templates are tracked.
+private source URLs, or sensitive text to the card. The dataset and filled card
+remain ignored by Git; the row/card templates and annotation guide are tracked.
 
 Leave `review_status` as `unreviewed` until every benchmark label has been
-checked by a human against its source. These files prepare the benchmark
-provenance. Prompt selection and final benchmark evaluation require a matching
-card marked reviewer-attested. This is a local self-attestation; PromptMesh
+checked by a human against its source. Set `guidelines_version` to
+`entity-extraction-v1` when following the included guide. These files prepare
+the benchmark provenance. Prompt selection and final benchmark evaluation
+require a matching card marked `human_reviewed`; the gate validates the card
+and dataset fingerprint, but review is still a local self-attestation. PromptMesh
 cannot independently verify that a reviewer checked the labels. Ordinary
 training remains available for experimentation. No human-reviewed benchmark
 has been supplied. Do not report a quality result from the synthetic demo.

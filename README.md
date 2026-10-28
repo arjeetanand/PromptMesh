@@ -286,8 +286,11 @@ Create a labeled JSONL file in `training/datasets/`; follow
 `claim`. Keep paraphrases or chunks from one source under the same group ID.
 Start from the row example and benchmark-card template in
 [`training/datasets/README.md`](training/datasets/README.md). Keep filled cards
-and source data local. The current trainer does not yet enforce the card's
-human-review status.
+and source data local. Follow the versioned
+[entity-extraction annotation guide](training/datasets/ANNOTATION_GUIDE_v1.md)
+when reviewing labels. Training is available for experimentation without a
+review card; prompt selection and final benchmarking enforce its matching hash
+and `human_reviewed` attestation.
 PromptMesh assigns complete groups to deterministic train, validation, and
 reserved final-test splits, requires at least 12 distinct groups, and records
 the dataset SHA-256 with the adapter. Private dataset files and trained runs
@@ -300,14 +303,15 @@ synthetic `entity_extraction_demo` set checks the workflow only; it is not a
 benchmark or résumé evidence. Use a reviewed, representative dataset and a
 fresh final-test set before reporting any model improvement. Training is still
 allowed for experimentation without a review card, but prompt selection and
-final benchmarking require a matching card marked reviewer-attested. PromptMesh
+final benchmarking require a matching card marked `human_reviewed`. PromptMesh
 checks the card fields and exact data fingerprint; this local self-attestation
 cannot independently prove that a human reviewed the labels. The UI states this
 limit beside readiness and selection controls.
 
-After reviewing labels, fill `training/datasets/<dataset_id>.card.json` from
-the template. Validation and held-out test splits must each contain at least 30
-examples across 10 source groups. Select a validation-scored adapter and paste a candidate prompt
+After reviewing labels using the versioned annotation guide, fill
+`training/datasets/<dataset_id>.card.json` from the template. Validation and
+held-out test splits must each contain at least 30 examples across 10 source
+groups. Select a validation-scored adapter and paste a candidate prompt
 that includes `{{text}}`; PromptMesh compares it with `extraction/v1` using
 record exact match, then field accuracy, then JSON-valid rate. Ties keep the
 earlier prompt. This step only scores validation rows. The frozen action then

@@ -72,6 +72,7 @@
 - [x] Add optional bitsandbytes LLM.int8 and NF4 runtime configuration and Fine-tune controls for a quantized inference comparison.
 - [x] Run a fixed synthetic backend canary before reserving test data; record matched test metrics, grouped intervals, load/inference time, generated-token rate, and model footprint.
 - [x] Explain that bitsandbytes methods do not use an offline calibration corpus; keep AWQ/GPTQ calibration and QLoRA training explicitly separate.
+- [x] Add a versioned entity-extraction annotation guide tied to the task prompt and exact-match metric; correct stale README review-gate wording.
 - [x] Add regression coverage for INT8/NF4 configuration, identical test rows, calibration labeling, and invalid or unavailable API selections.
 - [x] Check Fine-tune at 1440px and 390px in Edge; the document has no horizontal overflow or browser console errors.
 - [ ] Restart the current host server with the new API and verify the adapter-attached NF4/INT8 canary on MPS; this sandbox could not expose its 6004 server to the browser.

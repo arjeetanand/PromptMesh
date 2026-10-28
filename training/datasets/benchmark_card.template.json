@@ -12,7 +12,7 @@
     "policy": "REPLACE_WITH_HOW_GROUP_ID_VALUES_ARE_ASSIGNED"
   },
   "annotation": {
-    "guidelines_version": "REPLACE_WITH_GUIDELINE_VERSION",
+    "guidelines_version": "entity-extraction-v1",
     "review_status": "unreviewed",
     "all_labels_human_reviewed": false,
     "total_examples": 0,

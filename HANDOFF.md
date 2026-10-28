@@ -143,3 +143,10 @@
 - The adapter-attached NF4/INT8 smoke generated output using a cached Qwen checkpoint, an existing synthetic-demo adapter, and one fixed synthetic input in the CPU-only command environment. The host Fine-tune screen reports MPS, and an earlier base-only BNB smoke passed on MPS, but this new adapter-attached path was not verified on MPS.
 - No real reviewed corpus, frozen test benchmark, quality result, or AWQ/GPTQ calibration experiment exists. Keep the résumé claim to implemented workflow capabilities until that evidence is produced.
 - Quantization implementation commit `7476163` was pushed to `codex/promptmesh-validation-selection`; [PR #2](https://github.com/arjeetanand/PromptMesh/pull/2) is verified open against `main` at head `7476163ee5d59d74d03006c8bbd722cafef02b0a`. It was not merged.
+
+## Annotation protocol follow-up — 2026-10-28
+
+- Added `training/datasets/ANNOTATION_GUIDE_v1.md` with task-specific rules for organization names, explicit event years, atomic claims, null labels, ambiguity, source grouping, exact-match behavior, human review, and holdout protection. Its examples are explicitly synthetic and not benchmark data.
+- Set the benchmark-card template guideline ID to `entity-extraction-v1`, tracked the guide despite the dataset-directory ignore rule, and linked it from the dataset instructions and README.
+- Corrected stale README language: training may run without review metadata, while prompt selection and frozen benchmarking require the matching `human_reviewed` card and dataset fingerprint. That card remains a local self-attestation.
+- No authorized corpus was added or marked reviewed. A human still needs to populate and review the ignored dataset/card before model-quality or quantization claims can be made.
