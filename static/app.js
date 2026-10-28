@@ -6,6 +6,11 @@ const state = {
   trainingDatasets: [],
   trainingRuntime: null,
   quantizationRuntime: null,
+  reviewPacket: null,
+  reviewPacketError: null,
+  reviewPacketCurrentGroupId: null,
+  reviewPacketDirty: false,
+  reviewPacketSaving: false,
   trainedAdapters: [],
   activeAdapterModel: null,
   activeTab: "overview",
@@ -100,8 +105,8 @@ function setEmptySelectors(message) {
 }
 
 async function loadInitialData() {
-  const [tasksResult, modelsResult, trainingResult] = await Promise.allSettled([
-    apiCall("tasks"), apiCall("models"), apiCall("training/datasets")
+  const [tasksResult, modelsResult, trainingResult, reviewPacketResult] = await Promise.allSettled([
+    apiCall("tasks"), apiCall("models"), apiCall("training/datasets"), apiCall("training/review-packet")
   ]);
   if (tasksResult.status === "fulfilled") state.tasks = tasksResult.value.tasks || [];
   if (modelsResult.status === "fulfilled") state.models = modelsResult.value || {};
@@ -114,9 +119,17 @@ async function loadInitialData() {
     state.trainingRuntime = null;
     state.quantizationRuntime = null;
   }
+  if (reviewPacketResult.status === "fulfilled") {
+    state.reviewPacket = reviewPacketResult.value;
+    state.reviewPacketError = null;
+  } else {
+    state.reviewPacket = null;
+    state.reviewPacketError = reviewPacketResult.reason?.message || "The local review packet could not be loaded.";
+  }
   populateTaskDropdowns();
   populateModelSelectors();
   populateTrainingDatasets();
+  renderCandidateReviewPacket();
   await loadSavedAdapters();
   $("overviewTaskCount").textContent = String(state.tasks.length);
   $("overviewModelCount").textContent = String((state.models.all || []).length);
@@ -315,6 +328,15 @@ function setupForms() {
   $("testcasesForm").addEventListener("submit", handleTestcase);
   $("fineTuneForm").addEventListener("submit", handleFineTune);
   $("fineTuneDataset").addEventListener("change", updateFineTuneDatasetNote);
+  $("reviewPacketForm").addEventListener("submit", handleSaveCandidateReview);
+  $("reviewPacketGroup").addEventListener("change", handleReviewGroupChange);
+  $("reviewPacketPrevious").addEventListener("click", () => moveReviewGroup(-1));
+  $("reviewPacketNext").addEventListener("click", moveToNextUnreviewedGroup);
+  $("reviewPacketForm").addEventListener("input", () => { state.reviewPacketDirty = true; });
+  $("reviewPacketForm").addEventListener("change", () => {
+    state.reviewPacketDirty = true;
+    updateReviewEvidenceField();
+  });
   $("promptSelectionForm").addEventListener("submit", handlePromptSelection);
   $("benchmarkAdapter").addEventListener("change", updateBenchmarkControls);
   $("benchmarkCandidatePrompt").addEventListener("input", updateBenchmarkControls);
@@ -361,6 +383,261 @@ function populateTrainingDatasets() {
     note.title = "Training and evaluation run on this machine.";
   }
   updateFineTuneSubmit();
+}
+
+function renderCandidateReviewPacket() {
+  const summary = $("candidateReviewSummary");
+  const workspace = $("candidateReviewWorkspace");
+  const message = $("candidateReviewMessage");
+  const packet = state.reviewPacket;
+  if (!packet) {
+    summary.textContent = "Local review unavailable";
+    workspace.hidden = true;
+    message.hidden = false;
+    message.textContent = state.reviewPacketError === "The API request failed (404)."
+      ? "The running API does not include the review endpoint yet. Restart PromptMesh on this machine and refresh."
+      : state.reviewPacketError || "The private candidate review packet is unavailable.";
+    return;
+  }
+
+  summary.textContent = `${packet.total_rows} rows · ${packet.total_groups} source groups · ${packet.reviewed_rows} labels reviewed · ${packet.eligible_groups} groups with reviewed labels and reuse evidence`;
+  if (!packet.groups.length) {
+    workspace.hidden = true;
+    message.hidden = false;
+    message.textContent = "The local review packet has no source groups.";
+    return;
+  }
+  workspace.hidden = false;
+  message.hidden = true;
+  const selector = $("reviewPacketGroup");
+  const prior = state.reviewPacketCurrentGroupId;
+  const groups = packet.groups;
+  const current = groups.find((group) => group.group_id === prior)
+    || groups.find((group) => group.rows.some((row) => row.review_status !== "REVIEWED" && row.review_status !== "EXCLUDED"))
+    || groups[0];
+  state.reviewPacketCurrentGroupId = current.group_id;
+  selector.replaceChildren(...groups.map((group) => {
+    const label = `${group.source_title || group.group_id} · ${group.reviewed_rows}/${group.rows.length} labels reviewed`;
+    return new Option(label, group.group_id);
+  }));
+  selector.value = current.group_id;
+  renderReviewGroup(current);
+  state.reviewPacketDirty = false;
+}
+
+function renderReviewGroup(group) {
+  const source = $("reviewPacketSource");
+  source.replaceChildren();
+  const title = document.createElement("h3");
+  title.textContent = group.source_title || group.group_id;
+  const meta = document.createElement("p");
+  meta.textContent = `${group.group_id} · Source date ${group.source_date || "not listed"}`;
+  const focus = document.createElement("p");
+  focus.className = "review-source-focus";
+  focus.textContent = group.review_focus || "Check the proposed labels against the linked source.";
+  const url = safeHttpUrl(group.source_url);
+  if (url) {
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Open source page";
+    source.append(title, meta, focus, link);
+  } else {
+    source.append(title, meta, focus);
+  }
+
+  const rows = $("reviewPacketRows");
+  rows.replaceChildren(...group.rows.map((row, index) => renderReviewRow(row, index + 1, group.rows.length)));
+  $("reviewSourceReuseStatus").value = reviewReuseStatus(group.reuse_status);
+  $("reviewSourceEvidence").value = group.reuse_evidence || "";
+  updateReviewEvidenceField();
+  $("reviewPacketSaveStatus").textContent = `${group.reviewed_rows}/${group.rows.length} labels reviewed in this group. Saving never adds rows to training.`;
+}
+
+function renderReviewRow(row, ordinal, total) {
+  const card = document.createElement("article");
+  card.className = "review-row";
+  card.dataset.rowIndex = String(row.row_index);
+  const heading = document.createElement("div");
+  heading.className = "review-row-heading";
+  const title = document.createElement("h3");
+  title.textContent = `Candidate ${ordinal} of ${total}`;
+  const status = document.createElement("span");
+  status.className = "review-row-status" + (row.review_status === "REVIEWED" ? " is-reviewed" : row.review_status === "EXCLUDED" ? " is-excluded" : " is-pending");
+  status.textContent = row.review_status === "REVIEWED" ? "Reviewed" : row.review_status === "EXCLUDED" ? "Excluded" : "Needs review";
+  heading.append(title, status);
+
+  const input = document.createElement("blockquote");
+  input.className = "review-candidate-text";
+  input.textContent = row.input;
+  const draft = document.createElement("p");
+  draft.className = "review-draft-labels";
+  draft.textContent = `Draft: ${row.proposed_organization || "—"} · ${row.proposed_year || "—"} · ${row.proposed_claim || "—"}`;
+
+  const fields = document.createElement("div");
+  fields.className = "review-fields";
+  fields.append(
+    reviewField("Organization (claim actor)", "text", row.reviewed_organization || row.proposed_organization || "", "organization", row.row_index),
+    reviewField("Event year", "number", row.reviewed_year || row.proposed_year || "", "year", row.row_index),
+    reviewField("Claim", "textarea", row.reviewed_claim || row.proposed_claim || "", "claim", row.row_index),
+    reviewField("Review note or exclusion reason", "textarea", row.review_notes || "", "notes", row.row_index),
+  );
+  const decision = document.createElement("div");
+  decision.className = "field review-decision";
+  const label = document.createElement("label");
+  const selectId = `reviewDecision-${row.row_index}`;
+  label.htmlFor = selectId;
+  label.textContent = "Label decision";
+  const select = document.createElement("select");
+  select.id = selectId;
+  select.className = "review-status-select";
+  select.dataset.rowField = "review_status";
+  select.innerHTML = '<option value="NEEDS_HUMAN_REVIEW">Needs review</option><option value="REVIEWED">Labels checked against source</option><option value="EXCLUDED">Exclude this variant</option>';
+  select.value = row.review_status || "NEEDS_HUMAN_REVIEW";
+  decision.append(label, select);
+  fields.append(decision);
+  card.append(heading, input, draft, fields);
+  return card;
+}
+
+function reviewField(labelText, type, value, field, rowIndex) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "field" + ((field === "claim" || field === "notes") ? " review-field-wide" : "");
+  const controlId = `review-${field}-${rowIndex}`;
+  const label = document.createElement("label");
+  label.htmlFor = controlId;
+  label.textContent = labelText;
+  const control = type === "textarea" ? document.createElement("textarea") : document.createElement("input");
+  control.id = controlId;
+  control.dataset.rowField = field;
+  if (type !== "textarea") control.type = type;
+  control.value = value;
+  if (field === "year") {
+    control.min = "1000";
+    control.max = "9999";
+    control.step = "1";
+    control.placeholder = "Blank if unstated";
+  } else if (field === "claim") {
+    control.rows = 2;
+  } else if (field === "notes") {
+    control.rows = 2;
+    control.placeholder = "Required when excluding a variant";
+  }
+  wrapper.append(label, control);
+  return wrapper;
+}
+
+function reviewReuseStatus(value) {
+  if (value === "permission_confirmed") return "permission_confirmed";
+  if (value === "excluded") return "excluded";
+  return "permission_unconfirmed";
+}
+
+function updateReviewEvidenceField() {
+  const status = $("reviewSourceReuseStatus").value;
+  const label = $("reviewSourceEvidenceLabel");
+  const field = $("reviewSourceEvidence");
+  const isRequired = status !== "permission_unconfirmed";
+  label.textContent = status === "excluded" ? "Reason for excluding this source" : "Permission or license evidence";
+  field.placeholder = status === "excluded" ? "Why this source cannot be reused" : "e.g. license name and source terms";
+  field.required = isRequired;
+}
+
+function safeHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch { return ""; }
+}
+
+function handleReviewGroupChange(event) {
+  if (state.reviewPacketDirty && !window.confirm("Discard unsaved changes for this source group?")) {
+    event.target.value = state.reviewPacketCurrentGroupId;
+    return;
+  }
+  state.reviewPacketCurrentGroupId = event.target.value;
+  state.reviewPacketDirty = false;
+  const group = state.reviewPacket.groups.find((item) => item.group_id === event.target.value);
+  if (group) renderReviewGroup(group);
+}
+
+function moveReviewGroup(offset) {
+  if (state.reviewPacketDirty && !window.confirm("Discard unsaved changes for this source group?")) return;
+  const groups = state.reviewPacket?.groups || [];
+  const index = groups.findIndex((group) => group.group_id === state.reviewPacketCurrentGroupId);
+  const next = groups[(index + offset + groups.length) % groups.length];
+  if (next) {
+    state.reviewPacketCurrentGroupId = next.group_id;
+    $("reviewPacketGroup").value = next.group_id;
+    state.reviewPacketDirty = false;
+    renderReviewGroup(next);
+  }
+}
+
+function moveToNextUnreviewedGroup() {
+  if (state.reviewPacketDirty && !window.confirm("Discard unsaved changes for this source group?")) return;
+  const groups = state.reviewPacket?.groups || [];
+  const currentIndex = groups.findIndex((group) => group.group_id === state.reviewPacketCurrentGroupId);
+  const ordered = groups.slice(currentIndex + 1).concat(groups.slice(0, currentIndex + 1));
+  const next = ordered.find((group) => group.rows.some((row) => row.review_status !== "REVIEWED" && row.review_status !== "EXCLUDED"));
+  if (!next) return showToast("Every candidate row has a label decision.", "info");
+  state.reviewPacketCurrentGroupId = next.group_id;
+  $("reviewPacketGroup").value = next.group_id;
+  state.reviewPacketDirty = false;
+  renderReviewGroup(next);
+}
+
+async function handleSaveCandidateReview(event) {
+  event.preventDefault();
+  if (state.reviewPacketSaving) return;
+  const group = state.reviewPacket?.groups.find((item) => item.group_id === state.reviewPacketCurrentGroupId);
+  if (!group) return;
+  const reuseStatus = $("reviewSourceReuseStatus").value;
+  const reuseEvidence = $("reviewSourceEvidence").value.trim();
+  if (reuseStatus !== "permission_unconfirmed" && !reuseEvidence) {
+    $("reviewSourceEvidence").focus();
+    return showToast("Add permission evidence or an exclusion reason.", "error");
+  }
+  const rows = [...$("reviewPacketRows").querySelectorAll(".review-row")].map((card) => {
+    const field = (name) => card.querySelector(`[data-row-field="${name}"]`);
+    const yearValue = field("year").value.trim();
+    return {
+      row_index: Number(card.dataset.rowIndex),
+      review_status: field("review_status").value,
+      reviewed_organization: field("organization").value.trim() || null,
+      reviewed_year: yearValue ? Number(yearValue) : null,
+      reviewed_claim: field("claim").value.trim() || null,
+      review_notes: field("notes").value.trim(),
+    };
+  });
+  if (rows.some((row) => row.review_status === "EXCLUDED" && !row.review_notes)) {
+    return showToast("Add a reason before excluding a candidate variant.", "error");
+  }
+
+  state.reviewPacketSaving = true;
+  $("reviewPacketSave").disabled = true;
+  $("reviewPacketSaveStatus").textContent = "Saving review to this machine…";
+  try {
+    state.reviewPacket = await apiCall("training/review-packet", {
+      method: "POST",
+      body: JSON.stringify({
+        group_id: group.group_id,
+        rows,
+        reuse_status: reuseStatus,
+        reuse_evidence: reuseEvidence,
+      }),
+    });
+    state.reviewPacketDirty = false;
+    renderCandidateReviewPacket();
+    showToast("Review saved to the local candidate packet.", "success");
+  } catch (error) {
+    $("reviewPacketSaveStatus").textContent = "Could not save: " + error.message;
+    showToast("Could not save this source group: " + error.message, "error");
+  } finally {
+    state.reviewPacketSaving = false;
+    $("reviewPacketSave").disabled = false;
+  }
 }
 
 function updateFineTuneDatasetNote() {

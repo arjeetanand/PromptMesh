@@ -54,6 +54,7 @@ from training.benchmark import (
 from training.runner import run_lora_training, training_runtime
 from training.quantization import quantization_runtime
 from training.registry import get_benchmark_adapter, list_adapters
+from training.review_packets import load_review_packet, save_group_review
 
 
 # ============================================================
@@ -320,6 +321,22 @@ class FrozenBenchmarkRequest(BaseModel):
     quantization_methods: List[Literal["bnb_int8", "bnb_nf4"]] = Field(default_factory=list, max_items=2)
 
 
+class CandidateReviewRowRequest(BaseModel):
+    row_index: int = Field(ge=0)
+    review_status: Literal["NEEDS_HUMAN_REVIEW", "REVIEWED", "EXCLUDED"]
+    reviewed_organization: Optional[str] = Field(default=None, max_length=300)
+    reviewed_year: Optional[int] = Field(default=None, ge=1000, le=9999)
+    reviewed_claim: Optional[str] = Field(default=None, max_length=1500)
+    review_notes: str = Field(default="", max_length=2000)
+
+
+class CandidateReviewPacketRequest(BaseModel):
+    group_id: str = Field(min_length=1, max_length=128)
+    rows: List[CandidateReviewRowRequest] = Field(min_length=1, max_length=12)
+    reuse_status: Literal["permission_unconfirmed", "permission_confirmed", "excluded"]
+    reuse_evidence: str = Field(default="", max_length=1000)
+
+
 class ApiSessionRequest(BaseModel):
     api_key: str = Field(min_length=32, max_length=256)
 
@@ -418,6 +435,35 @@ async def get_models():
 @app.get("/api/training/datasets")
 async def get_training_datasets():
     return {"datasets": list_datasets(), "runtime": training_runtime(), "quantization": quantization_runtime()}
+
+
+@app.get("/api/training/review-packet")
+async def get_candidate_review_packet(request: Request):
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="Candidate review is available only on this machine")
+    try:
+        return load_review_packet()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="The local candidate review packet is missing") from exc
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/training/review-packet")
+async def save_candidate_review_packet(request: CandidateReviewPacketRequest, http_request: Request):
+    if not _is_loopback_request(http_request):
+        raise HTTPException(status_code=403, detail="Candidate review is available only on this machine")
+    try:
+        return save_group_review(
+            request.group_id,
+            [row.model_dump() for row in request.rows],
+            request.reuse_status,
+            request.reuse_evidence,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="The local candidate review packet is missing") from exc
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/api/training/adapters")

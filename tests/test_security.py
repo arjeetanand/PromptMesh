@@ -20,6 +20,7 @@ from core.security import (
 )
 from core.types import render_prompt
 from prompts.registry import PromptRegistry
+from training import review_packets
 
 
 # Keep API tests independent of optional model-provider packages and credentials.
@@ -366,6 +367,72 @@ class ApiBoundaryTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["quantization"], runtime)
+
+    def test_review_packet_is_loopback_only_even_with_a_valid_api_key(self):
+        headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}
+        with TestClient(promptmesh_app.app, base_url="http://remote.example") as remote:
+            response = remote.get("/api/training/review-packet", headers=headers)
+            saved = remote.post(
+                "/api/training/review-packet",
+                json={
+                    "group_id": "source-1",
+                    "rows": [{"row_index": 0, "review_status": "NEEDS_HUMAN_REVIEW"}],
+                    "reuse_status": "permission_unconfirmed",
+                },
+                headers=headers,
+            )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(saved.status_code, 403)
+
+    def test_loopback_client_can_read_and_save_a_private_review_group(self):
+        import csv
+
+        columns = list(review_packets.REQUIRED_COLUMNS)
+        with tempfile.TemporaryDirectory() as directory:
+            packet_path = Path(directory) / "review.csv"
+            with packet_path.open("w", encoding="utf-8", newline="") as output:
+                writer = csv.DictWriter(output, fieldnames=columns)
+                writer.writeheader()
+                for index in range(3):
+                    writer.writerow({
+                        "group_id": "source-1", "input": f"Input {index}",
+                        "proposed_organization": "Actor Org", "proposed_year": "2024",
+                        "proposed_claim": "opened a lab", "review_status": "NEEDS_HUMAN_REVIEW",
+                        "source_title": "Source", "source_url": "https://example.org/source",
+                        "source_date": "2024-01-01", "reuse_status": "permission_unconfirmed",
+                    })
+            with patch.object(review_packets, "REVIEW_PACKET_DIR", Path(directory)), \
+                 patch.object(review_packets, "REVIEW_PACKET_PATH", packet_path), \
+                 TestClient(
+                     promptmesh_app.app,
+                     base_url="http://localhost:8000",
+                     client=("127.0.0.1", 49152),
+                 ) as local:
+                headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}
+                loaded = local.get("/api/training/review-packet", headers=headers)
+                rows = [
+                    {
+                        "row_index": row["row_index"],
+                        "review_status": "REVIEWED",
+                        "reviewed_organization": "Actor Org",
+                        "reviewed_year": 2024,
+                        "reviewed_claim": "opened a lab",
+                        "review_notes": "Checked against linked source",
+                    }
+                    for row in loaded.json()["groups"][0]["rows"]
+                ]
+                saved = local.post(
+                    "/api/training/review-packet",
+                    json={
+                        "group_id": "source-1", "rows": rows,
+                        "reuse_status": "permission_unconfirmed", "reuse_evidence": "",
+                    },
+                    headers=headers,
+                )
+
+        self.assertEqual(loaded.status_code, 200)
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json()["reviewed_rows"], 3)
 
     def test_valid_evaluation_job_can_be_submitted_and_polled(self):
         headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}

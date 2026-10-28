@@ -121,6 +121,26 @@
 
         <section id="finetune-tab" class="tab-content" aria-labelledby="fineTuneTitle" hidden>
           <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="fineTuneTitle">Fine-tune a small model</h1><span class="page-chip"><span class="status-dot"></span>Local SFT</span></div><p>Train a local LoRA adapter for structured entity extraction, then compare validation results with its base model.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-finetune"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-hero.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
+          <section id="candidateReview" class="results-panel review-queue" aria-labelledby="candidateReviewTitle">
+            <div class="results-heading"><div><h2 id="candidateReviewTitle">Review source candidates</h2><p>Check every phrasing against its linked source before creating a benchmark.</p></div><span id="candidateReviewSummary" class="review-summary">Loading the local review packet…</span></div>
+            <div id="candidateReviewWorkspace" class="review-workspace" hidden>
+              <div class="review-toolbar">
+                <div class="field"><label for="reviewPacketGroup">Source group</label><select id="reviewPacketGroup"></select></div>
+                <div class="review-navigation"><button id="reviewPacketPrevious" class="button button-secondary" type="button">Previous</button><button id="reviewPacketNext" class="button button-secondary" type="button">Next needing review</button></div>
+              </div>
+              <div id="reviewPacketSource" class="review-source"></div>
+              <form id="reviewPacketForm">
+                <p class="review-guidance">Review all variants in this group. <strong>Organization means the named claim actor</strong>; do not substitute a recipient or beneficiary. These phrasings share one source fact, so they count as one group.</p>
+                <div id="reviewPacketRows" class="review-rows"></div>
+                <section class="review-rights" aria-labelledby="reviewRightsTitle">
+                  <div><h3 id="reviewRightsTitle">Source reuse</h3><p>A public page is not automatically licensed for reuse. Keep this unresolved until you check the source terms.</p></div>
+                  <div class="field-grid review-rights-fields"><div class="field"><label for="reviewSourceReuseStatus">Reuse decision</label><select id="reviewSourceReuseStatus"><option value="permission_unconfirmed">Not confirmed</option><option value="permission_confirmed">Permission or license confirmed</option><option value="excluded">Exclude this source</option></select></div><div class="field"><label id="reviewSourceEvidenceLabel" for="reviewSourceEvidence">Evidence or exclusion reason</label><input id="reviewSourceEvidence" type="text" maxlength="1000" placeholder="e.g. license name and source terms"></div></div>
+                </section>
+                <div class="form-actions review-actions"><span id="reviewPacketSaveStatus" class="form-note" role="status" aria-live="polite">Changes save only to this machine's private CSV.</span><button id="reviewPacketSave" class="button button-primary" type="submit">Save review for this group</button></div>
+              </form>
+            </div>
+            <p id="candidateReviewMessage" class="review-message" role="status" aria-live="polite">Loading the local review packet…</p>
+          </section>
           <div class="workbench-grid">
             <form id="fineTuneForm" class="form-panel">
               <div class="form-section">

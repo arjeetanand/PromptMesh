@@ -138,6 +138,14 @@ in 67 source groups. Each group contains three phrasings of one source claim,
 not three independent facts; all 48 added government-page candidates are dated
 2024. The packet is for review only and does not establish model-quality gains.
 
+Open **Fine-tune → Review source candidates** to review one source group at a
+time. Compare every phrasing with its linked source, edit the labels, and record
+reuse permission separately with its evidence. The queue is loopback-only and
+saves to the ignored local CSV. It never imports candidates into training or
+creates a benchmark card; those steps still require an authorized reviewed
+dataset and a frozen evaluation. `organization` means the named actor
+performing the claim.
+
 ## Quantization, calibration, and QLoRA
 
 The frozen benchmark can optionally compare the full-precision LoRA adapter

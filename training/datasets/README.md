@@ -52,6 +52,12 @@ floors, but it does not create three independent facts per group; uncertainty is
 based on only 10 source groups per held-out split. Its 48 added sources are all
 dated 2024, so it is not balanced for year extraction. Review the packet's
 limitations and source-specific questions before using any rows.
+Use **Fine-tune → Review source candidates** to review the local CSV by source
+group. Check each wording against its linked source, edit labels, and record
+reuse permission separately with evidence. The queue saves only to the ignored
+CSV and is loopback-only; it does not create training JSONL or a benchmark card.
+Review status is a local self-attestation, not independent proof of label
+quality or reuse rights.
 Prompt selection compares the built-in `extraction/v1` template with your
 candidate using validation labels only. After selection, the frozen runner
 compares the prompted base and the matching LoRA adapter on the same reserved

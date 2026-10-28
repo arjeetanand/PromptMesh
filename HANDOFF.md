@@ -185,3 +185,13 @@
 - The actor convention remains `organization` = focal claim actor, as confirmed by the user. No training, prompt selection, frozen benchmark, quantized comparison, or quality claim used this packet.
 - Updated the dataset instructions, README, checklist, and handoff. The production JSONL parser accepted the draft; the 67 groups split 47 / 10 / 10 with 141 / 30 / 30 rows, and all reviewer fields remain blank. This follow-up does not modify application code or load the packet.
 - Documentation commit `146810a` is on `codex/promptmesh-validation-selection` and was pushed to existing PR #2, previously verified to target `main`. The GitHub API was unreachable during this turn, so the PR's current check and merge state was not re-queried.
+
+## Local candidate review workbench — 2026-10-28
+
+- Added a loopback-only API for the one ignored public-source review CSV. It validates group row indexes, records label decisions separately from source-reuse evidence, rejects symlinked packet paths, and replaces the CSV atomically.
+- Added a Fine-tune review queue with linked-source context, the actor definition for `organization`, editable labels for each phrasing, row-level review/exclusion decisions, source-level reuse evidence, and group navigation. It never imports the packet into training.
+- The local candidate CSV and draft JSONL remain git-ignored and unchanged by this implementation. No labels or reuse decisions were submitted. The benchmark remains unreviewed and its year labels remain imbalanced.
+- Verification: 64 Python `unittest` tests passed; 9 Node UI checks passed; Python and JavaScript syntax, launcher syntax, and `git diff --check` passed. Edge rendered the new review heading at its current desktop viewport, but the existing API returned 404 for the new route, so the group fields and save action did not render in that session. The skill inspector could not launch Chrome. The live queue still needs a fresh API process and responsive checks at 1440/768/390px.
+- Branch: `codex/promptmesh-validation-selection`. No new commit has been made yet. PR #2 still needs an updated push after the final UI review; its current remote status was not re-queried.
+- A scoped `run.sh` attempt returned “Port 6004 is already in use” and left the listener running. Ports 4004, 5004, and 6004 remain occupied; no process was stopped. Automatic review rejected a later unscoped debug invocation because it could have restarted 4004; that invocation did not run.
+- Next: safely manage the existing preview process, then verify the queue at 1440/768/390px, commit, and push this follow-up to PR #2. Human source review, reuse clearance, year diversification, reviewed JSONL/card creation, model-quality results, and a real quantized comparison remain open.

@@ -81,6 +81,15 @@
 - [x] Verify adapter-attached NF4/INT8 generation on MPS with one synthetic canary input; this confirms the hardware path only, not benchmark quality.
 - [ ] Supply and human-review an authorized real dataset, train a new schema-v3 adapter, and run a real frozen benchmark; no model-quality result exists yet.
 - [ ] Run the quantized comparison on that reviewed corpus; no real quality result or calibration experiment has been produced.
+
+## Local candidate review workbench
+
+- [x] Add a loopback-only review API for the ignored public-source candidate CSV, with validated group updates and atomic writes.
+- [x] Add a Fine-tune review queue that keeps each source's phrasings together, applies the actor label rule, and separates label review from reuse permission.
+- [x] Keep the private packet out of Git and the loadable training datasets until an authorized reviewed JSONL is created.
+- [x] Add regression checks for source grouping, safe writes, symlink rejection, and loopback-only access even with an API key.
+- [ ] Review candidates against sources, confirm reuse permissions, diversify years, and create an authorized benchmark dataset/card.
+- [ ] Verify the new Fine-tune queue in the real browser at 1440px, 768px, and 390px; no mobile device test is implied.
 ## Navigation and background-job follow-up
 
 - [x] Add a Back to overview control to every non-overview page.
