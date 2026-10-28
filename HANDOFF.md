@@ -13,12 +13,12 @@
 
 ## Illustration follow-up
 
-- Generated two original transparent mascot poses in the PromptMesh palette: a thinking hero pose and a compact run-history pose. Optimized WebP assets are in `static/images/` (about 384 KB combined).
+- Generated two original transparent mascot poses in the PromptMesh palette: a thinking hero pose and a compact run-history pose. Optimized WebP assets are in `static/images/` (about 268 KB combined).
 - Replaced the overview's static process diagram with the hero companion and added the alternate pose to both empty run-history states. Loading and API error placeholders remain text-led.
 - Added gentle character float and thought-dot animation; the existing `prefers-reduced-motion` rule disables it.
 - Browser verification passed at 1600px desktop and 390px mobile widths. Both poses loaded (1345px source width), neither view had horizontal overflow, and the run-history empty state rendered its alternate pose.
 - Confirmed the reduced-motion rule is present. `node --check static/app.js`, `bash -n run.sh`, and `git diff --check` passed.
-- Branch: `codex/promptmesh-illustrations`, based on `1e9c543`; local commit details will be recorded after committing. This follow-up has not been pushed or merged.
+- Branch: `codex/promptmesh-illustrations`, based on `1e9c543`; implementation commit: `d1f1625`. This follow-up has not been pushed or merged.
 
 ## Concepts and interview framing
 

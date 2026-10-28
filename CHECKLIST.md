@@ -22,4 +22,4 @@
 - [x] Generate an original two-pose PromptMesh companion and optimize the transparent images as WebP.
 - [x] Add the companion to the overview and empty run-history states with reduced-motion-aware animation.
 - [x] Verify image loading, desktop/mobile rendering, and the history empty state in the browser.
-- [ ] Commit this follow-up locally on `codex/promptmesh-illustrations`; do not push or merge without approval.
+- [x] Commit this follow-up locally on `codex/promptmesh-illustrations`; do not push or merge without approval.
