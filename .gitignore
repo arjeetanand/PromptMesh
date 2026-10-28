@@ -66,5 +66,7 @@ training/runs/
 training/datasets/*
 !training/datasets/README.md
 !training/datasets/entity_extraction_demo.jsonl
+!training/datasets/entity_extraction_template.jsonl.example
+!training/datasets/benchmark_card.template.json
 
 combine_project_to_txt.py

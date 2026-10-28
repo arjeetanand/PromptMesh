@@ -707,9 +707,9 @@ def run_evolution_job(job_id: str, request: EvolutionRequest):
                 inputs = base_inputs[:request.test_case_count]
 
         if not inputs:
-            raise ValueError("No test inputs available for evolution")
+            raise ValueError("No optimization examples available for evolution")
 
-        print(f"[INFO] Starting evolution with {len(inputs)} test inputs")
+        print(f"[INFO] Starting prompt evolution with {len(inputs)} optimization inputs")
 
         optimizer = get_model(request.optimizer_model)
         executor_model = get_model(request.model)
@@ -733,7 +733,10 @@ def run_evolution_job(job_id: str, request: EvolutionRequest):
                 "initial_score": history[0]["score"],
                 "final_score": history[-1]["score"],
                 "improvement": history[-1]["score"] - history[0]["score"],
-                "final_prompt": history[-1]["prompt"]
+                "final_prompt": history[-1]["prompt"],
+                "score_method": "llm_judge_heuristic",
+                "selection_data_role": "optimization_inputs",
+                "optimization_input_count": len(inputs),
             },
             "completed_at": datetime.utcnow().isoformat()
         })

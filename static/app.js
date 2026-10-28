@@ -408,7 +408,7 @@ function renderFineTuneDatasetReadiness(dataset) {
 
   const splitList = document.createElement("div");
   splitList.className = "dataset-split-list";
-  [["Train", splits.train], ["Validation", splits.validation], ["Test", splits.test]].forEach(([label, value]) => {
+  [["Train", splits.train], ["Validation", splits.validation], ["Final test (reserved)", splits.test]].forEach(([label, value]) => {
     const item = document.createElement("div");
     item.className = "dataset-split-item";
     const term = document.createElement("span");
@@ -457,7 +457,8 @@ function renderSavedAdapters() {
     row.className = "adapter-row";
     const copy = document.createElement("div");
     const fingerprint = adapter.dataset_sha256 ? " · data " + adapter.dataset_sha256.slice(0, 12) : "";
-    copy.innerHTML = "<strong>" + escapeHTML(adapter.dataset_id) + "</strong><span>" + escapeHTML(adapter.id + fingerprint) + " · held-out exact match " + formatPercent(adapter.metrics?.record_exact_match) + "</span>";
+    const metricLabel = adapter.metrics_split === "validation" ? "validation exact match " : "legacy test metric (previously exposed) ";
+    copy.innerHTML = "<strong>" + escapeHTML(adapter.dataset_id) + "</strong><span>" + escapeHTML(adapter.id + fingerprint) + " · " + metricLabel + formatPercent(adapter.metrics?.record_exact_match) + "</span>";
     const button = document.createElement("button");
     button.className = "button button-secondary";
     button.type = "button";
@@ -665,7 +666,7 @@ function stopPolling() {
 function showProgressModal(type) {
   const labels = { evaluation: "Running model evaluation", comparison: "Comparing prompt versions", evolution: "Evolving the prompt", training: "Training a local LoRA adapter" };
   $("progressTitle").textContent = labels[type] || "Running your job";
-  $("progressText").textContent = type === "training" ? "Loading the local base model and preparing held-out evaluation." : "The API is waiting for model responses.";
+  $("progressText").textContent = type === "training" ? "Loading the local base model and preparing validation metrics." : "The API is waiting for model responses.";
   $("progressFootnote").textContent = type === "training" ? "The first run may download model weights. Keep this tab open while training runs." : "You can keep this tab open while the models respond.";
   $("progressFill").style.width = "0%";
   if (!$("progressModal").open) $("progressModal").showModal();
@@ -676,10 +677,10 @@ function updateProgress(percent, status, stage) {
   $("progressFill").style.width = (Number.isFinite(amount) ? Math.max(0, Math.min(amount, 100)) : 0) + "%";
   const labels = {
     loading_model: "Loading the base model on this machine.",
-    evaluating_base: "Scoring the base model on held-out examples.",
+    evaluating_base: "Scoring the base model on validation examples.",
     training: "Training LoRA weights and measuring validation loss.",
-    evaluating_adapter: "Scoring the adapter on the same held-out examples.",
-    completed: "Training and held-out evaluation are complete."
+    evaluating_adapter: "Scoring the adapter on the same validation examples.",
+    completed: "Training is complete; final-test examples remain reserved."
   };
   $("progressText").textContent = labels[stage] || (status === "running" ? "Models are processing the selected inputs." : (status || "Working…"));
 }
@@ -721,7 +722,7 @@ function displayEvolution(results) {
   const last = results.final_score ?? history[history.length - 1]?.score;
   const change = results.improvement ?? (Number(last) - Number(first));
   const delta = Number.isFinite(Number(change)) ? (Number(change) >= 0 ? "+" : "") + Number(change).toFixed(2) : "—";
-  $("evolutionStats").innerHTML = statMarkup("Iterations", Math.max(0, history.length - 1)) + statMarkup("Starting score", formatNumber(first)) + statMarkup("Change", delta);
+  $("evolutionStats").innerHTML = statMarkup("Optimization inputs", results.optimization_input_count ?? "—") + statMarkup("Iterations", Math.max(0, history.length - 1)) + statMarkup("Starting judge score", formatNumber(first)) + statMarkup("Judge score change", delta);
   $("evolutionTimeline").innerHTML = history.map((item, index) => "<article class=\"evolution-item\"><span>Iteration " + escapeHTML(item.iteration ?? index) + "</span><pre>" + escapeHTML(item.prompt || "No prompt text was returned.") + "</pre><strong>" + formatNumber(item.score) + "</strong></article>").join("");
 }
 
@@ -732,12 +733,12 @@ function displayFineTuneRun(result) {
   const adapter = result.metrics?.adapter || {};
   const fingerprint = result.dataset_sha256 ? " · data " + result.dataset_sha256.slice(0, 12) : "";
   $("fineTuneResults").hidden = false;
-  $("fineTuneSummary").textContent = result.dataset_id + fingerprint + " · " + (splits.test || 0) + " held-out examples · " + (result.elapsed_seconds || 0) + " seconds";
+  $("fineTuneSummary").textContent = result.dataset_id + fingerprint + " · " + (splits.validation || 0) + " validation examples scored · final test reserved · " + (result.elapsed_seconds || 0) + " seconds";
   $("fineTuneStats").innerHTML = statMarkup("Base checkpoint", result.base_model)
     + statMarkup("Adapter", result.model_id)
     + statMarkup("Training examples", splits.train || 0)
     + statMarkup("Validation examples", splits.validation || 0)
-    + statMarkup("Test examples", splits.test || 0)
+    + statMarkup("Reserved final-test examples", splits.test || 0)
     + statMarkup("Device", result.device || "—");
   $("fineTuneMetrics").innerHTML = [
     trainingMetricMarkup("Record exact match", base.record_exact_match, adapter.record_exact_match),

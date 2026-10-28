@@ -40,6 +40,17 @@
 - [x] Verify the Evaluate label, API connection, mobile layout at 390px, and browser console.
 - [x] Commit as `913e392` and update PR #1 targeting `main`; leave the PR unmerged.
 
+## Benchmark integrity follow-up
+
+- [x] Create a dedicated validation-selection task branch from the current PR head.
+- [x] Score prompted base and LoRA adapter on validation rows during training; keep final-test rows unscored.
+- [x] Label older saved-adapter test metrics as legacy because they were exposed during iterative training.
+- [x] Record prompt version/hash, tokenizer revision, metrics split, and final-test usage in new run manifests.
+- [x] Prepare a non-ingested JSONL row template and an `unreviewed` benchmark-card template; keep filled data and cards gitignored.
+- [x] Label prompt-evolution examples as optimization inputs, disclose LLM-judge heuristic scores, and include score/input provenance in exported results.
+- [x] Run focused training and evolution regressions, the full suite, syntax checks, and desktop/mobile UI checks at 390px.
+- [ ] Route prompt evolution through validation data and add a separate frozen final-benchmark runner.
+
 ## Next résumé milestones
 
 - [ ] Create a human-reviewed, versioned gold benchmark with grouped train/validation/test splits; keep prompt evolution and model selection on validation data only.

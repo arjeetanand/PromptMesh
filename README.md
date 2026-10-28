@@ -237,10 +237,13 @@ available on Windows and for the legacy port `8000` workflow.
 The redesigned UI provides model evaluation, prompt comparison and evolution,
 test-case generation, JSON export, local run summaries, and local LoRA/SFT
 training. Prompt evolution edits instructions; fine-tuning changes adapter
-weights. The training flow compares Qwen3-0.6B before and after training on the
-same deterministic, group-held-out examples using JSON validity, record exact
-match, and field accuracy. These held-out metrics are deterministic and do not
-use PromptMesh's configured LLM judge.
+weights. Prompt evolution selects revisions with LLM-judge heuristics on the
+same supplied optimization inputs; it is not a gold-label benchmark. Training
+compares the prompted Qwen3-0.6B base model and LoRA adapter on the same
+deterministic, source-grouped validation examples using JSON validity, record
+exact match, and field accuracy. These selection metrics are deterministic and
+do not use PromptMesh's configured LLM judge. Training jobs leave the final-test
+split unscored; a separate frozen benchmark runner is not implemented yet.
 
 ### Local LoRA/SFT workflow
 
@@ -248,23 +251,31 @@ Create a labeled JSONL file in `training/datasets/`; follow
 [`training/datasets/README.md`](training/datasets/README.md). Each row needs a
 `group_id`, `input`, and gold `output` object with `organization`, `year`, and
 `claim`. Keep paraphrases or chunks from one source under the same group ID.
-PromptMesh assigns complete groups to deterministic train, validation, and test
-splits, requires at least 12 distinct groups, and records the dataset SHA-256
-with the adapter. Private dataset files and trained runs are ignored by Git.
+Start from the row example and benchmark-card template in
+[`training/datasets/README.md`](training/datasets/README.md). Keep filled cards
+and source data local. The current trainer does not yet enforce the card's
+human-review status.
+PromptMesh assigns complete groups to deterministic train, validation, and
+reserved final-test splits, requires at least 12 distinct groups, and records
+the dataset SHA-256 with the adapter. Private dataset files and trained runs
+are ignored by Git.
 
 Open **Fine-tune** in the UI to choose a dataset, epoch count, LoRA rank, and
 learning rate. The first run downloads the Qwen3-0.6B checkpoint from Hugging
-Face (about 1.5 GB); model training and held-out scoring then run locally. The
+Face (about 1.5 GB); model training and validation scoring then run locally. The
 synthetic `entity_extraction_demo` set checks the workflow only; it is not a
 benchmark or résumé evidence. Use a reviewed, representative dataset and a
-fresh held-out set before reporting any model improvement.
+fresh final-test set before reporting any model improvement.
 
 The Fine-tune page shows schema readiness, example and source-group counts,
-train/validation/test sizes, and a short SHA-256 dataset fingerprint. Completed
-runs keep that fingerprint with the adapter and show aggregate plus per-field
-held-out scores. This covers the local dataset-validation and evaluation parts
-of FineTuneDB's workflow; PromptMesh does not collect production logs, support
-shared dataset editing, or host model training and serving.
+train/validation/reserved-test sizes, and a short SHA-256 dataset fingerprint.
+Completed runs keep that fingerprint, prompt hash, and validation metric split with the
+adapter. The UI shows aggregate plus per-field validation scores. Older
+adapters display their test scores as legacy results because those scores were
+exposed during iterative training. This covers the local dataset-validation
+and evaluation parts of FineTuneDB's workflow; PromptMesh does not collect
+production logs, support shared dataset editing, or host model training and
+serving.
 
 ### Illustrations and motion
 

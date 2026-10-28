@@ -39,6 +39,7 @@ def list_adapters():
             "dataset_id": manifest["dataset_id"],
             "dataset_sha256": manifest["dataset_sha256"],
             "created_at": manifest["created_at"],
+            "metrics_split": manifest.get("metrics_split", "legacy_test"),
             "metrics": manifest["metrics"]["adapter"],
         })
     return results

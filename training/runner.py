@@ -62,6 +62,12 @@ def _generate(model, tokenizer, prompt_template, rows):
     return outputs
 
 
+def _score_validation(model, tokenizer, prompt_template, splits):
+    rows = splits["validation"]
+    outputs = _generate(model, tokenizer, prompt_template, rows)
+    return score_predictions(rows, outputs)
+
+
 def _save_manifest(path, manifest):
     path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -77,12 +83,15 @@ def run_lora_training(job_id, request, jobs):
         from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback
         from trl import SFTConfig, SFTTrainer
 
-        from prompts.registry import PromptRegistry
+        from prompts.registry import PROMPT_BASE_PATH, PromptRegistry
 
         rows = load_dataset(request.dataset_id)
         splits = split_dataset(rows)
         counts = split_counts(splits)
-        prompt = PromptRegistry().load_with_metadata("extraction", "v1")["template"]
+        prompt_version = "v1"
+        prompt = PromptRegistry().load_with_metadata("extraction", prompt_version)["template"]
+        prompt_path = PROMPT_BASE_PATH / "extraction" / f"{prompt_version}.yaml"
+        prompt_hash = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
         dataset_path = DATASET_DIR / f"{request.dataset_id}.jsonl"
         dataset_hash = hashlib.sha256(dataset_path.read_bytes()).hexdigest()
         run_id = uuid.uuid4().hex
@@ -103,8 +112,7 @@ def run_lora_training(job_id, request, jobs):
         tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, **tokenizer_args)
 
         jobs.update(job_id, {"progress": 10, "stage": "evaluating_base"})
-        base_outputs = _generate(model, tokenizer, prompt, splits["test"])
-        base_metrics = score_predictions(splits["test"], base_outputs)
+        base_metrics = _score_validation(model, tokenizer, prompt, splits)
 
         class ProgressCallback(TrainerCallback):
             def on_log(self, args, state, control, logs=None, **kwargs):
@@ -160,23 +168,27 @@ def run_lora_training(job_id, request, jobs):
         trainer.save_model(str(adapter_dir))
 
         jobs.update(job_id, {"progress": 85, "stage": "evaluating_adapter"})
-        adapter_outputs = _generate(trainer.model, tokenizer, prompt, splits["test"])
-        adapter_metrics = score_predictions(splits["test"], adapter_outputs)
+        adapter_metrics = _score_validation(trainer.model, tokenizer, prompt, splits)
         log_history = trainer.state.log_history
         training_losses = [entry["loss"] for entry in log_history if "loss" in entry]
         validation_losses = [entry["eval_loss"] for entry in log_history if "eval_loss" in entry]
         completed_at = datetime.now(timezone.utc).isoformat()
         metrics = {"base": base_metrics, "adapter": adapter_metrics}
         manifest = {
-            "schema_version": 1,
+            "schema_version": 2,
             "status": "completed",
             "run_id": run_id,
             "base_model": BASE_MODEL_ID,
             "base_revision": base_revision,
+            "tokenizer_revision": base_revision,
             "dataset_id": request.dataset_id,
             "dataset_sha256": dataset_hash,
             "task": "entity_extraction",
+            "prompt_version": f"extraction/{prompt_version}",
+            "prompt_sha256": prompt_hash,
             "split_counts": counts,
+            "metrics_split": "validation",
+            "test_split_used": False,
             "hyperparameters": {
                 "method": "LoRA + supervised fine-tuning",
                 "lora_rank": request.lora_rank,
@@ -202,6 +214,7 @@ def run_lora_training(job_id, request, jobs):
                 "dataset_id": request.dataset_id,
                 "dataset_sha256": dataset_hash,
                 "split_counts": counts,
+                "metrics_split": "validation",
                 "device": device,
                 "metrics": metrics,
                 "training_loss": training_losses,

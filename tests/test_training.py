@@ -7,7 +7,7 @@ from unittest.mock import patch
 from models.cohere_model import CohereModel
 from training.datasets import dataset_path, dataset_sha256, list_datasets, load_dataset, split_counts, split_dataset
 from training.metrics import score_predictions
-from training.registry import get_adapter_path
+from training.registry import get_adapter_path, list_adapters
 
 
 class TrainingDatasetTests(unittest.TestCase):
@@ -60,6 +60,51 @@ class AdapterRegistryTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     get_adapter_path("../outside")
 
+    def test_adapters_without_a_metrics_split_are_marked_as_legacy_test_results(self):
+        run_id = "b" * 32
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / run_id
+            adapter_dir = run_dir / "adapter"
+            adapter_dir.mkdir(parents=True)
+            (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+            (run_dir / "manifest.json").write_text(json.dumps({
+                "status": "completed",
+                "run_id": run_id,
+                "base_model": "local-base",
+                "dataset_id": "demo",
+                "dataset_sha256": "a" * 64,
+                "created_at": "2026-10-28T00:00:00+00:00",
+                "metrics": {"adapter": {"record_exact_match": 0.0}},
+            }), encoding="utf-8")
+
+            with patch("training.registry.RUNS_DIR", Path(temp_dir)):
+                adapters = list_adapters()
+
+        self.assertEqual(adapters[0]["metrics_split"], "legacy_test")
+
+    def test_new_adapter_manifest_keeps_validation_metric_label(self):
+        run_id = "c" * 32
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / run_id
+            adapter_dir = run_dir / "adapter"
+            adapter_dir.mkdir(parents=True)
+            (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+            (run_dir / "manifest.json").write_text(json.dumps({
+                "status": "completed",
+                "run_id": run_id,
+                "base_model": "local-base",
+                "dataset_id": "demo",
+                "dataset_sha256": "b" * 64,
+                "created_at": "2026-10-28T00:00:00+00:00",
+                "metrics_split": "validation",
+                "metrics": {"adapter": {"record_exact_match": 0.5}},
+            }), encoding="utf-8")
+
+            with patch("training.registry.RUNS_DIR", Path(temp_dir)):
+                adapters = list_adapters()
+
+        self.assertEqual(adapters[0]["metrics_split"], "validation")
+
     def test_cohere_credentials_are_not_required_to_create_a_local_model(self):
         with patch("models.cohere_model.cohere.Client") as client:
             CohereModel("command-r")
@@ -67,6 +112,22 @@ class AdapterRegistryTests(unittest.TestCase):
 
 
 class TrainingRunnerTests(unittest.TestCase):
+    def test_selection_metrics_use_validation_rows_not_final_test_rows(self):
+        from training.runner import _score_validation
+
+        validation_rows = [{"input": "validation", "output": {}}]
+        test_rows = [{"input": "final test", "output": {}}]
+        splits = {"validation": validation_rows, "test": test_rows}
+        with (
+            patch("training.runner._generate", return_value=["prediction"]) as generate,
+            patch("training.runner.score_predictions", return_value={"record_exact_match": 1.0}) as score,
+        ):
+            result = _score_validation("model", "tokenizer", "prompt", splits)
+
+        self.assertEqual(result, {"record_exact_match": 1.0})
+        generate.assert_called_once_with("model", "tokenizer", "prompt", validation_rows)
+        score.assert_called_once_with(validation_rows, ["prediction"])
+
     def test_generation_passes_token_batch_fields_and_slices_prompt(self):
         import torch
         from transformers import BatchEncoding
