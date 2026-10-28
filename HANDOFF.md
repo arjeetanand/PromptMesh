@@ -150,3 +150,4 @@
 - Set the benchmark-card template guideline ID to `entity-extraction-v1`, tracked the guide despite the dataset-directory ignore rule, and linked it from the dataset instructions and README.
 - Corrected stale README language: training may run without review metadata, while prompt selection and frozen benchmarking require the matching `human_reviewed` card and dataset fingerprint. That card remains a local self-attestation.
 - No authorized corpus was added or marked reviewed. A human still needs to populate and review the ignored dataset/card before model-quality or quantization claims can be made.
+- Annotation guide and documentation commit `b8c4e4f` is on `codex/promptmesh-validation-selection`; whitespace and benchmark-card JSON checks passed. Runtime tests were not rerun because this follow-up changes documentation and templates only.
