@@ -46,11 +46,12 @@ For the current seed-42 group split, one workable planning shape is 67 source
 groups with three distinct, label-consistent examples per group; that yields
 30 examples across 10 groups in each held-out split. Check the app's readiness
 report after annotation because split counts depend on group membership.
-The local public-source review packet uses three controlled phrasings of one
-source claim per group to exercise wording variation. That meets the row/group
-floors, but it does not create three independent facts per group; uncertainty is
-based on only 10 source groups per held-out split. Its 48 added sources are all
-dated 2024, so it is not balanced for year extraction. Review the packet's
+The local public-source review packet currently has 246 draft rows across 82
+groups. Its seed-42 split yields 174 training rows, 36 validation rows across
+12 groups, and 36 test rows across 12 groups. Each group has three controlled
+phrasings of one source claim; these are not independent facts. The proposed
+years are still highly imbalanced: 66 groups are from 2024, three each from
+2020, 2021, 2022, 2023, and 2025, and one is undated. Review the packet's
 limitations and source-specific questions before using any rows.
 Use **Fine-tune → Review source candidates** to review the local CSV by source
 group. Check each wording against its linked source, edit labels, and record

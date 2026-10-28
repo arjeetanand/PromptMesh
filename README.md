@@ -133,10 +133,11 @@ The optional INT8/NF4 comparison records quality, latency, generated-token rate,
 and model footprint beside the full-precision LoRA control. Model footprint is
 not peak device memory, and one cold run is not a throughput benchmark.
 
-A local, git-ignored public-source review packet has 201 unreviewed draft rows
-in 67 source groups. Each group contains three phrasings of one source claim,
-not three independent facts; all 48 added government-page candidates are dated
-2024. The packet is for review only and does not establish model-quality gains.
+A local, git-ignored public-source review packet has 246 unreviewed draft rows
+in 82 source groups. Each group contains three phrasings of one source claim,
+not three independent facts. It covers 2020–2025 with one undated group, but 66
+of 82 groups are dated 2024, so the packet remains unsuitable as a balanced
+year benchmark. It is for review only and does not establish model-quality gains.
 
 Open **Fine-tune → Review source candidates** to review one source group at a
 time. Compare every phrasing with its linked source, edit the labels, and record
