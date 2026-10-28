@@ -89,7 +89,7 @@
 - [x] Keep the private packet out of Git and the loadable training datasets until an authorized reviewed JSONL is created.
 - [x] Add regression checks for source grouping, safe writes, symlink rejection, and loopback-only access even with an API key.
 - [ ] Review candidates against sources, confirm reuse permissions, diversify years, and create an authorized benchmark dataset/card.
-- [ ] Verify the new Fine-tune queue in the real browser at 1440px, 768px, and 390px; no mobile device test is implied.
+- [x] Verify the new Fine-tune queue in the browser at 1440px, 768px, and 390px; confirm group navigation and mobile menu behavior. No physical phone test was performed.
 ## Navigation and background-job follow-up
 
 - [x] Add a Back to overview control to every non-overview page.
