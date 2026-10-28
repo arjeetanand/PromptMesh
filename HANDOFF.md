@@ -220,3 +220,4 @@
 - Compared every lock pin with the installed distribution metadata; all 47 versions match. `pip check` reports no broken requirements. No package was installed or upgraded in this step.
 - This snapshot does not pin app-only dependencies from `requirements.txt`, is not portable to Linux/Windows, and has not been installed in a clean environment. That clean-install check remains open.
 - README now shows how to install the app requirements together with this lock on the recorded platform and states its limits. The existing `requirements-quantization.txt` remains the optional backend entry point for other environments.
+- Lock commit `e2de5fc` is pushed to `codex/promptmesh-validation-selection`; PR #2 was verified open against `main` at head `e2de5fc` after the push. It was not merged.
