@@ -91,6 +91,7 @@
 
 - [x] Add a loopback-only review API for the ignored public-source candidate CSV, with validated group updates and atomic writes.
 - [x] Add a Fine-tune review queue that keeps each source's phrasings together, applies the actor label rule, and separates label review from reuse permission.
+- [x] Show proposed-year and source-host counts in the review queue so candidate packet imbalance is visible before curation.
 - [x] Keep the private packet out of Git and the loadable training datasets until an authorized reviewed JSONL is created.
 - [x] Add regression checks for source grouping, safe writes, symlink rejection, and loopback-only access even with an API key.
 - [ ] Review candidates against sources, confirm reuse permissions, address topic/source-type imbalance, and create an authorized benchmark dataset/card.

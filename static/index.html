@@ -123,6 +123,7 @@
           <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="fineTuneTitle">Fine-tune a small model</h1><span class="page-chip"><span class="status-dot"></span>Local SFT</span></div><p>Train a local LoRA adapter for structured entity extraction, then compare validation results with its base model.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-finetune"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-hero.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
           <section id="candidateReview" class="results-panel review-queue" aria-labelledby="candidateReviewTitle">
             <div class="results-heading"><div><h2 id="candidateReviewTitle">Review source candidates</h2><p>Check every phrasing against its linked source before creating a benchmark.</p></div><span id="candidateReviewSummary" class="review-summary">Loading the local review packet…</span></div>
+            <p id="candidateReviewCoverage" class="review-coverage" role="status" aria-live="polite"></p>
             <div id="candidateReviewWorkspace" class="review-workspace" hidden>
               <div class="review-toolbar">
                 <div class="field"><label for="reviewPacketGroup">Source group</label><select id="reviewPacketGroup"></select></div>

@@ -158,7 +158,9 @@ time. Compare every phrasing with its linked source, edit the labels, and record
 reuse permission separately with its evidence. The queue is loopback-only and
 saves to the ignored local CSV. It never imports candidates into training or
 creates a benchmark card; those steps still require an authorized reviewed
-dataset and a frozen evaluation. `organization` means the named actor
+dataset and a frozen evaluation. The queue summarizes draft year and source-host
+coverage to make packet imbalance visible; those counts describe the candidate
+packet, not the final reviewed dataset. `organization` means the named actor
 performing the claim.
 
 ## Quantization, calibration, and QLoRA

@@ -387,11 +387,13 @@ function populateTrainingDatasets() {
 
 function renderCandidateReviewPacket() {
   const summary = $("candidateReviewSummary");
+  const coverage = $("candidateReviewCoverage");
   const workspace = $("candidateReviewWorkspace");
   const message = $("candidateReviewMessage");
   const packet = state.reviewPacket;
   if (!packet) {
     summary.textContent = "Local review unavailable";
+    coverage.textContent = "";
     workspace.hidden = true;
     message.hidden = false;
     message.textContent = state.reviewPacketError === "The API request failed (404)."
@@ -402,6 +404,7 @@ function renderCandidateReviewPacket() {
 
   summary.textContent = `${packet.total_rows} rows · ${packet.total_groups} source groups · ${packet.reviewed_rows} labels reviewed · ${packet.eligible_groups} groups with reviewed labels and reuse evidence`;
   if (!packet.groups.length) {
+    coverage.textContent = "";
     workspace.hidden = true;
     message.hidden = false;
     message.textContent = "The local review packet has no source groups.";
@@ -411,18 +414,71 @@ function renderCandidateReviewPacket() {
   message.hidden = true;
   const selector = $("reviewPacketGroup");
   const prior = state.reviewPacketCurrentGroupId;
-  const groups = packet.groups;
+  const groups = interleaveCandidateReviewGroups(packet.groups);
+  coverage.textContent = candidateReviewCoverage(groups);
   const current = groups.find((group) => group.group_id === prior)
     || groups.find((group) => group.rows.some((row) => row.review_status !== "REVIEWED" && row.review_status !== "EXCLUDED"))
     || groups[0];
   state.reviewPacketCurrentGroupId = current.group_id;
   selector.replaceChildren(...groups.map((group) => {
-    const label = `${group.source_title || group.group_id} · ${group.reviewed_rows}/${group.rows.length} labels reviewed`;
+    const label = `${group.source_title || group.group_id} · ${candidateReviewGroupYear(group)} · ${group.reviewed_rows}/${group.rows.length} labels reviewed`;
     return new Option(label, group.group_id);
   }));
   selector.value = current.group_id;
   renderReviewGroup(current);
   state.reviewPacketDirty = false;
+}
+
+function candidateReviewGroupYear(group) {
+  const years = [...new Set(group.rows.map((row) => String(row.proposed_year || "undated")))];
+  return years.length === 1 ? years[0] : "mixed";
+}
+
+function interleaveCandidateReviewGroups(groups) {
+  const buckets = new Map();
+  for (const group of groups) {
+    const year = candidateReviewGroupYear(group);
+    if (!buckets.has(year)) buckets.set(year, []);
+    buckets.get(year).push(group);
+  }
+  const years = [...buckets.keys()].sort((left, right) => {
+    const leftYear = Number(left);
+    const rightYear = Number(right);
+    if (Number.isFinite(leftYear) && Number.isFinite(rightYear)) return leftYear - rightYear;
+    if (Number.isFinite(leftYear)) return -1;
+    if (Number.isFinite(rightYear)) return 1;
+    return left.localeCompare(right);
+  });
+  const ordered = [];
+  const longestBucket = Math.max(...[...buckets.values()].map((bucket) => bucket.length));
+  for (let index = 0; index < longestBucket; index++) {
+    for (const year of years) {
+      if (buckets.get(year)[index]) ordered.push(buckets.get(year)[index]);
+    }
+  }
+  return ordered;
+}
+
+function candidateReviewCoverage(groups) {
+  const years = new Map();
+  const hosts = new Map();
+  for (const group of groups) {
+    const year = candidateReviewGroupYear(group);
+    years.set(year, (years.get(year) || 0) + 1);
+    const sourceUrl = safeHttpUrl(group.source_url);
+    const host = sourceUrl ? new URL(sourceUrl).hostname.replace(/^www\./i, "") : "unknown host";
+    hosts.set(host, (hosts.get(host) || 0) + 1);
+  }
+  const yearText = [...years.entries()]
+    .sort(([left], [right]) => left === "undated" ? 1 : right === "undated" ? -1 : left.localeCompare(right, undefined, { numeric: true }))
+    .map(([year, count]) => `${year} ${count}`)
+    .join(" · ");
+  const topHosts = [...hosts.entries()]
+    .sort(([leftHost, leftCount], [rightHost, rightCount]) => rightCount - leftCount || leftHost.localeCompare(rightHost))
+    .slice(0, 3)
+    .map(([host, count]) => `${host} ${count}`)
+    .join(", ");
+  return `Draft coverage by proposed year (source groups): ${yearText}. ${hosts.size} source hosts; most common: ${topHosts}. This is not reviewed benchmark composition.`;
 }
 
 function renderReviewGroup(group) {

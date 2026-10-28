@@ -316,6 +316,7 @@ input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent);
 .review-queue { display: grid; gap: 0; margin: 0 0 20px; }
 .review-queue > .results-heading { align-items: flex-start; }
 .review-summary { max-width: 310px; color: var(--muted); font-size: 11px; line-height: 1.45; text-align: right; }
+.review-coverage { margin: 0; padding: 0 20px 14px; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .review-workspace { display: grid; gap: 14px; padding: 0 20px 18px; }
 .review-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 14px; }
 .review-toolbar .field { max-width: 520px; }
@@ -505,6 +506,7 @@ input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent);
   .results-heading { align-items: flex-start; padding: 15px; }
   .review-queue > .results-heading { flex-direction: column; gap: 8px; }
   .review-summary { max-width: none; text-align: left; }
+  .review-coverage { padding: 0 15px 12px; }
   .review-workspace { gap: 12px; padding: 0 15px 15px; }
   .review-toolbar { grid-template-columns: minmax(0,1fr); }
   .review-navigation { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }

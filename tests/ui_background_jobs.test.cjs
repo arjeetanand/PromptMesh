@@ -33,6 +33,7 @@ function loadApp() {
   };
   const context = vm.createContext({
     window,
+    URL,
     Option: function (text, value) { return { textContent: text, value }; },
     document: { getElementById: element, querySelectorAll() { return []; }, querySelector() { return null; }, addEventListener() {} },
     clearInterval(id) { timers.delete(id); },
@@ -43,6 +44,37 @@ function loadApp() {
   vm.runInContext("setupForms()", context);
   return { context, elements, timers, setJobResponse(response) { jobResponse = response; } };
 }
+
+test("candidate review coverage exposes draft year and source-host concentration", () => {
+  const { context } = loadApp();
+  const groups = [
+    { source_url: "https://www.nasa.gov/one", rows: [{ proposed_year: 2024 }] },
+    { source_url: "https://nasa.gov/two", rows: [{ proposed_year: 2024 }] },
+    { source_url: "https://example.gov/three", rows: [{ proposed_year: 2020 }] },
+    { source_url: "https://example.org/four", rows: [{ proposed_year: null }] }
+  ];
+  context.groups = JSON.stringify(groups);
+  const summary = vm.runInContext("candidateReviewCoverage(JSON.parse(groups))", context);
+
+  assert.match(summary, /2020 1 · 2024 2 · undated 1/);
+  assert.match(summary, /3 source hosts; most common: nasa.gov 2, example.gov 1, example.org 1/);
+  assert.match(summary, /not reviewed benchmark composition/);
+
+  const ordered = [
+    { group_id: "2024-a", rows: [{ proposed_year: 2024 }] },
+    { group_id: "2024-b", rows: [{ proposed_year: 2024 }] },
+    { group_id: "2020-a", rows: [{ proposed_year: 2020 }] },
+    { group_id: "2025-a", rows: [{ proposed_year: 2025 }] },
+    { group_id: "2021-a", rows: [{ proposed_year: 2021 }] },
+    { group_id: "2024-c", rows: [{ proposed_year: 2024 }] }
+  ];
+  context.orderedGroups = JSON.stringify(ordered);
+  const order = JSON.parse(vm.runInContext(
+    "JSON.stringify(interleaveCandidateReviewGroups(JSON.parse(orderedGroups)).map((group) => group.group_id))",
+    context
+  ));
+  assert.deepEqual(order, ["2020-a", "2021-a", "2024-a", "2025-a", "2024-b", "2024-c"]);
+});
 
 for (const [type, label] of [
   ["training", "LoRA"],
