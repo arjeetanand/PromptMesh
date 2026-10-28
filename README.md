@@ -132,6 +132,11 @@ comparison should use the same frozen test set and declare the hardware/backend.
 The optional INT8/NF4 comparison records quality, latency, generated-token rate,
 and model footprint beside the full-precision LoRA control. Model footprint is
 not peak device memory, and one cold run is not a throughput benchmark.
+Frozen reports also include paired source-group bootstrap 95% intervals for
+record exact-match differences: selected prompt vs. initial prompt, LoRA vs.
+the validation-selected base prompt, and each quantized variant vs. full-
+precision LoRA. Each resample uses the same sampled source groups in both arms;
+the displayed delta is comparison minus reference in percentage points.
 
 A local, git-ignored public-source review packet has 351 unreviewed draft rows
 in 117 source groups. Each group contains three phrasings of one source claim,
@@ -352,9 +357,10 @@ checks the card fields and exact data fingerprint; this local self-attestation
 cannot independently prove that a human reviewed the labels. The UI states this
 limit beside readiness and selection controls.
 
-New schema-v4 adapter manifests, validation prompt-selection records, and frozen
-benchmark reports record the Python, platform, machine, device, and installed
-versions of the training and inference packages. The Fine-tune page surfaces
+Schema-v4 adapter manifests, schema-v2 validation prompt-selection records,
+and schema-v3 frozen benchmark reports record the Python, platform, machine,
+device, and installed versions of the training and inference packages. The
+Fine-tune page surfaces
 the training, selection, and benchmark environments separately and labels
 legacy runs when their environment was not recorded. This is run provenance,
 and the local training stack has an exact macOS ARM64 snapshot in

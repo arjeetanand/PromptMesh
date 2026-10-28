@@ -333,6 +333,52 @@ def _record_accuracy_ci(rows, predictions, seed=42, samples=1000):
     }
 
 
+def _record_accuracy_difference_ci(
+    rows, reference_predictions, comparison_predictions, reference_label, comparison_label, seed=42, samples=1000
+):
+    from training.metrics import _is_exact_record, _parse_output
+
+    if not rows or len(rows) != len(reference_predictions) or len(rows) != len(comparison_predictions):
+        raise ValueError("Predictions must match a non-empty frozen test split")
+
+    groups = {}
+    for row, reference, comparison in zip(rows, reference_predictions, comparison_predictions):
+        reference_correct = _is_exact_record(row, _parse_output(reference))
+        comparison_correct = _is_exact_record(row, _parse_output(comparison))
+        current = groups.setdefault(row["group_id"], [0, 0, 0])
+        current[0] += int(reference_correct)
+        current[1] += int(comparison_correct)
+        current[2] += 1
+
+    group_values = [groups[group_id] for group_id in sorted(groups)]
+    if len(group_values) < 2:
+        return None
+
+    example_count = sum(group[2] for group in group_values)
+    estimate = sum(group[1] - group[0] for group in group_values) / example_count
+    rng = random.Random(seed)
+    bootstrap = []
+    for _ in range(samples):
+        selected = [group_values[rng.randrange(len(group_values))] for _ in group_values]
+        selected_examples = sum(group[2] for group in selected)
+        selected_delta = sum(group[1] - group[0] for group in selected)
+        bootstrap.append(selected_delta / selected_examples)
+    bootstrap.sort()
+    return {
+        "method": "paired source-group bootstrap percentile interval",
+        "confidence_level": 0.95,
+        "reference": reference_label,
+        "comparison": comparison_label,
+        "direction": "comparison minus reference",
+        "estimate": round(estimate, 4),
+        "lower": round(bootstrap[int(samples * 0.025)], 4),
+        "upper": round(bootstrap[min(samples - 1, int(samples * 0.975))], 4),
+        "source_groups": len(group_values),
+        "resamples": samples,
+        "seed": seed,
+    }
+
+
 def _existing_report(dataset_id, dataset_digest, configuration_digest):
     path = _benchmark_report_path(dataset_id, dataset_digest)
     if path.exists():
@@ -508,6 +554,20 @@ def run_frozen_benchmark(job_id, request, jobs):
         adapter_inference_seconds = time.perf_counter() - adapter_inference_started
         adapter_metrics = score_predictions(test_rows, adapter_predictions)
         adapter_ci = _record_accuracy_ci(test_rows, adapter_predictions)
+        selected_prompt_delta_ci = _record_accuracy_difference_ci(
+            test_rows,
+            baseline_predictions,
+            selected_predictions,
+            "Base · extraction/v1",
+            "Base · validation-selected prompt",
+        )
+        adapter_delta_ci = _record_accuracy_difference_ci(
+            test_rows,
+            selected_predictions,
+            adapter_predictions,
+            "Base · validation-selected prompt",
+            "LoRA · validation-selected prompt",
+        )
         adapter_performance = {
             "load_seconds": round(adapter_load_seconds, 4),
             **_generation_performance(adapter_tokenizer, adapter_predictions, adapter_inference_seconds),
@@ -534,6 +594,13 @@ def run_frozen_benchmark(job_id, request, jobs):
             inference_seconds = time.perf_counter() - inference_started
             metrics = score_predictions(test_rows, predictions)
             metrics["record_exact_match_95ci"] = _record_accuracy_ci(test_rows, predictions)
+            metrics["paired_record_exact_match_delta_95ci"] = _record_accuracy_difference_ci(
+                test_rows,
+                adapter_predictions,
+                predictions,
+                "Full-precision LoRA control",
+                QUANTIZATION_METHODS[method]["label"],
+            )
             quantized_variants.append({
                 "id": method,
                 **QUANTIZATION_METHODS[method],
@@ -553,7 +620,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             _clear_device_cache(quantized_torch, quantized_device)
 
         report = {
-            "schema_version": 2,
+            "schema_version": 3,
             "status": "completed",
             "dataset_id": selection["dataset_id"],
             "dataset_sha256": dataset_digest,
@@ -593,8 +660,16 @@ def run_frozen_benchmark(job_id, request, jobs):
             "environment": runtime_metadata(device),
             "metrics": {
                 "base_initial_prompt": {**baseline_metrics, "record_exact_match_95ci": baseline_ci},
-                "base_validation_selected_prompt": {**selected_metrics, "record_exact_match_95ci": selected_ci},
-                "lora_validation_selected_prompt": {**adapter_metrics, "record_exact_match_95ci": adapter_ci},
+                "base_validation_selected_prompt": {
+                    **selected_metrics,
+                    "record_exact_match_95ci": selected_ci,
+                    "paired_record_exact_match_delta_95ci": selected_prompt_delta_ci,
+                },
+                "lora_validation_selected_prompt": {
+                    **adapter_metrics,
+                    "record_exact_match_95ci": adapter_ci,
+                    "paired_record_exact_match_delta_95ci": adapter_delta_ci,
+                },
             },
             "configuration_sha256": configuration_digest,
             "created_at": datetime.now(timezone.utc).isoformat(),

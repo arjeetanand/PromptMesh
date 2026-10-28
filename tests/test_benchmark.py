@@ -137,6 +137,42 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertEqual(len(selection["selection_sha256"]), 64)
         self.assertNotIn("Private source text", json.dumps(selection))
 
+    def test_paired_exact_match_interval_weights_examples_within_resampled_groups(self):
+        gold = {"organization": "Northstar", "year": 2024, "claim": "opened a lab"}
+        rows = [
+            {"group_id": group_id, "output": gold}
+            for group_id in ("group-a", "group-a", "group-a", "group-b")
+        ]
+        reference = ["not json", "not json", "not json", json.dumps(gold)]
+        comparison = [json.dumps(gold), json.dumps(gold), json.dumps(gold), "not json"]
+
+        interval = benchmark._record_accuracy_difference_ci(
+            rows, reference, comparison, "reference", "comparison"
+        )
+
+        self.assertEqual(interval["method"], "paired source-group bootstrap percentile interval")
+        self.assertEqual(interval["direction"], "comparison minus reference")
+        self.assertEqual(interval["estimate"], 0.5)
+        self.assertEqual((interval["lower"], interval["upper"]), (-1.0, 1.0))
+        self.assertEqual(interval["source_groups"], 2)
+        with self.assertRaisesRegex(ValueError, "match a non-empty frozen test split"):
+            benchmark._record_accuracy_difference_ci(rows, reference[:-1], comparison, "reference", "comparison")
+
+    def test_paired_interval_is_zero_when_arms_match_on_every_source_group(self):
+        gold = {"organization": "Northstar", "year": 2024, "claim": "opened a lab"}
+        rows = [
+            {"group_id": group_id, "output": gold}
+            for group_id in ("group-a", "group-a", "group-b", "group-b")
+        ]
+        predictions = [json.dumps(gold), json.dumps(gold), "not json", "not json"]
+
+        interval = benchmark._record_accuracy_difference_ci(
+            rows, predictions, predictions, "reference", "comparison"
+        )
+
+        self.assertEqual(interval["estimate"], 0.0)
+        self.assertEqual((interval["lower"], interval["upper"]), (0.0, 0.0))
+
     def test_frozen_report_compares_matched_arms_and_cannot_be_reused_for_a_sweep(self):
         selection_id, _ = self._select_prompt()
         jobs = JobRecorder()
@@ -152,12 +188,19 @@ class FrozenBenchmarkTests(unittest.TestCase):
             benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
+            self.assertEqual(report["schema_version"], 3)
             self.assertEqual(report["metrics_split"], "test")
             self.assertEqual(report["split_strategy"], "group-year-stratified-v1")
             self.assertFalse(report["test_split_used_for_selection"])
             self.assertEqual(report["metrics"]["base_initial_prompt"]["record_exact_match"], 0.0)
             self.assertEqual(report["metrics"]["base_validation_selected_prompt"]["record_exact_match"], 1.0)
             self.assertEqual(report["metrics"]["lora_validation_selected_prompt"]["record_exact_match"], 1.0)
+            prompt_delta = report["metrics"]["base_validation_selected_prompt"]["paired_record_exact_match_delta_95ci"]
+            lora_delta = report["metrics"]["lora_validation_selected_prompt"]["paired_record_exact_match_delta_95ci"]
+            self.assertEqual(prompt_delta["estimate"], 1.0)
+            self.assertEqual(prompt_delta["reference"], "Base · extraction/v1")
+            self.assertEqual(lora_delta["estimate"], 0.0)
+            self.assertEqual(lora_delta["reference"], "Base · validation-selected prompt")
             self.assertEqual(report["test_examples"], 30)
             self.assertEqual(report["test_source_groups"], 30)
             self.assertEqual(report["adapter_environment"]["python_version"], "3.12-test")
@@ -232,6 +275,9 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertFalse(variant["calibration_required"])
         self.assertEqual(variant["model_footprint_bytes"], 123456)
         self.assertEqual(variant["metrics"]["record_exact_match"], 1.0)
+        quantized_delta = variant["metrics"]["paired_record_exact_match_delta_95ci"]
+        self.assertEqual(quantized_delta["estimate"], 0.0)
+        self.assertEqual(quantized_delta["reference"], "Full-precision LoRA control")
         self.assertIn("not QLoRA", report["quantized_inference"]["adapter_training_method"])
 
     def test_failed_test_inference_reserves_holdout_and_blocks_retry(self):

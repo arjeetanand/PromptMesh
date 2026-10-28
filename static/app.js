@@ -1307,7 +1307,7 @@ function displayFrozenBenchmark(report, created = true) {
     const exact = formatPercent(metrics?.record_exact_match);
     const interval = metrics?.record_exact_match_95ci;
     const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
-    return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span><div><small>Record exact match</small><strong>" + exact + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics?.field_accuracy) + "</strong></div><div><small>Valid JSON</small><strong>" + formatPercent(metrics?.json_valid_rate) + "</strong></div><b>95% grouped CI " + escapeHTML(ciText) + "</b></article>";
+    return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span><div><small>Record exact match</small><strong>" + exact + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics?.field_accuracy) + "</strong></div><div><small>Valid JSON</small><strong>" + formatPercent(metrics?.json_valid_rate) + "</strong></div><b>95% grouped CI " + escapeHTML(ciText) + "</b>" + pairedDeltaMarkup(metrics) + "</article>";
   }).join("");
   const quantized = report.quantized_inference;
   if (quantized?.variants?.length) {
@@ -1350,6 +1350,19 @@ function runtimeDetails(environment) {
   return [environment.platform, environment.machine, ...packages].filter(Boolean).join(" · ");
 }
 
+function formatDeltaPoints(value) {
+  const points = Number(value) * 100;
+  return Number.isFinite(points) ? (points > 0 ? "+" : "") + points.toFixed(1) + " pp" : "—";
+}
+
+function pairedDeltaMarkup(metrics) {
+  const delta = metrics?.paired_record_exact_match_delta_95ci;
+  if (!delta) return "";
+  const interval = formatDeltaPoints(delta.lower) + " to " + formatDeltaPoints(delta.upper);
+  return "<div><small>Paired source-group exact-match Δ vs " + escapeHTML(delta.reference || "reference") + " · 95% CI</small><strong>"
+    + escapeHTML(formatDeltaPoints(delta.estimate)) + " (" + escapeHTML(interval) + ")</strong></div>";
+}
+
 function quantizationMetricCard(label, metrics = {}, performance = {}) {
   const interval = metrics.record_exact_match_95ci;
   const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
@@ -1363,6 +1376,7 @@ function quantizationMetricCard(label, metrics = {}, performance = {}) {
     + "<div><small>Field accuracy</small><strong>" + formatPercent(metrics.field_accuracy) + "</strong></div>"
     + "<div><small>Valid JSON</small><strong>" + formatPercent(metrics.json_valid_rate) + "</strong></div>"
     + "<div><small>95% grouped CI</small><strong>" + escapeHTML(ciText) + "</strong></div>"
+    + pairedDeltaMarkup(metrics)
     + "<div><small>Load</small><strong>" + seconds(performance.load_seconds) + "</strong></div>"
     + "<div><small>Inference</small><strong>" + seconds(performance.inference_seconds) + "</strong></div>"
     + "<div><small>Generation</small><strong>" + rate + "</strong></div>"

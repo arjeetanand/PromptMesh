@@ -108,10 +108,18 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
     prompt_selection_environment: { device: "cuda", python_version: "3.12.0", packages: { torch: "2.1.0" } },
     metrics: {
       base_initial_prompt: { record_exact_match: 0.1, field_accuracy: 0.2, json_valid_rate: 0.5 },
-      base_validation_selected_prompt: { record_exact_match: 0.2, field_accuracy: 0.3, json_valid_rate: 0.6 },
+      base_validation_selected_prompt: {
+        record_exact_match: 0.2, field_accuracy: 0.3, json_valid_rate: 0.6,
+        paired_record_exact_match_delta_95ci: {
+          reference: "Base · extraction/v1", estimate: 0.1, lower: 0.0, upper: 0.2
+        }
+      },
       lora_validation_selected_prompt: {
         record_exact_match: 0.5, field_accuracy: 0.7, json_valid_rate: 0.9,
-        record_exact_match_95ci: { lower: 0.3, upper: 0.7 }
+        record_exact_match_95ci: { lower: 0.3, upper: 0.7 },
+        paired_record_exact_match_delta_95ci: {
+          reference: "Base · validation-selected prompt", estimate: 0.3, lower: 0.1, upper: 0.5
+        }
       }
     },
     performance: { lora_full_precision: { load_seconds: 2, inference_seconds: 3, tokens_per_second: 12, model_footprint_bytes: 800000000 } },
@@ -123,7 +131,10 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
       variants: [{
         id: "bnb_nf4", label: "bitsandbytes NF4", weight_bits: 4, compute_dtype: "float16",
         metrics: { record_exact_match: 0.4, field_accuracy: 0.6, json_valid_rate: 0.8,
-          record_exact_match_95ci: { lower: 0.2, upper: 0.6 } },
+          record_exact_match_95ci: { lower: 0.2, upper: 0.6 },
+          paired_record_exact_match_delta_95ci: {
+            reference: "Full-precision LoRA control", estimate: -0.1, lower: -0.3, upper: 0.1
+          } },
         load_seconds: 1, inference_seconds: 4, tokens_per_second: 8, model_footprint_bytes: 400000000
       }]
     }
@@ -136,8 +147,13 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
   assert.match(html, /bitsandbytes NF4 · 4-bit/);
   assert.match(html, /Calibration: not required/);
   assert.match(html, /not QLoRA training/);
+  assert.match(html, /Paired source-group exact-match Δ vs Base · validation-selected prompt/);
+  assert.match(html, /\+30\.0 pp \(\+10\.0 pp to \+50\.0 pp\)/);
+  assert.match(html, /Paired source-group exact-match Δ vs Full-precision LoRA control/);
+  assert.match(html, /-10\.0 pp \(-30\.0 pp to \+10\.0 pp\)/);
   assert.match(html, /0\.37 GiB/);
   assert.match(html, /8\.00 tok\/s/);
+  assert.equal(vm.runInContext("pairedDeltaMarkup({})", context), "", "legacy reports render without a paired interval");
   assert.match(elements.get("frozenBenchmarkEnvironment").textContent, /Training adapter: cpu · Python 3\.11\.9/);
   assert.match(elements.get("frozenBenchmarkEnvironment").textContent, /Validation selection: cuda · Python 3\.12\.0/);
   assert.match(elements.get("frozenBenchmarkEnvironment").textContent, /Frozen benchmark: mps · Python 3\.12\.1/);
