@@ -72,8 +72,12 @@
     <main class="workspace" id="workspace">
       <header class="topbar">
         <button class="mobile-menu" id="menuToggle" type="button" aria-label="Open navigation" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
-        <div class="breadcrumb"><span>Personal workspace</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg><strong id="breadcrumbTitle">Overview</strong></div>
+        <div class="topbar-context">
+          <button class="topbar-back" id="backToOverview" type="button" data-go="overview" aria-label="Back to overview" title="Back to overview" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 10h-13m0 0L9 4.5M3.5 10 9 15.5"/></svg><span>Back</span></button>
+          <div class="breadcrumb"><span>Personal workspace</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg><strong id="breadcrumbTitle">Overview</strong></div>
+        </div>
         <div class="topbar-right">
+          <button class="background-job-status" id="backgroundJobStatus" type="button" hidden><span class="background-job-dot" aria-hidden="true"></span><span id="backgroundJobStatusText"></span></button>
           <div class="api-status is-checking" id="apiStatus" role="status" aria-live="polite"><span class="status-dot"></span><span>Checking API</span></div>
           <div class="auth-control" id="apiAuth" hidden>
             <label class="visually-hidden" for="apiKeyInput">Server API key</label>
@@ -218,6 +222,7 @@
     <h2 id="progressTitle">Starting your run</h2><p id="progressText">Waiting for the model job.</p>
     <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
     <p id="progressFootnote" class="dialog-footnote">You can keep this tab open while the models respond.</p>
+    <div class="dialog-actions"><button class="button button-secondary" id="progressBackgroundBtn" type="button" hidden>Run in background</button></div>
   </dialog>
   <div id="toastContainer" class="toast-container" role="status" aria-live="polite"></div>
   <script src="/static/app.js" defer></script>

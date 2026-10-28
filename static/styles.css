@@ -101,10 +101,20 @@ code, .mono { font-family: var(--mono); font-size: .92em; }
 
 .workspace { min-width: 0; padding: 0 8px 8px 0; }
 .topbar { display: flex; min-height: 54px; align-items: center; justify-content: space-between; gap: 16px; padding: 0 18px 0 22px; background: var(--ground); color: var(--sidebar-ink); }
+.topbar-context { display: flex; min-width: 0; flex: 0 1 auto; align-items: center; gap: 10px; }
+.topbar-back { display: inline-flex; min-height: 30px; flex: 0 0 auto; align-items: center; gap: 6px; padding: 0 7px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--sidebar-muted); cursor: pointer; font-size: 12px; }
+.topbar-back:hover { border-color: var(--sidebar-rule); background: var(--sidebar-hover); color: var(--sidebar-ink); }
+.topbar-back svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; }
 .breadcrumb { display: flex; min-width: 0; align-items: center; gap: 10px; color: var(--sidebar-muted); font-size: 12px; }
 .breadcrumb svg { width: 13px; height: 13px; fill: none; stroke: var(--sidebar-faint); stroke-width: 1.5; }
 .breadcrumb strong { overflow: hidden; color: var(--sidebar-ink); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
+.background-job-status { display: inline-flex; max-width: 190px; min-height: 30px; flex: 0 1 auto; align-items: center; gap: 7px; padding: 0 9px; overflow: hidden; border: 1px solid var(--sidebar-rule); border-radius: 999px; background: var(--sidebar-surface); color: var(--sidebar-muted); cursor: pointer; font-size: 11px; white-space: nowrap; }
+.background-job-status:hover { border-color: var(--accent); color: var(--sidebar-ink); }
+.background-job-status > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.background-job-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--warn); }
+.background-job-status[data-status="completed"] .background-job-dot { background: var(--good); }
+.background-job-status[data-status="failed"] .background-job-dot { background: var(--bad); }
 .api-status { display: flex; min-height: 30px; align-items: center; gap: 8px; color: var(--sidebar-muted); font-size: 12px; white-space: nowrap; }
 .api-status .status-dot { background: var(--sidebar-faint); }
 .api-status.is-connected .status-dot { background: var(--good); }
@@ -353,6 +363,7 @@ input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent);
 .progress-track { height: 4px; margin-top: 18px; overflow: hidden; border-radius: 4px; background: var(--rule); }
 .progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width .25s ease; }
 .run-dialog .dialog-footnote { margin-top: 12px; font-size: 11px; }
+.run-dialog .dialog-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
 .toast-container { position: fixed; right: 18px; bottom: 18px; z-index: 20; display: grid; gap: 8px; width: min(360px, calc(100vw - 36px)); }
 .toast { padding: 11px 14px; border: 1px solid var(--rule); border-radius: 7px; background: var(--sheet); color: var(--ink); font-size: 12px; box-shadow: 0 7px 22px var(--toast-shadow); }
 .toast.success { border-color: var(--success-border); }
@@ -381,7 +392,8 @@ input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent);
   .app-frame.nav-open .mobile-menu { position: fixed; z-index: 13; top: 11px; left: 222px; background: var(--sidebar-hover); }
   .mobile-menu:hover { background: var(--sidebar-hover); }
   .mobile-menu svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 1.6; }
-  .breadcrumb { margin-right: auto; }
+  .topbar-context { flex: 1; gap: 6px; }
+  .breadcrumb { flex: 1; margin-right: 0; }
   .breadcrumb > span { display: none; }
   .sheet { min-height: calc(100vh - 60px); padding: 26px 22px 16px; }
   .workbench-grid { grid-template-columns: minmax(0,1fr); }
@@ -390,8 +402,11 @@ input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent);
 }
 @media (max-width: 600px) {
   .workspace { padding: 0; }
-  .topbar { padding: 0 13px; }
+  .topbar { gap: 7px; padding: 0 13px; }
+  .topbar-back { width: 30px; padding: 0; justify-content: center; }
+  .topbar-back span { display: none; }
   .topbar-right { gap: 6px; }
+  .background-job-status { max-width: 116px; gap: 5px; padding: 0 7px; font-size: 10px; }
   .api-status { min-height: 28px; font-size: 11px; }
   .auth-control input { width: 118px; font-size: 11px; }
   .sheet { min-height: calc(100vh - 52px); padding: 24px 17px 16px; border-right: 0; border-bottom: 0; border-left: 0; border-radius: 0; }
