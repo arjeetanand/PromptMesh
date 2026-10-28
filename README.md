@@ -174,10 +174,13 @@ PromptMesh/
 ### 1. Environment Setup
 
 ```bash
-python -m venv venv
-venv\Scripts\activate   # Windows
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+On Windows, create the environment with `python -m venv .venv` and activate it
+with `.venv\Scripts\activate` before installing requirements.
 
 Prerequisites:
 
@@ -186,19 +189,31 @@ Prerequisites:
 
 ---
 
-### 2. Start FastAPI Server
+### 2. Start the API and redesigned UI
 
 ```bash
-python app.py
+./run.sh
 ```
 
-Server starts at:
+The launcher safely restarts only a PromptMesh process it can identify by its
+PID, command, and working directory. The main instance uses port `4004`:
 
 ```
-http://localhost:8000
+http://127.0.0.1:4004
 ```
 
-The root endpoint automatically serves the frontend UI.
+For isolated instances, `PROMPTMESH_PORT=5004 ./run.sh` starts a test instance;
+`PROMPTMESH_PORT=6004 ./run.sh` starts a preview instance. The root endpoint
+serves the UI and its API from the same process. `python app.py` remains
+available on Windows and for the legacy port `8000` workflow.
+
+The redesigned UI provides model evaluation, two-prompt comparison, prompt
+evolution, generated test cases, JSON result export, and local run summaries.
+Prompt evolution edits instructions; it does not train model weights. LoRA or
+other fine-tuning is not connected to the current API, and the UI labels that
+boundary explicitly. A credible training extension should add a separate
+dataset and training pipeline, then compare the adapter against the base model
+on a held-out benchmark.
 
 ---
 

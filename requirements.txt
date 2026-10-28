@@ -1,4 +1,6 @@
 # Existing packages
+fastapi
+uvicorn
 ollama
 oci
 cohere

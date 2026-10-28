@@ -1,1350 +1,190 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PromptMesh - Prompt Evaluation Platform</title>
-    <style>
-        /* ============================================================ */
-        /* DESIGN SYSTEM */
-        /* ============================================================ */
-        :root {
-            --primary: #4F46E5;
-            --primary-dark: #4338CA;
-            --secondary: #10B981;
-            --danger: #EF4444;
-            --warning: #F59E0B;
-            --dark: #1F2937;
-            --gray: #6B7280;
-            --light-gray: #F3F4F6;
-            --border: #E5E7EB;
-            --white: #FFFFFF;
-            --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: var(--dark);
-            line-height: 1.6;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-
-        /* ============================================================ */
-        /* HEADER */
-        /* ============================================================ */
-        .header {
-            background: var(--white);
-            box-shadow: var(--shadow);
-            padding: 20px 0;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .logo h1 {
-            font-size: 28px;
-            color: var(--primary);
-            margin-bottom: 4px;
-        }
-
-        .logo p {
-            font-size: 14px;
-            color: var(--gray);
-        }
-
-        .header-actions {
-            display: flex;
-            gap: 16px;
-            align-items: center;
-        }
-
-        .auth-control {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .auth-control[hidden] {
-            display: none;
-        }
-
-        .auth-control input {
-            width: 190px;
-            padding: 9px 10px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            font: inherit;
-        }
-
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            color: var(--gray);
-        }
-
-        .status-indicator .dot {
-            width: 8px;
-            height: 8px;
-            background: var(--secondary);
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        /* ============================================================ */
-        /* NAVIGATION */
-        /* ============================================================ */
-        .main-nav {
-            background: var(--white);
-            padding: 12px 0;
-            box-shadow: var(--shadow);
-            margin-bottom: 30px;
-        }
-
-        .main-nav .container {
-            display: flex;
-            gap: 8px;
-            overflow-x: auto;
-        }
-
-        .nav-btn {
-            background: transparent;
-            border: 2px solid transparent;
-            padding: 12px 24px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 15px;
-            font-weight: 500;
-            color: var(--gray);
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            white-space: nowrap;
-        }
-
-        .nav-btn:hover {
-            background: var(--light-gray);
-            color: var(--dark);
-        }
-
-        .nav-btn.active {
-            background: var(--primary);
-            color: var(--white);
-            border-color: var(--primary);
-        }
-
-        /* ============================================================ */
-        /* MAIN CONTENT */
-        /* ============================================================ */
-        .main-content {
-            padding: 0 0 40px 0;
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-            animation: fadeIn 0.3s;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .panel {
-            background: var(--white);
-            border-radius: 12px;
-            padding: 32px;
-            box-shadow: var(--shadow-lg);
-        }
-
-        .panel h2 {
-            font-size: 24px;
-            color: var(--dark);
-            margin-bottom: 24px;
-        }
-
-        /* ============================================================ */
-        /* FORMS */
-        /* ============================================================ */
-        .form {
-            margin-bottom: 24px;
-        }
-
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            font-weight: 500;
-            margin-bottom: 8px;
-            color: var(--dark);
-            font-size: 14px;
-        }
-
-        .form-group input[type="text"],
-        .form-group input[type="number"],
-        .form-group select,
-        .form-group textarea {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid var(--border);
-            border-radius: 8px;
-            font-size: 14px;
-            transition: border-color 0.3s;
-            font-family: inherit;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-
-        .checkbox-group {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 12px;
-            padding: 16px;
-            background: var(--light-gray);
-            border-radius: 8px;
-        }
-
-        .checkbox-group label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 6px;
-            transition: background 0.2s;
-        }
-
-        .checkbox-group label:hover {
-            background: var(--white);
-        }
-
-        .checkbox-group input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
-
-        /* ============================================================ */
-        /* BUTTONS */
-        /* ============================================================ */
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-family: inherit;
-        }
-
-        .btn-primary {
-            background: var(--primary);
-            color: var(--white);
-        }
-
-        .btn-primary:hover {
-            background: var(--primary-dark);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-lg);
-        }
-
-        .btn-secondary {
-            background: var(--light-gray);
-            color: var(--dark);
-        }
-
-        .btn-secondary:hover {
-            background: var(--border);
-        }
-
-        .btn-large {
-            padding: 14px 28px;
-            font-size: 16px;
-            width: 100%;
-            justify-content: center;
-        }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 12px;
-            margin-top: 16px;
-            flex-wrap: wrap;
-        }
-
-        /* ============================================================ */
-        /* RESULTS SECTION */
-        /* ============================================================ */
-        .results-section {
-            margin-top: 32px;
-            padding-top: 32px;
-            border-top: 2px solid var(--border);
-        }
-
-        .results-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-        }
-
-        .results-header h3 {
-            font-size: 20px;
-            color: var(--dark);
-        }
-
-        /* ============================================================ */
-        /* EVALUATION RESULTS - MODEL CARDS */
-        /* ============================================================ */
-        .models-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 20px;
-            margin-bottom: 32px;
-        }
-
-        .model-card {
-            background: var(--light-gray);
-            border-radius: 12px;
-            padding: 24px;
-            border: 2px solid transparent;
-            transition: all 0.3s;
-        }
-
-        .model-card:hover {
-            border-color: var(--primary);
-            box-shadow: var(--shadow-lg);
-        }
-
-        .model-card.winner {
-            border-color: var(--secondary);
-            background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-        }
-
-        .model-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-
-        .model-name {
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--dark);
-        }
-
-        .score-badge {
-            background: var(--primary);
-            color: var(--white);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: 600;
-            font-size: 16px;
-            min-width: 60px;
-            text-align: center;
-        }
-
-        .model-card.winner .score-badge {
-            background: var(--secondary);
-        }
-
-        .winner-badge {
-            display: inline-block;
-            background: var(--secondary);
-            color: var(--white);
-            padding: 4px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-top: 8px;
-            text-transform: uppercase;
-        }
-
-        .breakdown-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-
-        .breakdown-item {
-            text-align: center;
-            padding: 12px;
-            background: var(--white);
-            border-radius: 8px;
-            border: 1px solid var(--border);
-        }
-
-        .breakdown-label {
-            font-size: 12px;
-            color: var(--gray);
-            text-transform: uppercase;
-            margin-bottom: 4px;
-            font-weight: 600;
-        }
-
-        .breakdown-value {
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--dark);
-        }
-
-        /* ============================================================ */
-        /* TEST RESULTS TABLE */
-        /* ============================================================ */
-        .test-results-container {
-            margin-top: 24px;
-        }
-
-        .test-results-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--dark);
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .test-results-title::before {
-            content: '📋';
-        }
-
-        .test-result {
-            background: var(--white);
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 12px;
-            border: 1px solid var(--border);
-        }
-
-        .test-input, .test-output {
-            margin-bottom: 12px;
-        }
-
-        .test-label {
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--gray);
-            text-transform: uppercase;
-            margin-bottom: 6px;
-        }
-
-        .test-text {
-            font-size: 14px;
-            line-height: 1.6;
-            color: var(--dark);
-            padding: 12px;
-            background: var(--light-gray);
-            border-radius: 6px;
-            border-left: 4px solid var(--primary);
-            word-break: break-word;
-        }
-
-        .test-metrics {
-            display: flex;
-            gap: 16px;
-            font-size: 13px;
-            color: var(--gray);
-            padding-top: 12px;
-            border-top: 1px solid var(--border);
-        }
-
-        .test-metrics-item {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        /* ============================================================ */
-        /* COMPARISON RESULTS TABLE */
-        /* ============================================================ */
-        .comparison-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        .comparison-table thead {
-            background: var(--light-gray);
-        }
-
-        .comparison-table th {
-            padding: 12px 16px;
-            text-align: left;
-            font-weight: 600;
-            color: var(--dark);
-            border-bottom: 2px solid var(--border);
-            font-size: 14px;
-        }
-
-        .comparison-table td {
-            padding: 16px;
-            border-bottom: 1px solid var(--border);
-            font-size: 14px;
-        }
-
-        .comparison-table tbody tr:hover {
-            background: var(--light-gray);
-        }
-
-        .comparison-table .score-cell {
-            font-weight: 600;
-            color: var(--primary);
-            font-size: 16px;
-        }
-
-        .comparison-table .output-cell {
-            max-width: 400px;
-            word-break: break-word;
-            white-space: pre-wrap;
-        }
-
-        /* ============================================================ */
-        /* EVOLUTION RESULTS - TIMELINE */
-        /* ============================================================ */
-        .evolution-timeline {
-            position: relative;
-            padding-left: 40px;
-        }
-
-        .evolution-timeline::before {
-            content: '';
-            position: absolute;
-            left: 16px;
-            top: 0;
-            bottom: 0;
-            width: 2px;
-            background: var(--border);
-        }
-
-        .evolution-step {
-            position: relative;
-            margin-bottom: 24px;
-            padding: 20px;
-            background: var(--light-gray);
-            border-radius: 8px;
-        }
-
-        .evolution-step::before {
-            content: '';
-            position: absolute;
-            left: -28px;
-            top: 24px;
-            width: 12px;
-            height: 12px;
-            background: var(--primary);
-            border-radius: 50%;
-            border: 3px solid var(--white);
-        }
-
-        .evolution-step.final::before {
-            background: var(--secondary);
-        }
-
-        .step-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-        }
-
-        .step-title {
-            font-weight: 600;
-            color: var(--dark);
-        }
-
-        .step-score {
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--primary);
-            background: var(--white);
-            padding: 6px 12px;
-            border-radius: 6px;
-        }
-
-        .step-improvement {
-            font-size: 14px;
-            color: var(--secondary);
-            font-weight: 600;
-            margin-top: 8px;
-        }
-
-        .prompt-diff {
-            background: var(--white);
-            padding: 12px;
-            border-radius: 6px;
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-            white-space: pre-wrap;
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid var(--border);
-            margin-top: 12px;
-        }
-
-        .stats-summary {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .stat-box {
-            background: var(--light-gray);
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-        }
-
-        .stat-label {
-            font-size: 12px;
-            color: var(--gray);
-            text-transform: uppercase;
-            margin-bottom: 8px;
-            font-weight: 600;
-        }
-
-        .stat-value {
-            font-size: 28px;
-            font-weight: 600;
-            color: var(--primary);
-        }
-
-        /* ============================================================ */
-        /* MODALS & TOAST */
-        /* ============================================================ */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: var(--white);
-            padding: 32px;
-            border-radius: 12px;
-            max-width: 500px;
-            width: 90%;
-            box-shadow: var(--shadow-lg);
-        }
-
-        .modal-content h3 {
-            margin-bottom: 20px;
-            color: var(--dark);
-        }
-
-        .progress-bar {
-            height: 8px;
-            background: var(--light-gray);
-            border-radius: 4px;
-            overflow: hidden;
-            margin-bottom: 16px;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: var(--primary);
-            transition: width 0.3s;
-            border-radius: 4px;
-        }
-
-        .toast-container {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            z-index: 1001;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .toast {
-            background: var(--white);
-            padding: 16px 20px;
-            border-radius: 8px;
-            box-shadow: var(--shadow-lg);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            min-width: 300px;
-            animation: slideIn 0.3s;
-        }
-
-        @keyframes slideIn {
-            from { transform: translateX(400px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-
-        .toast.success {
-            border-left: 4px solid var(--secondary);
-        }
-
-        .toast.error {
-            border-left: 4px solid var(--danger);
-        }
-
-        .toast.info {
-            border-left: 4px solid var(--primary);
-        }
-
-        .toast-message {
-            flex: 1;
-            font-size: 14px;
-        }
-
-        /* ============================================================ */
-        /* EMPTY STATE */
-        /* ============================================================ */
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--gray);
-        }
-
-        .empty-state .icon {
-            font-size: 48px;
-            display: block;
-            margin-bottom: 16px;
-            opacity: 0.5;
-        }
-
-        /* ============================================================ */
-        /* RESPONSIVE */
-        /* ============================================================ */
-        @media (max-width: 768px) {
-            .header-content {
-                flex-direction: column;
-                gap: 16px;
-            }
-
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .models-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .breakdown-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
-            .stats-summary {
-                grid-template-columns: 1fr;
-            }
-
-            .panel {
-                padding: 20px;
-            }
-
-            .comparison-table .output-cell {
-                max-width: 200px;
-            }
-        }
-
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid var(--border);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4ef">
+  <meta name="description" content="A focused workspace for evaluating and improving language-model prompts.">
+  <title>PromptMesh — Evaluation workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <!-- Header -->
-    <div class="header">
-        <div class="container">
-            <div class="header-content">
-                <div class="logo">
-                    <h1>⚡ PromptMesh</h1>
-                    <p>AI Prompt Engineering Platform</p>
-                </div>
-                <div class="header-actions">
-                    <div class="auth-control" id="apiAuth" hidden>
-                        <input id="apiKeyInput" type="password" autocomplete="off" aria-label="Server API key" placeholder="Server API key">
-                        <button class="btn btn-secondary" id="connectApiBtn" type="button">Connect</button>
-                    </div>
-                    <div class="status-indicator" id="apiStatus">
-                        <span class="dot"></span>
-                        <span>Checking...</span>
-                    </div>
-                    <button class="btn btn-secondary" id="refreshBtn">🔄 Refresh</button>
-                </div>
-            </div>
+  <div class="app-frame" id="appFrame">
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+      <a class="brand" href="#overview" data-tab="overview" aria-label="PromptMesh home">
+        <svg class="brand-mark" viewBox="0 0 34 34" aria-hidden="true">
+          <path d="M8 10.5 17 6l9 4.5v11L17 26l-9-4.5v-11Z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <path d="m8.5 11 8.5 4.3 8.5-4.3M17 15.3V26" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="8" cy="10.5" r="2" fill="currentColor"/><circle cx="17" cy="6" r="2" fill="currentColor"/><circle cx="26" cy="10.5" r="2" fill="currentColor"/>
+        </svg>
+        <span>PromptMesh</span>
+      </a>
+
+      <div class="workspace-picker">
+        <span class="workspace-avatar" aria-hidden="true">P</span>
+        <span class="workspace-copy"><strong>Personal workspace</strong><small>Local experiments</small></span>
+        <svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+      </div>
+
+      <nav class="nav-groups" aria-label="Workspace">
+        <div class="nav-group">
+          <p class="nav-label">Workspace</p>
+          <button class="nav-btn active" type="button" data-tab="overview" aria-current="page">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="12" y="3" width="5" height="5" rx="1"/><rect x="3" y="12" width="5" height="5" rx="1"/><rect x="12" y="12" width="5" height="5" rx="1"/></svg><span>Overview</span>
+          </button>
+          <button class="nav-btn" type="button" data-tab="evaluate">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16V9m6 7V4m6 12v-5M2.5 16.5h15"/></svg><span>Evaluate</span>
+          </button>
+          <button class="nav-btn" type="button" data-tab="compare">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h12M4 14h12M7 3 4 6l3 3m6 2 3 3-3 3"/></svg><span>Compare prompts</span>
+          </button>
         </div>
-    </div>
-
-    <!-- Navigation -->
-    <div class="main-nav">
-        <div class="container">
-            <button class="nav-btn active" data-tab="evaluate">📊 Evaluate</button>
-            <button class="nav-btn" data-tab="compare">⚖️ Compare</button>
-            <button class="nav-btn" data-tab="evolve">🚀 Evolve</button>
-            <button class="nav-btn" data-tab="testcases">📋 Test Cases</button>
-            <button class="nav-btn" data-tab="history">📜 History</button>
+        <div class="nav-group">
+          <p class="nav-label">Improve</p>
+          <button class="nav-btn" type="button" data-tab="evolve">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 14.5c2.2-5.4 4.3-8.2 6.4-8.2 2.5 0 3.3 4.9 7.6 1.2M3 14.5h4m-4 0v-4m14-3h-4m4 0v4"/></svg><span>Prompt evolution</span>
+          </button>
+          <button class="nav-btn" type="button" data-tab="testcases">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3.5h8m-8 3h8m-8 3h5m-5 3h8m-9.5-11h-1v15h13v-15h-1"/></svg><span>Test cases</span>
+          </button>
         </div>
-    </div>
-
-    <!-- Main Content -->
-    <div class="main-content">
-        <div class="container">
-
-            
-            <!-- EVALUATE TAB -->
-            <div id="evaluate-tab" class="tab-content active">
-                <div class="panel">
-                    <h2>🎯 Evaluate Prompt</h2>
-                    <p class="subtitle">Evaluate a prompt across multiple models</p>
-
-                    <form id="evaluateForm" class="form">
-                        <!-- ✅ Mode Selection -->
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                <input type="checkbox" id="evalUseCustomPrompt">
-                                <span style="font-weight: 600;">✏️ Use Custom Prompt (Type your own)</span>
-                            </label>
-                        </div>
-
-                        <!-- ✅ YAML-Based Prompt Selection (Default) -->
-                        <div id="evalYamlSection">
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label>Task</label>
-                                    <select id="evalTask" required>
-                                        <option value="">Select task...</option>
-                                    </select>
-                                </div>
-
-                                <div class="form-group">
-                                    <label>Version</label>
-                                    <select id="evalVersion" required>
-                                        <option value="">Select version...</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- ✅ Custom Prompt Editor -->
-                        <div id="evalCustomPromptSection" style="display: none;">
-                            <div class="custom-prompt-container">
-                                <div class="form-group">
-                                    <label>
-                                        Custom Prompt Template
-                                        <button type="button" class="btn btn-secondary" style="float: right; padding: 4px 12px; font-size: 12px;" onclick="loadExamplePrompt('eval')">
-                                            📝 Load Example
-                                        </button>
-                                    </label>
-                                    <textarea 
-                                        id="evalCustomPrompt" 
-                                        rows="10" 
-                                        placeholder="Example:&#10;&#10;You are a sentiment analyzer.&#10;Analyze the sentiment of the following text and classify it as Positive, Negative, or Neutral.&#10;&#10;Text: {{text}}&#10;&#10;Respond with ONLY one word: Positive, Negative, or Neutral."
-                                        style="font-family: 'Courier New', monospace; font-size: 13px;"
-                                    ></textarea>
-                                    <small style="color: var(--gray); display: block; margin-top: 8px;">
-                                        💡 <strong>Use {{text}} as placeholder</strong> for where your test input will be inserted
-                                    </small>
-                                </div>
-
-                                <div class="form-grid">
-                                    <div class="form-group">
-                                        <label>Temperature</label>
-                                        <input type="number" id="evalCustomTemp" value="0.0" min="0" max="2" step="0.1">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Max Tokens</label>
-                                        <input type="number" id="evalCustomMaxTokens" value="256" min="50" max="4096">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- ✅ Test Inputs Section - ALWAYS VISIBLE -->
-                        <div class="test-inputs-section">
-                            <div class="form-group">
-                                <label style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span>
-                                        📝 Test Inputs 
-                                        <span style="color: var(--gray); font-weight: normal; font-size: 13px;">
-                                            (one per line, min 1 required)
-                                        </span>
-                                    </span>
-                                    <button type="button" class="btn btn-secondary" style="padding: 4px 12px; font-size: 12px;" onclick="loadExampleTestInputs('eval')">
-                                        💡 Load Examples
-                                    </button>
-                                </label>
-                                <textarea 
-                                    id="evalTestInputs" 
-                                    rows="6" 
-                                    required
-                                    placeholder="Enter your test inputs here, one per line:&#10;&#10;Example for sentiment analysis:&#10;This product is amazing! I love it.&#10;The service was terrible and slow.&#10;The app works as expected."
-                                    style="font-size: 14px; line-height: 1.6;"
-                                ></textarea>
-                                <small style="color: var(--gray); display: block; margin-top: 8px;">
-                                    Each line will be tested separately. Aim for 2-5 diverse test cases.
-                                </small>
-                            </div>
-
-                            <!-- ✅ Auto-generation option (only for YAML mode) -->
-                            <div id="evalAutoGenerateOption" class="form-group">
-                                <label style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="checkbox" id="evalGenerateTests">
-                                    🤖 Auto-generate additional test cases (uses AI to create more examples)
-                                </label>
-                                <div id="evalGenerateCount" style="display: none; margin-top: 12px;">
-                                    <label>Additional Test Cases to Generate</label>
-                                    <input type="number" id="evalTestCount" value="2" min="1" max="10" style="width: 100px;">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- ✅ Model Selection -->
-                        <div class="form-group">
-                            <label>Models to Evaluate</label>
-                            <div id="evalModels" class="checkbox-group"></div>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-large">
-                            <span>▶️</span> Start Evaluation
-                        </button>
-                    </form>
-
-                    <div id="evaluateResults" class="results-section" style="display: none;">
-                        <div class="results-header">
-                            <h3>📊 Results</h3>
-                            <button class="btn btn-secondary" onclick="exportResults('evaluation')">
-                                💾 Export JSON
-                            </button>
-                        </div>
-
-                        <div id="evaluationStats" class="stats-grid"></div>
-                        <div id="evaluationModels"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- EVOLVE TAB -->
-            <div id="evolve-tab" class="tab-content">
-                <div class="panel">
-                    <h2>🧬 Evolve Prompt</h2>
-                    <p class="subtitle">Automatically optimize your prompt through iterations</p>
-
-                    <form id="evolveForm" class="form">
-                        <!-- ✅ Mode Selection -->
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                <input type="checkbox" id="evolveUseCustomPrompt">
-                                <span style="font-weight: 600;">✏️ Use Custom Prompt (Type your own)</span>
-                            </label>
-                        </div>
-
-                        <!-- ✅ YAML-Based Prompt Selection -->
-                        <div id="evolveYamlSection">
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label>Task</label>
-                                    <select id="evolveTask" required>
-                                        <option value="">Select task...</option>
-                                    </select>
-                                </div>
-
-                                <div class="form-group">
-                                    <label>Version</label>
-                                    <select id="evolveVersion" required>
-                                        <option value="">Select version...</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- ✅ Custom Prompt Editor -->
-                        <div id="evolveCustomPromptSection" style="display: none;">
-                            <div class="custom-prompt-container">
-                                <div class="form-group">
-                                    <label>
-                                        Custom Prompt Template (Starting Point)
-                                        <button type="button" class="btn btn-secondary" style="float: right; padding: 4px 12px; font-size: 12px;" onclick="loadExamplePrompt('evolve')">
-                                            📝 Load Example
-                                        </button>
-                                    </label>
-                                    <textarea 
-                                        id="evolveCustomPrompt" 
-                                        rows="10" 
-                                        placeholder="Enter your initial prompt template. The AI will evolve and improve it.&#10;&#10;Use {{text}} as placeholder for input."
-                                        style="font-family: 'Courier New', monospace; font-size: 13px;"
-                                    ></textarea>
-                                    <small style="color: var(--gray); display: block; margin-top: 8px;">
-                                        💡 The optimizer will iteratively improve this prompt based on test results
-                                    </small>
-                                </div>
-
-                                <div class="form-grid">
-                                    <div class="form-group">
-                                        <label>Temperature</label>
-                                        <input type="number" id="evolveCustomTemp" value="0.0" min="0" max="2" step="0.1">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Max Tokens</label>
-                                        <input type="number" id="evolveCustomMaxTokens" value="256" min="50" max="4096">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- ✅ Test Inputs for Evolution -->
-                        <div class="test-inputs-section">
-                            <div class="form-group">
-                                <label style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span>
-                                        📝 Test Inputs for Evolution
-                                        <span style="color: var(--gray); font-weight: normal; font-size: 13px;">
-                                            (used to measure improvement)
-                                        </span>
-                                    </span>
-                                    <button type="button" class="btn btn-secondary" style="padding: 4px 12px; font-size: 12px;" onclick="loadExampleTestInputs('evolve')">
-                                        💡 Load Examples
-                                    </button>
-                                </label>
-                                <textarea 
-                                    id="evolveTestInputs" 
-                                    rows="6" 
-                                    required
-                                    placeholder="Enter test inputs to measure prompt quality, one per line"
-                                    style="font-size: 14px; line-height: 1.6;"
-                                ></textarea>
-                            </div>
-                        </div>
-
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label>Execution Model</label>
-                                <select id="evolveModel" required>
-                                    <option value="">Select model...</option>
-                                </select>
-                            </div>
-
-                            <div class="form-group">
-                                <label>Optimizer Model</label>
-                                <select id="evolveOptimizer">
-                                    <option value="command-a-03-2025">Command-A (Recommended)</option>
-                                    <option value="qwen2.5:latest">Qwen 2.5</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label>Max Iterations</label>
-                                <input type="number" id="evolveIterations" value="3" min="1" max="10">
-                            </div>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-large">
-                            <span>🧬</span> Start Evolution
-                        </button>
-                    </form>
-
-                    <div id="evolveResults" class="results-section" style="display: none;">
-                        <div class="results-header">
-                            <h3>🧬 Evolution Results</h3>
-                            <button class="btn btn-secondary" onclick="exportResults('evolution')">
-                                💾 Export JSON
-                            </button>
-                        </div>
-
-                        <div id="evolutionStats" class="stats-grid"></div>
-                        <div id="evolutionTimeline" class="evolution-timeline"></div>
-                    </div>
-                </div>
-            </div>
-
-
-            
-            <!-- COMPARE TAB -->
-            <div id="compare-tab" class="tab-content">
-            <div class="panel">
-                <h2>Compare 2 Prompts</h2>
-                <p style="color: var(--gray); margin-bottom: 24px">
-                Write or select 2 prompts and compare their outputs side-by-side
-                </p>
-                
-                <form id="compareForm" class="form">
-                <!-- Mode Toggle -->
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="compareUseCustom">
-                    <span style="font-weight: 600;">✍️ Write Custom Prompts (instead of using saved versions)</span>
-                    </label>
-                </div>
-
-                <!-- YAML Mode (default) -->
-                <div id="compareYamlSection">
-                    <div class="form-grid">
-                    <div class="form-group">
-                        <label for="compareTask">Task</label>
-                        <select id="compareTask" required>
-                        <option value="">Select task...</option>
-                        </select>
-                    </div>
-                    </div>
-
-                    <div class="form-group">
-                    <label style="display: flex; justify-content: space-between;">
-                        <span>Versions <span style="color: var(--danger); font-weight: 600;">(select exactly 2)</span></span>
-                        <span id="versionCount" style="color: var(--gray); font-size: 13px;">0 selected</span>
-                    </label>
-                    <div id="compareVersions" class="checkbox-group"></div>
-                    </div>
-                </div>
-
-                <!-- Custom Prompts Mode -->
-                <div id="compareCustomSection" style="display: none;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                    
-                    <!-- Prompt A -->
-                    <div class="custom-prompt-container">
-                        <div class="form-group">
-                        <label style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-weight: 600; color: var(--primary);">📝 Prompt A</span>
-                            <button type="button" class="btn btn-secondary" 
-                                    style="padding: 4px 12px; font-size: 12px;"
-                                    onclick="loadExamplePrompt('comparePromptA')">
-                            Load Example
-                            </button>
-                        </label>
-                        <textarea id="comparePromptA" rows="12" 
-                                    placeholder="Write your first prompt here...
-
-            Example:
-            Summarize the following text in exactly 2 sentences:
-
-            {text}
-
-            Be concise and clear."
-                                    style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
-                        <small style="color: var(--gray); display: block; margin-top: 8px;">
-                            💡 Use <strong>{text}</strong> as placeholder where test input should go
-                        </small>
-                        </div>
-                    </div>
-
-                    <!-- Prompt B -->
-                    <div class="custom-prompt-container">
-                        <div class="form-group">
-                        <label style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-weight: 600; color: var(--secondary);">📝 Prompt B</span>
-                            <button type="button" class="btn btn-secondary" 
-                                    style="padding: 4px 12px; font-size: 12px;"
-                                    onclick="loadExamplePrompt('comparePromptB')">
-                            Load Example
-                            </button>
-                        </label>
-                        <textarea id="comparePromptB" rows="12" 
-                                    placeholder="Write your second prompt here...
-
-            Example:
-            Provide a brief 2-sentence summary of:
-
-            {text}
-
-            Keep it simple and direct."
-                                    style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;"></textarea>
-                        <small style="color: var(--gray); display: block; margin-top: 8px;">
-                            💡 Use <strong>{text}</strong> as placeholder where test input should go
-                        </small>
-                        </div>
-                    </div>
-                    </div>
-                </div>
-
-                <!-- Models (always visible) -->
-                <div class="form-group">
-                    <label>Models to Test</label>
-                    <div id="compareModels" class="checkbox-group"></div>
-                </div>
-
-                <!-- Test Input (always visible) -->
-                <div class="form-group">
-                    <label for="compareTestInput">Test Input</label>
-                    <textarea id="compareTestInput" rows="4" 
-                            placeholder="Enter test input here..." required></textarea>
-                    <small style="color: var(--gray); display: block; margin-top: 8px;">
-                    This text will replace {text} in your prompts
-                    </small>
-                </div>
-
-                <button type="submit" class="btn btn-primary btn-large">🔍 Compare Prompts</button>
-                </form>
-                
-                <!-- COMPARISON RESULTS -->
-                <div id="compareResults" class="results-section" style="display: none;">
-                <div class="results-header">
-                    <h3>Comparison Results</h3>
-                    <button class="btn btn-secondary" onclick="exportResults('comparison')">Export JSON</button>
-                </div>
-                <table class="comparison-table">
-                    <thead>
-                    <tr>
-                        <th>Prompt</th>
-                        <th>Model</th>
-                        <th>Score</th>
-                        <th>Output</th>
-                    </tr>
-                    </thead>
-                    <tbody id="comparisonTableBody"></tbody>
-                </table>
-                </div>
-            </div>
-            </div>
-
-
-
-
-
-
-            <!-- TEST CASES TAB -->
-            <div id="testcases-tab" class="tab-content">
-                <div class="panel">
-                    <h2>📋 Generate Test Cases</h2>
-                    <p style="color: var(--gray); margin-bottom: 24px;">Create diverse test cases for prompt evaluation</p>
-
-                    <form id="testcasesForm" class="form">
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="testcaseType">Task Type</label>
-                                <select id="testcaseType" required>
-                                    <option value="">Select type...</option>
-                                    <option value="summarization">Summarization</option>
-                                    <option value="extraction">Extraction</option>
-                                    <option value="verification">Verification</option>
-                                    <option value="classification">Classification</option>
-                                    <option value="reasoning">Reasoning</option>
-                                    <option value="generation">Generation</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="testcaseCount">Count</label>
-                                <input type="number" id="testcaseCount" value="5" min="1" max="20">
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="testcaseBase">Base Inputs (one per line)</label>
-                            <textarea id="testcaseBase" rows="6" placeholder="Enter base inputs..."></textarea>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-large">▶ Generate</button>
-                    </form>
-
-                    <!-- TEST CASE RESULTS -->
-                    <div id="testcasesResults" class="results-section" style="display: none;">
-                        <div class="results-header">
-                            <h3>Generated Test Cases</h3>
-                        </div>
-                        <div id="testcasesResultsList"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- HISTORY TAB -->
-            <div id="history-tab" class="tab-content">
-                <div class="panel">
-                    <h2>📜 Job History</h2>
-                    <p style="color: var(--gray); margin-bottom: 24px;">View past evaluations, comparisons, and evolutions</p>
-
-                    <div id="historyList" style="margin-top: 24px;"></div>
-                </div>
-            </div>
+        <div class="nav-group">
+          <p class="nav-label">Activity</p>
+          <button class="nav-btn" type="button" data-tab="history">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 10a6.5 6.5 0 1 0 1.8-4.5L3.5 7m0-3v3h3m3.5-.5V10l3 1.8"/></svg><span>Run history</span>
+          </button>
         </div>
-    </div>
+      </nav>
 
-    <!-- Progress Modal -->
-    <div id="progressModal" class="modal">
-        <div class="modal-content">
-            <h3 id="progressTitle">Processing...</h3>
-            <div class="progress-bar">
-                <div id="progressFill" class="progress-fill"></div>
-            </div>
-            <p id="progressText" style="font-size: 14px; color: var(--gray); margin-top: 12px;">Starting...</p>
+      <div class="sidebar-bottom">
+        <div class="sidebar-note"><span class="note-dot"></span><span>Run summaries stay in this browser.</span></div>
+        <div class="sidebar-footer"><span class="avatar-small">AA</span><span><strong>Arjeet Anand</strong><small>PromptMesh</small></span><button class="icon-button" id="refreshBtn" type="button" aria-label="Refresh API connection" title="Refresh connection"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 8A6.6 6.6 0 0 0 4.7 5.4L3 7m0-4v4h4m-3.5 5a6.6 6.6 0 0 0 11.8 2.6L17 13m0 4v-4h-4"/></svg></button></div>
+      </div>
+    </aside>
+
+    <div class="mobile-scrim" id="mobileScrim" hidden></div>
+    <main class="workspace" id="workspace">
+      <header class="topbar">
+        <button class="mobile-menu" id="menuToggle" type="button" aria-label="Open navigation" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
+        <div class="breadcrumb"><span>Personal workspace</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg><strong id="breadcrumbTitle">Overview</strong></div>
+        <div class="topbar-right">
+          <div class="api-status is-checking" id="apiStatus" role="status" aria-live="polite"><span class="status-dot"></span><span>Checking API</span></div>
+          <div class="auth-control" id="apiAuth" hidden>
+            <label class="visually-hidden" for="apiKeyInput">Server API key</label>
+            <input id="apiKeyInput" type="password" autocomplete="off" placeholder="Server API key">
+            <button class="button button-small" id="connectApiBtn" type="button">Connect</button>
+          </div>
         </div>
-    </div>
+      </header>
 
-    <!-- Toast Container -->
-    <div id="toastContainer" class="toast-container"></div>
+      <div class="sheet">
+        <section id="overview-tab" class="tab-content" aria-labelledby="overviewTitle">
+          <div class="page-heading heading-row">
+            <div><h1 id="overviewTitle">Your model lab</h1><p>Run focused experiments. Keep the evidence close to the prompt.</p></div>
+            <button class="button button-primary" type="button" data-go="evaluate"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>New evaluation</button>
+          </div>
+          <div class="overview-lede">
+            <div class="lede-copy"><p class="lede-title">A better prompt starts with a fair comparison.</p><p>Choose a task, run the same inputs across your models, then compare the outputs that explain the score.</p></div>
+            <div class="experiment-mark" aria-hidden="true"><span class="mesh-node node-a">Prompt</span><span class="mesh-line line-a"></span><span class="mesh-node node-b">Model</span><span class="mesh-line line-b"></span><span class="mesh-node node-c">Evidence</span></div>
+          </div>
+          <div class="overview-columns">
+            <section class="section-block recent-block" aria-labelledby="recentTitle">
+              <div class="section-title-row"><div><h2 id="recentTitle">Recent runs</h2><p>Summaries saved in this browser</p></div><button type="button" class="text-button" data-go="history">View history <span aria-hidden="true">→</span></button></div>
+              <div id="overviewHistory" class="recent-list"><div class="empty-inline"><span class="empty-mark" aria-hidden="true">—</span><div><strong>No runs yet</strong><p>Your completed evaluations will appear here.</p></div></div></div>
+            </section>
+            <aside class="section-block readiness-block" aria-labelledby="setupTitle">
+              <div class="section-title-row"><div><h2 id="setupTitle">Workspace status</h2><p>From the live PromptMesh API</p></div></div>
+              <dl class="status-list"><div><dt>API connection</dt><dd id="overviewApiState">Checking</dd></div><div><dt>Prompt tasks</dt><dd id="overviewTaskCount">—</dd></div><div><dt>Available models</dt><dd id="overviewModelCount">—</dd></div></dl>
+              <p class="status-footnote" id="overviewStatusNote">Checking the local API and model registry.</p>
+            </aside>
+          </div>
+          <section class="section-block workflow-block" aria-labelledby="workflowTitle">
+            <div class="section-title-row"><div><h2 id="workflowTitle">The experiment loop</h2><p>Start with the smallest question you can answer well.</p></div></div>
+            <div class="workflow-steps">
+              <button class="workflow-step" type="button" data-go="evaluate"><span class="step-number">01</span><span><strong>Evaluate</strong><small>Score outputs on a fixed set of inputs.</small></span><span class="step-arrow" aria-hidden="true">↗</span></button>
+              <button class="workflow-step" type="button" data-go="compare"><span class="step-number">02</span><span><strong>Compare</strong><small>Run two prompt versions side by side.</small></span><span class="step-arrow" aria-hidden="true">↗</span></button>
+              <button class="workflow-step" type="button" data-go="evolve"><span class="step-number">03</span><span><strong>Improve</strong><small>Use failures to guide prompt revisions.</small></span><span class="step-arrow" aria-hidden="true">↗</span></button>
+            </div>
+          </section>
+          <aside class="roadmap-note"><span class="roadmap-rule" aria-hidden="true"></span><div><strong>Model fine-tuning comes after the benchmark.</strong><p>This version runs inference and evolves prompts; weight training is not connected to the API yet. A held-out test set will let you measure LoRA fine-tuning honestly when that stage is added.</p></div></aside>
+        </section>
 
-    <!-- Main JS -->
-    <script src="/static/app.js"></script>
+        <section id="evaluate-tab" class="tab-content" aria-labelledby="evaluateTitle" hidden>
+          <div class="page-heading heading-row"><div><h1 id="evaluateTitle">Evaluate a prompt</h1><p>Run one prompt across multiple models using the same test inputs.</p></div><span class="page-chip"><span class="status-dot"></span>Model benchmark</span></div>
+          <div class="workbench-grid">
+            <form id="evaluateForm" class="form-panel">
+              <div class="form-section"><div class="form-section-heading"><span class="step-number">01</span><div><h2>Choose your prompt</h2><p>Use a saved version or write a temporary prompt.</p></div></div>
+                <label class="toggle-row" for="evalUseCustomPrompt"><span><strong>Use a custom prompt</strong><small>Test edits without changing the saved YAML version.</small></span><input type="checkbox" id="evalUseCustomPrompt"><span class="switch" aria-hidden="true"></span></label>
+                <div id="evalYamlSection" class="field-grid"><div class="field"><label for="evalTask">Task</label><select id="evalTask" required><option value="">Select a task</option></select></div><div class="field"><label for="evalVersion">Prompt version</label><select id="evalVersion" required><option value="">Select a version</option></select></div></div>
+                <div id="evalCustomPromptSection" class="field-stack" hidden><div class="field"><div class="label-row"><label for="evalCustomPrompt">Prompt template</label><button class="text-button" type="button" onclick="loadExamplePrompt('eval')">Load example</button></div><textarea id="evalCustomPrompt" rows="7" placeholder="You are a careful extractor. Return only the requested fields.  Text: {{text}}"></textarea><small class="field-hint">Use <code>{{text}}</code> where the input should go.</small></div><div class="field-grid"><div class="field"><label for="evalCustomTemp">Temperature</label><input id="evalCustomTemp" type="number" value="0" min="0" max="2" step="0.1"></div><div class="field"><label for="evalCustomMaxTokens">Output limit</label><input id="evalCustomMaxTokens" type="number" value="256" min="50" max="4096"></div></div></div>
+              </div>
+              <div class="form-section"><div class="form-section-heading"><span class="step-number">02</span><div><h2>Set the test inputs</h2><p>One input per line. Keep the set fixed when comparing models.</p></div></div>
+                <div class="field"><div class="label-row"><label for="evalTestInputs">Test inputs</label><button class="text-button" type="button" onclick="loadExampleTestInputs('eval')">Load examples</button></div><textarea id="evalTestInputs" rows="6" required placeholder="Northstar launched a research studio in 2024. The company did not disclose the launch date."></textarea><small class="field-hint">Use a few varied cases, including missing information.</small></div>
+                <div class="option-row" id="evalAutoGenerateOption"><label class="checkbox-line"><input type="checkbox" id="evalGenerateTests"><span>Generate extra cases with a model</span></label><div id="evalGenerateCount" hidden><label for="evalTestCount">Additional cases</label><input id="evalTestCount" type="number" value="2" min="1" max="10"></div></div>
+              </div>
+              <div class="form-section"><div class="form-section-heading"><span class="step-number">03</span><div><h2>Pick models</h2><p>Run every selected model against the same test set.</p></div></div><div id="evalModels" class="model-options" role="group" aria-label="Models to evaluate"><p class="empty-options">Connect to the API to load available models.</p></div></div>
+              <div class="form-actions"><span class="form-note">Results include output, score, tokens and latency.</span><button type="submit" class="button button-primary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 9 6-9 6V4Z"/></svg>Run evaluation</button></div>
+            </form>
+            <aside class="side-column"><section class="side-panel"><h2>What a useful run tells you</h2><p>Look past the average. Review how each model handles missing fields, noisy inputs, and unsupported claims.</p><div class="side-rule"></div><dl class="measure-list"><div><dt>Quality</dt><dd>Score and judge breakdown</dd></div><div><dt>Speed</dt><dd>Latency for each input</dd></div><div><dt>Usage</dt><dd>Output tokens per response</dd></div></dl></section><section class="side-panel side-panel-muted"><p class="side-eyebrow">Good comparison hygiene</p><p>Keep test inputs constant and change one factor at a time. Use a separate held-out set for final results.</p></section></aside>
+          </div>
+          <section id="evaluateResults" class="results-panel" hidden><div class="results-heading"><div><h2>Evaluation results</h2><p id="evaluationSummary">Completed model runs</p></div><button class="button button-secondary" type="button" onclick="exportResults('evaluation')">Export JSON</button></div><div id="evaluationStats" class="result-stats"></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Model</th><th>Input</th><th>Score</th><th>Judge breakdown</th><th>Latency</th><th>Tokens</th><th>Output</th></tr></thead><tbody id="evaluationModels"></tbody></table></div></section>
+        </section>
+
+        <section id="compare-tab" class="tab-content" aria-labelledby="compareTitle" hidden>
+          <div class="page-heading"><h1 id="compareTitle">Compare prompt versions</h1><p>Change the prompt while holding the model and input steady.</p></div>
+          <div class="workbench-grid"><form id="compareForm" class="form-panel">
+            <div class="form-section"><div class="form-section-heading"><span class="step-number">01</span><div><h2>Choose two prompts</h2><p>Compare saved versions or paste two drafts.</p></div></div>
+              <label class="toggle-row" for="compareUseCustom"><span><strong>Write custom prompts</strong><small>Use temporary drafts for this comparison.</small></span><input type="checkbox" id="compareUseCustom"><span class="switch" aria-hidden="true"></span></label>
+              <div id="compareYamlSection" class="field-stack"><div class="field"><label for="compareTask">Task</label><select id="compareTask" required><option value="">Select a task</option></select></div><div class="field"><div class="label-row"><span class="field-label">Prompt versions</span><span id="versionCount" class="count-note">0 of 2 selected</span></div><div id="compareVersions" class="version-options"><p class="empty-options">Choose a task to load versions.</p></div></div></div>
+              <div id="compareCustomSection" class="prompt-pair" hidden><div class="field"><div class="label-row"><label for="comparePromptA">Prompt A</label><button class="text-button" type="button" onclick="loadExamplePrompt('comparePromptA')">Load example</button></div><textarea id="comparePromptA" rows="7" placeholder="Summarize the text in two sentences:  {text}"></textarea><small class="field-hint">Use <code>{text}</code> as the input placeholder.</small></div><div class="field"><div class="label-row"><label for="comparePromptB">Prompt B</label><button class="text-button" type="button" onclick="loadExamplePrompt('comparePromptB')">Load example</button></div><textarea id="comparePromptB" rows="7" placeholder="List the key facts, then summarize:  {text}"></textarea><small class="field-hint">Use <code>{text}</code> as the input placeholder.</small></div></div>
+            </div>
+            <div class="form-section"><div class="form-section-heading"><span class="step-number">02</span><div><h2>Hold the rest constant</h2><p>Choose the same model and one representative input.</p></div></div><div class="field"><label for="compareTestInput">Test input</label><textarea id="compareTestInput" rows="5" required placeholder="Paste one input both prompts should handle."></textarea></div><div class="field"><span class="field-label">Models</span><div id="compareModels" class="model-options" role="group" aria-label="Models to compare"><p class="empty-options">Connect to the API to load available models.</p></div></div></div>
+            <div class="form-actions"><span class="form-note">Exactly two prompt versions are required.</span><button class="button button-primary" type="submit"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h14M10 3l7 7-7 7"/></svg>Run comparison</button></div>
+          </form><aside class="side-column"><section class="side-panel"><h2>Keep the test fair</h2><p>A prompt comparison is most useful when both versions receive the same input and run on the same model.</p><div class="side-rule"></div><p class="side-small">The score is a signal for review, not a substitute for checking the outputs.</p></section></aside></div>
+          <section id="compareResults" class="results-panel" hidden><div class="results-heading"><div><h2>Comparison results</h2><p>Outputs grouped by prompt version and model</p></div><button class="button button-secondary" type="button" onclick="exportResults('comparison')">Export JSON</button></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Prompt</th><th>Model</th><th>Score</th><th>Judge breakdown</th><th>Output</th></tr></thead><tbody id="comparisonTableBody"></tbody></table></div></section>
+        </section>
+
+        <section id="evolve-tab" class="tab-content" aria-labelledby="evolveTitle" hidden>
+          <div class="page-heading"><h1 id="evolveTitle">Evolve a prompt</h1><p>Use observed failures to generate and score prompt revisions.</p></div>
+          <div class="workbench-grid"><form id="evolveForm" class="form-panel">
+            <div class="form-section"><div class="form-section-heading"><span class="step-number">01</span><div><h2>Set the starting point</h2><p>Choose a saved prompt or give the optimizer a draft.</p></div></div>
+              <label class="toggle-row" for="evolveUseCustomPrompt"><span><strong>Start from a custom prompt</strong><small>Use a temporary prompt as the first version.</small></span><input type="checkbox" id="evolveUseCustomPrompt"><span class="switch" aria-hidden="true"></span></label>
+              <div id="evolveYamlSection" class="field-grid"><div class="field"><label for="evolveTask">Task</label><select id="evolveTask" required><option value="">Select a task</option></select></div><div class="field"><label for="evolveVersion">Prompt version</label><select id="evolveVersion" required><option value="">Select a version</option></select></div></div>
+              <div id="evolveCustomPromptSection" class="field-stack" hidden><div class="field"><div class="label-row"><label for="evolveCustomPrompt">Starting prompt</label><button class="text-button" type="button" onclick="loadExamplePrompt('evolve')">Load example</button></div><textarea id="evolveCustomPrompt" rows="7" placeholder="Give the model a clear task and output format.  Text: {{text}}"></textarea><small class="field-hint">Use <code>{{text}}</code> for the input.</small></div><div class="field-grid"><div class="field"><label for="evolveCustomTemp">Temperature</label><input id="evolveCustomTemp" type="number" value="0" min="0" max="2" step="0.1"></div><div class="field"><label for="evolveCustomMaxTokens">Output limit</label><input id="evolveCustomMaxTokens" type="number" value="256" min="50" max="4096"></div></div></div>
+            </div>
+            <div class="form-section"><div class="form-section-heading"><span class="step-number">02</span><div><h2>Choose the evaluation set</h2><p>Supply examples the optimizer can use to find weaknesses.</p></div></div><div class="field"><div class="label-row"><label for="evolveTestInputs">Test inputs</label><button class="text-button" type="button" onclick="loadExampleTestInputs('evolve')">Load examples</button></div><textarea id="evolveTestInputs" rows="6" required placeholder="One case per line."></textarea><small class="field-hint">For final quality claims, evaluate the selected prompt on held-out data.</small></div></div>
+            <div class="form-section"><div class="form-section-heading"><span class="step-number">03</span><div><h2>Choose models and limits</h2><p>The execution model answers; the optimizer proposes edits.</p></div></div><div class="field-grid"><div class="field"><label for="evolveModel">Execution model</label><select id="evolveModel" required><option value="">Select a model</option></select></div><div class="field"><label for="evolveOptimizer">Optimizer model</label><select id="evolveOptimizer"><option value="command-a-03-2025">Command-A</option><option value="qwen2.5:latest">Qwen 2.5</option></select></div></div><div class="field compact-field"><label for="evolveIterations">Maximum iterations</label><input id="evolveIterations" type="number" value="3" min="1" max="10"></div></div>
+            <div class="form-actions"><span class="form-note">Prompt text changes; model weights do not.</span><button class="button button-primary" type="submit"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 14.5c2.2-5.4 4.3-8.2 6.4-8.2 2.5 0 3.3 4.9 7.6 1.2M3 14.5h4m-4 0v-4m14-3h-4m4 0v4"/></svg>Start evolution</button></div>
+          </form><aside class="side-column"><section class="side-panel"><h2>What evolution changes</h2><p>PromptMesh uses evaluation failures to guide candidate instructions, then keeps revisions that improve the score.</p><div class="side-rule"></div><p class="side-small">This is prompt optimization. Fine-tuning updates model weights and needs a separate training pipeline.</p></section></aside></div>
+          <section id="evolveResults" class="results-panel" hidden><div class="results-heading"><div><h2>Evolution history</h2><p>Review each accepted prompt and its score.</p></div><button class="button button-secondary" type="button" onclick="exportResults('evolution')">Export JSON</button></div><div id="evolutionStats" class="result-stats"></div><div id="evolutionTimeline" class="evolution-timeline"></div></section>
+        </section>
+
+        <section id="testcases-tab" class="tab-content" aria-labelledby="testcasesTitle" hidden>
+          <div class="page-heading"><h1 id="testcasesTitle">Generate test cases</h1><p>Expand a starter set with varied inputs for your evaluation.</p></div>
+          <div class="workbench-grid"><form id="testcasesForm" class="form-panel"><div class="form-section"><div class="form-section-heading"><span class="step-number">01</span><div><h2>Describe the task</h2><p>Generated cases need review before they become benchmark data.</p></div></div><div class="field-grid"><div class="field"><label for="testcaseType">Task type</label><select id="testcaseType" required><option value="">Select a task type</option><option value="summarization">Summarization</option><option value="extraction">Extraction</option><option value="verification">Verification</option><option value="classification">Classification</option><option value="reasoning">Reasoning</option><option value="generation">Generation</option></select></div><div class="field"><label for="testcaseCount">Cases to generate</label><input id="testcaseCount" type="number" value="5" min="1" max="20"></div></div><div class="field"><label for="testcaseBase">Base inputs</label><textarea id="testcaseBase" rows="7" placeholder="Add a few seed examples, one per line."></textarea><small class="field-hint">Include varied examples and review generated cases for correctness.</small></div></div><div class="form-actions"><span class="form-note">Generated examples are not gold labels.</span><button class="button button-primary" type="submit"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h10v14H5zM7.5 7h5m-5 3h5m-5 3h3"/></svg>Generate cases</button></div></form><aside class="side-column"><section class="side-panel"><h2>Use generated data carefully</h2><p>Generated examples can improve coverage, but they can also repeat patterns or contain incorrect assumptions.</p><div class="side-rule"></div><p class="side-small">Keep source examples, generated examples, and human-reviewed test labels distinguishable.</p></section></aside></div>
+          <section id="testcasesResults" class="results-panel" hidden><div class="results-heading"><div><h2>Generated cases</h2><p>Review and copy these into a versioned dataset.</p></div></div><ol id="testcasesResultsList" class="generated-list"></ol></section>
+        </section>
+
+        <section id="history-tab" class="tab-content" aria-labelledby="historyTitle" hidden>
+          <div class="page-heading"><h1 id="historyTitle">Run history</h1><p>Recent job summaries saved in this browser only.</p></div>
+          <section class="results-panel history-panel"><div class="results-heading"><div><h2>Completed work</h2><p>Full results stay in API memory for 30 minutes.</p></div><button class="button button-secondary" type="button" id="clearHistoryBtn">Clear local history</button></div><div id="historyList" class="history-list"><div class="empty-inline"><span class="empty-mark" aria-hidden="true">—</span><div><strong>No completed runs</strong><p>Evaluation, comparison, and evolution summaries will appear here.</p></div></div></div></section>
+        </section>
+
+        <footer class="page-footer"><span>PromptMesh</span><span>Compare carefully. Keep the test set fixed.</span></footer>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="progressModal" class="run-dialog" aria-labelledby="progressTitle" aria-describedby="progressText">
+    <div class="dialog-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+    <h2 id="progressTitle">Starting your run</h2><p id="progressText">Waiting for the model job.</p>
+    <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+    <p class="dialog-footnote">You can keep this tab open while the models respond.</p>
+  </dialog>
+  <div id="toastContainer" class="toast-container" role="status" aria-live="polite"></div>
+  <script src="/static/app.js" defer></script>
 </body>
 </html>
