@@ -337,3 +337,11 @@
 - Added a Node regression for the live-region attributes. Verification: 15 UI tests passed; JavaScript syntax, `bash -n run.sh`, and `git diff --check` passed. Commit `80f10aa` (`Announce review source changes accessibly`) is on `codex/promptmesh-validation-selection`.
 - Restarted the app on `http://127.0.0.1:4004/#finetune`; the rendered page showed API connected. Chrome DevTools MCP is not configured, so this pass used the in-app browser accessibility tree and source checks. A VoiceOver/screen-reader announcement and an axe scan remain unverified.
 - The live review queue still has 351 draft rows / 117 groups / zero reviewed rows / zero eligible groups. No source decisions were saved. The human-reviewed benchmark and its quality claims remain pending.
+
+## Synthetic adapter provenance — 2026-10-29
+
+- Synthetic-demo status now stays next to its metrics in fine-tune results, saved adapter cards, benchmark adapter choices, and the trained-model selectors for evaluation, comparison, and evolution. The selectors are refreshed after adapter metadata loads so they show the provenance label.
+- Added a focused UI regression. Verification passed: all 16 Node UI tests, JavaScript syntax checks, `bash -n run.sh`, and `git show --check`.
+- Browser at `http://127.0.0.1:4004/#finetune` showed API connected, the 351-row / 117-group review queue with zero reviewed labels and eligible groups, plus the synthetic-only label on benchmark adapter choices and saved cards. The evaluation page also showed the label on each trained-model checkbox. The private review CSV was unchanged.
+- Commit `20f0e35` (`Label synthetic adapter evidence in UI`) is on `codex/promptmesh-validation-selection`, the existing PR #2 branch targeting `main` as previously confirmed. No merge or deployment occurred.
+- Remaining: the synthetic adapter metrics are workflow evidence only; no human-reviewed benchmark or real quality/quantized comparison exists. Review source labels and reuse rights before creating that benchmark.
