@@ -162,12 +162,15 @@ controls year coverage, not organization, topic, or source-type balance.
 Open **Fine-tune → Review source candidates** to review one source group at a
 time. Compare every phrasing with its linked source, edit the labels, and record
 reuse permission separately with its evidence. The queue is loopback-only and
-saves to the ignored local CSV. It never imports candidates into training or
-creates a benchmark card; those steps still require an authorized reviewed
-dataset and a frozen evaluation. The queue summarizes draft year and source-host
-coverage to make packet imbalance visible; those counts describe the candidate
-packet, not the final reviewed dataset. `organization` means the named actor
-performing the claim.
+saves reviews to the ignored local CSV. Once enough groups are fully resolved
+and have confirmed reuse evidence, **Build a reviewed dataset** exports only
+reviewed variants to an ignored JSONL and creates a matching, self-attested
+benchmark card with source references. Both validation and final test must meet
+the 30-example / 10-source-group floor. Export does not train a model or score
+the test set; human label and rights review remain local self-attestations. The
+queue summarizes draft year and source-host coverage to make packet imbalance
+visible; those counts describe the candidate packet, not the final reviewed
+dataset. `organization` means the named actor performing the claim.
 
 ## Quantization, calibration, and QLoRA
 

@@ -66,9 +66,14 @@ before using any examples.
 Use **Fine-tune → Review source candidates** to review the local CSV by source
 group. Check each wording against its linked source, edit labels, and record
 reuse permission separately with evidence. The queue saves only to the ignored
-CSV and is loopback-only; it does not create training JSONL or a benchmark card.
-Review status is a local self-attestation, not independent proof of label
-quality or reuse rights.
+CSV and is loopback-only. After enough groups are fully resolved and have
+confirmed reuse evidence, **Build a reviewed dataset** exports only reviewed
+variants to an ignored JSONL and creates a matching benchmark card with source
+references. Excluded variants and unresolved groups stay out. Export requires
+at least 30 examples across 10 source groups in both validation and final test;
+it does not train a model or score the test set. Review and reuse decisions in
+the card are local self-attestations, not independent proof of label quality
+or reuse rights.
 Prompt selection compares the built-in `extraction/v1` template with your
 candidate using validation labels only. After selection, the frozen runner
 compares the prompted base and the matching LoRA adapter on the same reserved

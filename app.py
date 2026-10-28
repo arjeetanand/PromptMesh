@@ -62,7 +62,7 @@ from training.benchmark import (
 from training.runner import run_lora_training, training_runtime
 from training.quantization import quantization_runtime
 from training.registry import get_benchmark_adapter, list_adapters
-from training.review_packets import load_review_packet, save_group_review
+from training.review_packets import export_reviewed_dataset, load_review_packet, save_group_review
 
 
 # ============================================================
@@ -345,6 +345,11 @@ class CandidateReviewPacketRequest(BaseModel):
     reuse_evidence: str = Field(default="", max_length=1000)
 
 
+class ReviewedDatasetExportRequest(BaseModel):
+    dataset_id: str = Field(min_length=1, max_length=64)
+    reviewer_role: str = Field(min_length=1, max_length=128)
+
+
 class ApiSessionRequest(BaseModel):
     api_key: str = Field(min_length=32, max_length=256)
 
@@ -468,6 +473,20 @@ async def save_candidate_review_packet(request: CandidateReviewPacketRequest, ht
             request.reuse_status,
             request.reuse_evidence,
         )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="The local candidate review packet is missing") from exc
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/training/review-packet/export")
+async def export_candidate_review_packet(request: ReviewedDatasetExportRequest, http_request: Request):
+    if not _is_loopback_request(http_request):
+        raise HTTPException(status_code=403, detail="Candidate review is available only on this machine")
+    try:
+        return export_reviewed_dataset(request.dataset_id, request.reviewer_role)
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="The local candidate review packet is missing") from exc
     except (OSError, ValueError, UnicodeError) as exc:

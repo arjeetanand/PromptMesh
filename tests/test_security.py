@@ -383,8 +383,16 @@ class ApiBoundaryTests(unittest.TestCase):
                 },
                 headers=headers,
             )
+            with patch.object(promptmesh_app, "export_reviewed_dataset") as export_dataset:
+                exported = remote.post(
+                    "/api/training/review-packet/export",
+                    json={"dataset_id": "reviewed_sources_v1", "reviewer_role": "project author"},
+                    headers=headers,
+                )
+        export_dataset.assert_not_called()
         self.assertEqual(response.status_code, 403)
         self.assertEqual(saved.status_code, 403)
+        self.assertEqual(exported.status_code, 403)
 
     def test_loopback_client_can_read_and_save_a_private_review_group(self):
         import csv
@@ -405,6 +413,7 @@ class ApiBoundaryTests(unittest.TestCase):
                     })
             with patch.object(review_packets, "REVIEW_PACKET_DIR", Path(directory)), \
                  patch.object(review_packets, "REVIEW_PACKET_PATH", packet_path), \
+                 patch.object(promptmesh_app, "export_reviewed_dataset", return_value={"dataset_id": "reviewed_v1", "examples": 36}), \
                  TestClient(
                      promptmesh_app.app,
                      base_url="http://localhost:8000",
@@ -431,10 +440,17 @@ class ApiBoundaryTests(unittest.TestCase):
                     },
                     headers=headers,
                 )
+                exported = local.post(
+                    "/api/training/review-packet/export",
+                    json={"dataset_id": "reviewed_v1", "reviewer_role": "project author"},
+                    headers=headers,
+                )
 
         self.assertEqual(loaded.status_code, 200)
         self.assertEqual(saved.status_code, 200)
         self.assertEqual(saved.json()["reviewed_rows"], 3)
+        self.assertEqual(exported.status_code, 200)
+        self.assertEqual(exported.json()["dataset_id"], "reviewed_v1")
 
     def test_valid_evaluation_job_can_be_submitted_and_polled(self):
         headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}

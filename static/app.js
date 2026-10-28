@@ -11,6 +11,7 @@ const state = {
   reviewPacketCurrentGroupId: null,
   reviewPacketDirty: false,
   reviewPacketSaving: false,
+  reviewPacketExporting: false,
   trainedAdapters: [],
   activeAdapterModel: null,
   activeTab: "overview",
@@ -332,11 +333,18 @@ function setupForms() {
   $("reviewPacketGroup").addEventListener("change", handleReviewGroupChange);
   $("reviewPacketPrevious").addEventListener("click", () => moveReviewGroup(-1));
   $("reviewPacketNext").addEventListener("click", moveToNextUnreviewedGroup);
-  $("reviewPacketForm").addEventListener("input", () => { state.reviewPacketDirty = true; });
+  $("reviewPacketForm").addEventListener("input", () => {
+    state.reviewPacketDirty = true;
+    updateReviewExportControls();
+  });
   $("reviewPacketForm").addEventListener("change", () => {
     state.reviewPacketDirty = true;
     updateReviewEvidenceField();
+    updateReviewExportControls();
   });
+  $("reviewExportButton").addEventListener("click", handleExportReviewedDataset);
+  $("reviewExportDatasetId").addEventListener("input", updateReviewExportControls);
+  $("reviewExportReviewerRole").addEventListener("input", updateReviewExportControls);
   $("promptSelectionForm").addEventListener("submit", handlePromptSelection);
   $("benchmarkAdapter").addEventListener("change", updateBenchmarkControls);
   $("benchmarkCandidatePrompt").addEventListener("input", updateBenchmarkControls);
@@ -391,6 +399,7 @@ function renderCandidateReviewPacket() {
   const workspace = $("candidateReviewWorkspace");
   const message = $("candidateReviewMessage");
   const packet = state.reviewPacket;
+  updateReviewExportControls(packet);
   if (!packet) {
     summary.textContent = "Local review unavailable";
     coverage.textContent = "";
@@ -402,7 +411,7 @@ function renderCandidateReviewPacket() {
     return;
   }
 
-  summary.textContent = `${packet.total_rows} rows · ${packet.total_groups} source groups · ${packet.reviewed_rows} labels reviewed · ${packet.eligible_groups} groups with reviewed labels and reuse evidence`;
+  summary.textContent = `${packet.total_rows} rows · ${packet.total_groups} source groups · ${packet.reviewed_rows} labels reviewed · ${packet.excluded_rows || 0} variants excluded · ${packet.eligible_groups} export-eligible groups`;
   if (!packet.groups.length) {
     coverage.textContent = "";
     workspace.hidden = true;
@@ -421,12 +430,29 @@ function renderCandidateReviewPacket() {
     || groups[0];
   state.reviewPacketCurrentGroupId = current.group_id;
   selector.replaceChildren(...groups.map((group) => {
-    const label = `${group.source_title || group.group_id} · ${candidateReviewGroupYear(group)} · ${group.reviewed_rows}/${group.rows.length} labels reviewed`;
+    const label = `${group.source_title || group.group_id} · ${candidateReviewGroupYear(group)} · ${group.reviewed_rows} reviewed · ${group.excluded_rows || 0} excluded`;
     return new Option(label, group.group_id);
   }));
   selector.value = current.group_id;
   renderReviewGroup(current);
   state.reviewPacketDirty = false;
+}
+
+function updateReviewExportControls(packet = state.reviewPacket) {
+  const button = $("reviewExportButton");
+  const readiness = $("reviewExportReadiness");
+  const preview = packet?.export_preview;
+  const datasetId = $("reviewExportDatasetId").value.trim();
+  const reviewerRole = $("reviewExportReviewerRole").value.trim();
+  const validDatasetId = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(datasetId);
+  button.disabled = !preview?.ready || !validDatasetId || !reviewerRole || state.reviewPacketDirty || state.reviewPacketSaving || state.reviewPacketExporting;
+  if (!packet) {
+    readiness.textContent = "The local review packet is unavailable.";
+  } else if (preview?.ready) {
+    readiness.textContent = `${preview.examples} reviewed examples across ${preview.source_groups} eligible groups. Validation: ${preview.validation_examples} examples / ${preview.validation_source_groups} groups. Final test: ${preview.final_test_examples} examples / ${preview.final_test_source_groups} groups.`;
+  } else {
+    readiness.textContent = preview?.reason || "Review labels and reuse evidence before exporting.";
+  }
 }
 
 function candidateReviewGroupYear(group) {
@@ -508,7 +534,8 @@ function renderReviewGroup(group) {
   $("reviewSourceReuseStatus").value = reviewReuseStatus(group.reuse_status);
   $("reviewSourceEvidence").value = group.reuse_evidence || "";
   updateReviewEvidenceField();
-  $("reviewPacketSaveStatus").textContent = `${group.reviewed_rows}/${group.rows.length} labels reviewed in this group. Saving never adds rows to training.`;
+  $("reviewPacketSaveStatus").textContent = `${group.reviewed_rows} reviewed · ${group.excluded_rows || 0} excluded of ${group.rows.length}. Saving never adds rows to training.`;
+  updateReviewExportControls();
 }
 
 function renderReviewRow(row, ordinal, total) {
@@ -673,6 +700,7 @@ async function handleSaveCandidateReview(event) {
 
   state.reviewPacketSaving = true;
   $("reviewPacketSave").disabled = true;
+  updateReviewExportControls();
   $("reviewPacketSaveStatus").textContent = "Saving review to this machine…";
   try {
     state.reviewPacket = await apiCall("training/review-packet", {
@@ -693,6 +721,46 @@ async function handleSaveCandidateReview(event) {
   } finally {
     state.reviewPacketSaving = false;
     $("reviewPacketSave").disabled = false;
+    updateReviewExportControls();
+  }
+}
+
+async function handleExportReviewedDataset() {
+  if (state.reviewPacketDirty || state.reviewPacketSaving || state.reviewPacketExporting) {
+    return showToast("Save the current source-group review before exporting.", "error");
+  }
+  const datasetId = $("reviewExportDatasetId").value.trim();
+  const reviewerRole = $("reviewExportReviewerRole").value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(datasetId)) {
+    $("reviewExportDatasetId").focus();
+    return showToast("Use a valid dataset ID.", "error");
+  }
+  if (!reviewerRole || reviewerRole.length > 128) {
+    $("reviewExportReviewerRole").focus();
+    return showToast("Enter the reviewer role, not a personal name.", "error");
+  }
+
+  state.reviewPacketExporting = true;
+  $("reviewExportResult").textContent = "Checking reviewed rows, source permissions, and held-out split sizes…";
+  updateReviewExportControls();
+  try {
+    const result = await apiCall("training/review-packet/export", {
+      method: "POST",
+      body: JSON.stringify({ dataset_id: datasetId, reviewer_role: reviewerRole }),
+    });
+    await loadInitialData();
+    $("fineTuneDataset").value = result.dataset_id;
+    updateFineTuneDatasetNote();
+    const validation = result.splits.validation;
+    const finalTest = result.splits.test;
+    $("reviewExportResult").textContent = `Created private dataset ${result.dataset_id}: ${result.examples} examples / ${result.source_groups} groups. Validation ${validation.examples}/${validation.source_groups} groups; final test ${finalTest.examples}/${finalTest.source_groups} groups. The self-attested card is ready; no model was trained and the test set was not scored.`;
+    showToast("Reviewed dataset and benchmark card created locally.", "success");
+  } catch (error) {
+    $("reviewExportResult").textContent = "Export not created: " + error.message;
+    showToast("Could not export reviewed data: " + error.message, "error");
+  } finally {
+    state.reviewPacketExporting = false;
+    updateReviewExportControls();
   }
 }
 

@@ -1,10 +1,14 @@
 import csv
+import json
+import os
+import stat
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from training import review_packets
+from training import datasets
 
 
 class ReviewPacketTests(unittest.TestCase):
@@ -29,6 +33,38 @@ class ReviewPacketTests(unittest.TestCase):
                 })
         return packet
 
+    def _write_reviewable_packet(self, directory, group_count=80, include_pending=True):
+        packet = Path(directory) / "review.csv"
+        columns = [*review_packets.REQUIRED_COLUMNS, "reuse_evidence"]
+        with packet.open("w", encoding="utf-8", newline="") as output:
+            writer = csv.DictWriter(output, fieldnames=columns)
+            writer.writeheader()
+            for index in range(group_count + int(include_pending)):
+                group_id = f"source-{index:03d}"
+                year = 2020 + index % 5
+                eligible = index < group_count
+                for variant in range(3):
+                    excluded = eligible and index == 0 and variant == 0
+                    writer.writerow({
+                        "group_id": group_id,
+                        "input": f"Source {index} variant {variant} describes an announcement.",
+                        "proposed_organization": "Example actor",
+                        "proposed_year": str(year),
+                        "proposed_claim": "announced a research project",
+                        "review_status": "EXCLUDED" if excluded else "REVIEWED" if eligible else "NEEDS_HUMAN_REVIEW",
+                        "reviewed_organization": "Example actor" if eligible and not excluded else "",
+                        "reviewed_year": str(year) if eligible and not excluded else "",
+                        "reviewed_claim": "announced a research project" if eligible and not excluded else "",
+                        "review_notes": "Not supported by the source" if excluded else "Checked against the linked source" if eligible else "",
+                        "source_title": f"Official source {index}",
+                        "source_url": f"https://example.org/source/{index}",
+                        "source_date": f"{year}-01-01",
+                        "reuse_status": "permission_confirmed" if eligible else "permission_unconfirmed",
+                        "reuse_evidence": "CC BY 4.0 license notice" if eligible else "",
+                        "review_focus": f"Verify actor and event year for variant {variant}.",
+                    })
+        return packet
+
     def test_packet_groups_related_phrasings_and_keeps_them_unreviewed(self):
         with tempfile.TemporaryDirectory() as directory:
             packet = self._write_packet(directory)
@@ -40,6 +76,91 @@ class ReviewPacketTests(unittest.TestCase):
         self.assertEqual(result["reviewed_rows"], 0)
         self.assertEqual(len(result["groups"][0]["rows"]), 3)
         self.assertFalse(result["groups"][0]["eligible"])
+        self.assertFalse(result["export_preview"]["ready"])
+        self.assertIn("Only 0 export-eligible groups", result["export_preview"]["reason"])
+
+    def test_export_uses_only_reviewed_variants_with_group_rights_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packet = self._write_reviewable_packet(root)
+            data_dir = root / "datasets"
+            data_dir.mkdir()
+            with patch.object(review_packets, "REVIEW_PACKET_DIR", root), \
+                 patch.object(review_packets, "REVIEW_PACKET_PATH", packet), \
+                 patch.object(datasets, "DATASET_DIR", data_dir):
+                preview = review_packets.load_review_packet()
+                result = review_packets.export_reviewed_dataset("reviewed_sources_v1", "project author")
+                rows, digest = datasets.load_dataset_snapshot("reviewed_sources_v1")
+                card = datasets.load_benchmark_card("reviewed_sources_v1", rows, digest)
+                status = datasets.benchmark_card_status("reviewed_sources_v1", rows, digest)
+                data_path = data_dir / "reviewed_sources_v1.jsonl"
+                card_path = data_dir / "reviewed_sources_v1.card.json"
+                original_data = data_path.read_bytes()
+                original_card = card_path.read_bytes()
+
+                with self.assertRaisesRegex(FileExistsError, "already exists"):
+                    review_packets.export_reviewed_dataset("reviewed_sources_v1", "project author")
+
+            group_counts = {}
+            for row in rows:
+                group_counts[row["group_id"]] = group_counts.get(row["group_id"], 0) + 1
+            self.assertTrue(preview["export_preview"]["ready"])
+            self.assertEqual(result["examples"], 239)
+            self.assertEqual(result["source_groups"], 80)
+            self.assertEqual(group_counts["source-000"], 2, "explicitly excluded variants must not enter the dataset")
+            self.assertNotIn("source-080", group_counts, "pending groups must stay out of the dataset")
+            self.assertEqual(card["annotation"]["reviewer_role"], "project author")
+            self.assertEqual(len(card["source"]["references"]), 80)
+            self.assertEqual(card["source"]["references"][0]["reuse_evidence"], "CC BY 4.0 license notice")
+            self.assertTrue(status["card_ready"] and status["validation_ready"] and status["final_test_ready"])
+            self.assertEqual(stat.S_IMODE(data_path.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(card_path.stat().st_mode), 0o600)
+            self.assertEqual(data_path.read_bytes(), original_data)
+            self.assertEqual(card_path.read_bytes(), original_card)
+            self.assertEqual(json.loads(original_card)["dataset_sha256"], digest)
+
+    def test_export_refuses_a_split_below_benchmark_floors_without_writing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packet = self._write_reviewable_packet(root, group_count=12, include_pending=False)
+            data_dir = root / "datasets"
+            data_dir.mkdir()
+            with patch.object(review_packets, "REVIEW_PACKET_DIR", root), \
+                 patch.object(review_packets, "REVIEW_PACKET_PATH", packet), \
+                 patch.object(datasets, "DATASET_DIR", data_dir):
+                preview = review_packets.load_review_packet()["export_preview"]
+                with self.assertRaisesRegex(ValueError, "at least 30 examples across 10 source groups"):
+                    review_packets.export_reviewed_dataset("too_small_v1", "project author")
+
+            self.assertFalse(preview["ready"])
+            self.assertFalse((data_dir / "too_small_v1.jsonl").exists())
+            self.assertFalse((data_dir / "too_small_v1.card.json").exists())
+
+    def test_export_rolls_back_dataset_if_card_creation_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packet = self._write_reviewable_packet(root, include_pending=False)
+            data_dir = root / "datasets"
+            data_dir.mkdir()
+            original_link = os.link
+            calls = 0
+
+            def fail_second_link(source, destination):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise FileExistsError("simulated card collision")
+                return original_link(source, destination)
+
+            with patch.object(review_packets, "REVIEW_PACKET_DIR", root), \
+                 patch.object(review_packets, "REVIEW_PACKET_PATH", packet), \
+                 patch.object(datasets, "DATASET_DIR", data_dir), \
+                 patch.object(review_packets.os, "link", side_effect=fail_second_link):
+                with self.assertRaisesRegex(FileExistsError, "simulated card collision"):
+                    review_packets.export_reviewed_dataset("rollback_v1", "project author")
+
+            self.assertFalse((data_dir / "rollback_v1.jsonl").exists())
+            self.assertFalse((data_dir / "rollback_v1.card.json").exists())
 
     def test_review_save_records_actor_label_and_permission_evidence(self):
         with tempfile.TemporaryDirectory() as directory:

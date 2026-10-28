@@ -141,6 +141,16 @@
               </form>
             </div>
             <p id="candidateReviewMessage" class="review-message" role="status" aria-live="polite">Loading the local review packet…</p>
+            <section class="review-export" aria-labelledby="reviewExportTitle">
+              <div><h3 id="reviewExportTitle">Build a reviewed dataset</h3><p>Only variants marked reviewed in groups with permission evidence are exported. Excluded and unresolved rows stay out. Export creates a private JSONL file and self-attested benchmark card; it does not train a model or run a benchmark.</p></div>
+              <div class="review-export-fields">
+                <div class="field"><label for="reviewExportDatasetId">Dataset ID</label><input id="reviewExportDatasetId" type="text" value="public_source_entity_v1" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}" autocomplete="off"><small class="field-hint">Use letters, numbers, underscores, or hyphens.</small></div>
+                <div class="field"><label for="reviewExportReviewerRole">Reviewer role</label><input id="reviewExportReviewerRole" type="text" maxlength="128" placeholder="e.g. project author" autocomplete="off"><small class="field-hint">Enter a role, not a personal name.</small></div>
+                <button id="reviewExportButton" class="button button-secondary" type="button" disabled>Build dataset and card</button>
+              </div>
+              <p id="reviewExportReadiness" class="review-export-status" role="status" aria-live="polite">Waiting for the local review packet…</p>
+              <p id="reviewExportResult" class="review-export-status" role="status" aria-live="polite"></p>
+            </section>
           </section>
           <div class="workbench-grid">
             <form id="fineTuneForm" class="form-panel">

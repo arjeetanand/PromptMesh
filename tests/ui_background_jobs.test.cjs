@@ -76,6 +76,52 @@ test("candidate review coverage exposes draft year and source-host concentration
   assert.deepEqual(order, ["2020-a", "2021-a", "2024-a", "2025-a", "2024-b", "2024-c"]);
 });
 
+test("reviewed dataset export is gated by saved, benchmark-ready review data", () => {
+  const { context, elements } = loadApp();
+  context.packet = JSON.stringify({ export_preview: {
+    ready: true, examples: 239, source_groups: 80,
+    validation_examples: 35, validation_source_groups: 12,
+    final_test_examples: 36, final_test_source_groups: 12
+  } });
+  vm.runInContext("state.reviewPacket = JSON.parse(packet); updateReviewExportControls()", context);
+
+  assert.equal(elements.get("reviewExportButton").disabled, true, "reviewer role is required before export");
+  elements.get("reviewExportDatasetId").value = "reviewed_sources_v1";
+  elements.get("reviewExportReviewerRole").value = "project author";
+  vm.runInContext("updateReviewExportControls()", context);
+  assert.equal(elements.get("reviewExportButton").disabled, false);
+  assert.match(elements.get("reviewExportReadiness").textContent, /Validation: 35 examples \/ 12 groups/);
+
+  vm.runInContext("state.reviewPacketDirty = true; updateReviewExportControls()", context);
+  assert.equal(elements.get("reviewExportButton").disabled, true, "unsaved decisions must not be exported");
+});
+
+test("reviewed dataset export creates a local dataset selection without starting a run", async () => {
+  const { context, elements } = loadApp();
+  elements.get("reviewExportDatasetId").value = "reviewed_sources_v1";
+  elements.get("reviewExportReviewerRole").value = "project author";
+  vm.runInContext("state.reviewPacket = {export_preview:{ready:true}}; state.reviewPacketDirty = false; loadInitialData = async () => {}; updateFineTuneDatasetNote = () => {}; showToast = () => {}", context);
+  let request;
+  context.apiCall = async (endpoint, options) => {
+    request = { endpoint, options };
+    return {
+      dataset_id: "reviewed_sources_v1", examples: 239, source_groups: 80,
+      splits: {
+        validation: { examples: 35, source_groups: 12 },
+        test: { examples: 36, source_groups: 12 }
+      }
+    };
+  };
+
+  await vm.runInContext("handleExportReviewedDataset()", context);
+
+  assert.equal(request.endpoint, "training/review-packet/export");
+  assert.deepEqual(JSON.parse(request.options.body), { dataset_id: "reviewed_sources_v1", reviewer_role: "project author" });
+  assert.equal(elements.get("fineTuneDataset").value, "reviewed_sources_v1");
+  assert.match(elements.get("reviewExportResult").textContent, /no model was trained and the test set was not scored/);
+  assert.equal(vm.runInContext("state.reviewPacketExporting", context), false);
+});
+
 for (const [type, label] of [
   ["training", "LoRA"],
   ["evolution", "Evolution"],
