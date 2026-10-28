@@ -340,8 +340,9 @@ class TrainingRunnerTests(unittest.TestCase):
         model = Model()
         rows = [{"input": "example", "output": {}}]
 
-        self.assertEqual(_generate(model, tokenizer, "Input: {{text}}", rows), ["prediction"])
+        self.assertEqual(_generate(model, tokenizer, "Input: {{text}}", rows, max_new_tokens=17), ["prediction"])
         self.assertEqual(set(model.inputs), {"input_ids", "attention_mask", "max_new_tokens", "do_sample", "pad_token_id", "eos_token_id"})
+        self.assertEqual(model.inputs["max_new_tokens"], 17)
         self.assertEqual(tokenizer.output, [3, 4])
 
         adapter = TrainedAdapterModel("a" * 32)

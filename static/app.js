@@ -5,6 +5,7 @@ const state = {
   models: {},
   trainingDatasets: [],
   trainingRuntime: null,
+  quantizationRuntime: null,
   trainedAdapters: [],
   activeAdapterModel: null,
   activeTab: "overview",
@@ -107,9 +108,11 @@ async function loadInitialData() {
   if (trainingResult.status === "fulfilled") {
     state.trainingDatasets = trainingResult.value.datasets || [];
     state.trainingRuntime = trainingResult.value.runtime || null;
+    state.quantizationRuntime = trainingResult.value.quantization || null;
   } else {
     state.trainingDatasets = [];
     state.trainingRuntime = null;
+    state.quantizationRuntime = null;
   }
   populateTaskDropdowns();
   populateModelSelectors();
@@ -538,6 +541,17 @@ function updateBenchmarkControls() {
 
   const promptValid = /\{\{\s*text\s*\}\}/.test(candidate);
   const finalAlreadyRun = state.lastBenchmarkReport?.dataset_sha256 === dataset?.sha256;
+  const quantization = state.quantizationRuntime || {};
+  const supportedMethods = new Set((quantization.methods || []).map((method) => method.id));
+  document.querySelectorAll('input[name="quantizationMethods"]').forEach((input) => {
+    input.disabled = state.jobBusy || finalAlreadyRun || !quantization.available || !supportedMethods.has(input.value);
+  });
+  const quantizationNote = $("quantizationRuntimeNote");
+  if (!quantization.available) {
+    quantizationNote.textContent = quantization.reason || "Optional bitsandbytes quantization is unavailable in this local environment.";
+  } else {
+    quantizationNote.textContent = "bitsandbytes " + quantization.version + " · " + quantization.device + ". Select either or both before the final test run.";
+  }
   $("promptSelectionSubmit").disabled = state.jobBusy || !state.trainingRuntime?.available || !cardReady || !validationReady || !testReady || !compatible.length || !promptValid || finalAlreadyRun;
   $("runFrozenBenchmarkBtn").disabled = state.jobBusy || !state.trainingRuntime?.available || !selectionMatches || !validationReady || !testReady || finalAlreadyRun;
 }
@@ -691,7 +705,8 @@ async function handleFrozenBenchmark() {
       method: "POST",
       body: JSON.stringify({
         selection_id: state.lastPromptSelection.selection_id,
-        adapter_run_id: state.lastPromptSelection.adapter_run_id
+        adapter_run_id: state.lastPromptSelection.adapter_run_id,
+        quantization_methods: Array.from(document.querySelectorAll('input[name="quantizationMethods"]:checked'), (input) => input.value)
       })
     });
     if (!result.job_id) throw new Error("The API did not return a frozen benchmark job ID.");
@@ -993,13 +1008,52 @@ function displayFrozenBenchmark(report, created = true) {
     ["Base · validation-selected prompt", report.metrics?.base_validation_selected_prompt],
     ["LoRA · validation-selected prompt", report.metrics?.lora_validation_selected_prompt]
   ];
-  $("frozenBenchmarkMetrics").innerHTML = labels.map(([label, metrics]) => {
+  const metricCards = labels.map(([label, metrics]) => {
     const exact = formatPercent(metrics?.record_exact_match);
     const interval = metrics?.record_exact_match_95ci;
     const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
     return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span><div><small>Record exact match</small><strong>" + exact + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics?.field_accuracy) + "</strong></div><div><small>Valid JSON</small><strong>" + formatPercent(metrics?.json_valid_rate) + "</strong></div><b>95% grouped CI " + escapeHTML(ciText) + "</b></article>";
   }).join("");
+  const quantized = report.quantized_inference;
+  if (quantized?.variants?.length) {
+    const controlMetrics = report.metrics?.lora_validation_selected_prompt;
+    const controlPerformance = report.performance?.lora_full_precision || {};
+    const control = quantizationMetricCard("Full-precision LoRA control", controlMetrics, controlPerformance);
+    const variants = quantized.variants.map((variant) => {
+      const quantDetails = variant.id === "bnb_nf4" ? "double quantization" : "outlier threshold " + variant.llm_int8_threshold;
+      return quantizationMetricCard(
+      variant.label + " · " + variant.weight_bits + "-bit · " + quantDetails + " · " + variant.compute_dtype,
+      variant.metrics,
+      variant
+      );
+    }).join("");
+    const note = "Calibration: not required for bitsandbytes INT8/NF4. Adapter training: " + quantized.adapter_training_method + " Backend: " + quantized.backend + " " + quantized.backend_version + ". Model footprint is not peak device memory; timings are single cold runs.";
+    $("frozenBenchmarkMetrics").innerHTML = metricCards
+      + "<div class=\"quantization-report-heading\"><h4>Quantized adapter inference</h4><p>Matched test quality and single-run resource measurements. " + escapeHTML(note) + "</p></div>"
+      + control + variants;
+  } else {
+    $("frozenBenchmarkMetrics").innerHTML = metricCards;
+  }
   updateBenchmarkControls();
+}
+
+function quantizationMetricCard(label, metrics = {}, performance = {}) {
+  const interval = metrics.record_exact_match_95ci;
+  const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
+  const footprint = Number.isFinite(Number(performance.model_footprint_bytes))
+    ? (Number(performance.model_footprint_bytes) / (1024 ** 3)).toFixed(2) + " GiB"
+    : "—";
+  const seconds = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) + " s" : "—";
+  const rate = Number.isFinite(Number(performance.tokens_per_second)) ? Number(performance.tokens_per_second).toFixed(2) + " tok/s" : "—";
+  return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span>"
+    + "<div><small>Record exact match</small><strong>" + formatPercent(metrics.record_exact_match) + "</strong></div>"
+    + "<div><small>Field accuracy</small><strong>" + formatPercent(metrics.field_accuracy) + "</strong></div>"
+    + "<div><small>Valid JSON</small><strong>" + formatPercent(metrics.json_valid_rate) + "</strong></div>"
+    + "<div><small>95% grouped CI</small><strong>" + escapeHTML(ciText) + "</strong></div>"
+    + "<div><small>Load</small><strong>" + seconds(performance.load_seconds) + "</strong></div>"
+    + "<div><small>Inference</small><strong>" + seconds(performance.inference_seconds) + "</strong></div>"
+    + "<div><small>Generation</small><strong>" + rate + "</strong></div>"
+    + "<div><small>Model footprint</small><strong>" + footprint + "</strong></div></article>";
 }
 
 function trainingMetricMarkup(label, base, adapter) {

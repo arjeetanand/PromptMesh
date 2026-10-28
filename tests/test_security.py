@@ -300,10 +300,12 @@ class ApiBoundaryTests(unittest.TestCase):
         def complete(job_id, _request, jobs):
             jobs.update(job_id, {"status": "completed", "progress": 100, "result": {"report": {"metrics_split": "test"}}})
 
+        quant_runtime = {"available": True, "methods": [{"id": "bnb_nf4"}]}
         with patch.object(promptmesh_app, "load_prompt_selection", return_value=selection), \
              patch.object(promptmesh_app, "load_dataset_snapshot", return_value=(rows, dataset_digest)), \
              patch.object(promptmesh_app, "benchmark_card_status", return_value=card), \
              patch.object(promptmesh_app, "get_benchmark_adapter", return_value=(Path("/adapter"), {})), \
+             patch.object(promptmesh_app, "quantization_runtime", return_value=quant_runtime), \
              patch.object(promptmesh_app, "training_runtime", return_value={"available": True, "missing": []}), \
              patch.object(promptmesh_app, "run_frozen_benchmark", side_effect=complete) as run_benchmark:
             mismatched = self.client.post(
@@ -316,7 +318,7 @@ class ApiBoundaryTests(unittest.TestCase):
 
             response = self.client.post(
                 "/api/training/benchmarks",
-                json={"selection_id": selection_id, "adapter_run_id": adapter_id},
+                json={"selection_id": selection_id, "adapter_run_id": adapter_id, "quantization_methods": ["bnb_nf4"]},
                 headers=headers,
             )
 
@@ -324,6 +326,40 @@ class ApiBoundaryTests(unittest.TestCase):
         job = self.client.get("/api/jobs/" + response.json()["job_id"], headers=headers)
         self.assertEqual(job.status_code, 200)
         self.assertEqual(job.json()["result"]["report"]["metrics_split"], "test")
+        run_benchmark.assert_called_once()
+        self.assertEqual(run_benchmark.call_args.args[1].quantization_methods, ["bnb_nf4"])
+
+    def test_frozen_benchmark_rejects_duplicate_or_unavailable_quantization_methods(self):
+        headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}
+        payload = {"selection_id": "c" * 32, "adapter_run_id": "d" * 32}
+        unavailable = {"available": False, "methods": [], "reason": "bitsandbytes unavailable"}
+        with patch.object(promptmesh_app, "quantization_runtime", return_value=unavailable), \
+             patch.object(promptmesh_app, "run_frozen_benchmark") as run_benchmark:
+            unavailable_response = self.client.post(
+                "/api/training/benchmarks",
+                json={**payload, "quantization_methods": ["bnb_nf4"]},
+                headers=headers,
+            )
+            duplicate_response = self.client.post(
+                "/api/training/benchmarks",
+                json={**payload, "quantization_methods": ["bnb_nf4", "bnb_nf4"]},
+                headers=headers,
+            )
+
+        self.assertEqual(unavailable_response.status_code, 503)
+        self.assertEqual(duplicate_response.status_code, 422)
+        run_benchmark.assert_not_called()
+
+    def test_training_dataset_listing_exposes_optional_quantization_runtime(self):
+        headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}
+        runtime = {"available": True, "backend": "bitsandbytes", "version": "0.50.0", "device": "mps", "methods": []}
+        with patch.object(promptmesh_app, "list_datasets", return_value=[]), \
+             patch.object(promptmesh_app, "training_runtime", return_value={"available": True, "device": "mps"}), \
+             patch.object(promptmesh_app, "quantization_runtime", return_value=runtime):
+            response = self.client.get("/api/training/datasets", headers=headers)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["quantization"], runtime)
 
     def test_valid_evaluation_job_can_be_submitted_and_polled(self):
         headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}

@@ -1,0 +1,2 @@
+# Optional inference quantization backend for compatible local hardware.
+bitsandbytes==0.50.0

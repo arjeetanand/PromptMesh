@@ -1,3 +1,4 @@
+import gc
 import hashlib
 import json
 import logging
@@ -5,6 +6,7 @@ import os
 import platform
 import random
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +14,7 @@ from pathlib import Path
 from prompts.registry import PROMPT_BASE_PATH, PromptRegistry
 from training.datasets import benchmark_card_status, load_dataset_snapshot, split_dataset
 from training.metrics import score_predictions
+from training.quantization import QUANTIZATION_METHODS, bitsandbytes_config, quantization_runtime
 from training.registry import get_benchmark_adapter
 from training.runner import BASE_MODEL_ID, _generate
 
@@ -87,7 +90,7 @@ def load_prompt_selection(selection_id):
     return selection
 
 
-def _load_local_model(manifest, adapter_path=None):
+def _load_local_model(manifest, adapter_path=None, quantization_method=None):
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -100,7 +103,22 @@ def _load_local_model(manifest, adapter_path=None):
         trust_remote_code=False,
         local_files_only=True,
     )
-    if adapter_path:
+    if quantization_method:
+        model_dtype = torch.float16 if device in ("mps", "cuda") else torch.float32
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            revision=revision,
+            dtype=model_dtype,
+            quantization_config=bitsandbytes_config(quantization_method, torch, device),
+            device_map={"": device},
+            trust_remote_code=False,
+            local_files_only=True,
+        )
+        if adapter_path:
+            from peft import PeftModel
+
+            model = PeftModel.from_pretrained(model, adapter_path, is_trainable=False)
+    elif adapter_path:
         from peft import AutoPeftModelForCausalLM
 
         model = AutoPeftModelForCausalLM.from_pretrained(
@@ -118,11 +136,39 @@ def _load_local_model(manifest, adapter_path=None):
             trust_remote_code=False,
             local_files_only=True,
         )
-    return model.to(device).eval(), tokenizer, device, torch
+    if quantization_method:
+        model = model.eval()
+    else:
+        model = model.to(device).eval()
+    return model, tokenizer, device, torch
 
 
 def _prompt_sha256(template):
     return hashlib.sha256(template.encode("utf-8")).hexdigest()
+
+
+def _model_footprint_bytes(model):
+    try:
+        return int(model.get_memory_footprint())
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def _generation_performance(tokenizer, predictions, elapsed_seconds):
+    generated_tokens = sum(len(tokenizer.encode(text, add_special_tokens=False)) for text in predictions)
+    return {
+        "inference_seconds": round(elapsed_seconds, 4),
+        "generated_tokens": generated_tokens,
+        "tokens_per_second": round(generated_tokens / elapsed_seconds, 3) if elapsed_seconds > 0 else None,
+    }
+
+
+def _clear_device_cache(torch, device):
+    gc.collect()
+    if device == "mps":
+        torch.mps.empty_cache()
+    elif device == "cuda":
+        torch.cuda.empty_cache()
 
 
 def validate_prompt_template(template):
@@ -337,6 +383,10 @@ def _complete_report(report):
 
 def run_frozen_benchmark(job_id, request, jobs):
     try:
+        requested_methods = list(getattr(request, "quantization_methods", []))
+        if len(requested_methods) != len(set(requested_methods)) or any(method not in QUANTIZATION_METHODS for method in requested_methods):
+            raise ValueError("Quantization methods must be unique supported methods")
+        quantization_methods = sorted(requested_methods)
         selection = load_prompt_selection(request.selection_id)
         rows, dataset_digest, card_status = _reviewed_dataset(selection["dataset_id"])
         if dataset_digest != selection["dataset_sha256"] or card_status["card_sha256"] != selection["benchmark_card_sha256"]:
@@ -362,6 +412,8 @@ def run_frozen_benchmark(job_id, request, jobs):
             "dataset_sha256": dataset_digest,
             "benchmark_card_sha256": card_status["card_sha256"],
         }
+        if quantization_methods:
+            configuration["quantization_methods"] = quantization_methods
         configuration_digest = _json_digest(configuration)
         existing = _existing_report(selection["dataset_id"], dataset_digest, configuration_digest)
         if existing:
@@ -376,33 +428,118 @@ def run_frozen_benchmark(job_id, request, jobs):
             return
         _reject_reserved_benchmark(selection["dataset_id"], dataset_digest)
 
+        quant_runtime = None
+        if quantization_methods:
+            quant_runtime = quantization_runtime()
+            available_methods = {item["id"] for item in quant_runtime.get("methods", [])}
+            if not quant_runtime["available"] or not set(quantization_methods).issubset(available_methods):
+                raise ValueError(quant_runtime.get("reason") or "The requested quantization backend is unavailable")
+
         baseline_prompt = next(item["prompt"] for item in selection["candidates"] if item["id"] == "extraction/v1")
         selected_prompt = selection["selected_prompt"]
+
+        # Exercise every selected backend with a fixed synthetic input before reserving the one-shot test split.
+        for index, method in enumerate(quantization_methods):
+            jobs.update(job_id, {
+                "progress": 2 + int(2 * index / max(len(quantization_methods), 1)),
+                "stage": "checking_quantized_backend",
+                "message": "Checking the selected quantized backend using a fixed synthetic prompt.",
+            })
+            canary_model, canary_tokenizer, canary_device, canary_torch = _load_local_model(
+                adapter, adapter_path, quantization_method=method
+            )
+            try:
+                if canary_device != quant_runtime["device"]:
+                    raise ValueError("Quantized and full-precision inference resolved to different devices")
+                _generate(
+                    canary_model,
+                    canary_tokenizer,
+                    selected_prompt,
+                    [{"input": "Northstar announced a research center in 2024."}],
+                    max_new_tokens=8,
+                )
+            finally:
+                del canary_model
+                _clear_device_cache(canary_torch, canary_device)
+
         jobs.update(job_id, {"progress": 5, "stage": "loading_local_base_model"})
+        base_load_started = time.perf_counter()
         base_model, tokenizer, device, torch = _load_local_model(adapter)
+        base_load_seconds = time.perf_counter() - base_load_started
         _reserve_frozen_benchmark(selection["dataset_id"], dataset_digest, configuration_digest, request.selection_id)
         jobs.update(job_id, {"progress": 15, "stage": "scoring_frozen_test"})
+        baseline_started = time.perf_counter()
         baseline_predictions = _generate(base_model, tokenizer, baseline_prompt, test_rows)
+        baseline_seconds = time.perf_counter() - baseline_started
         baseline_metrics = score_predictions(test_rows, baseline_predictions)
         if selection["selected_prompt_sha256"] == _prompt_sha256(baseline_prompt):
             selected_predictions = baseline_predictions
             selected_metrics = baseline_metrics
+            selected_seconds = baseline_seconds
         else:
+            selected_started = time.perf_counter()
             selected_predictions = _generate(base_model, tokenizer, selected_prompt, test_rows)
+            selected_seconds = time.perf_counter() - selected_started
             selected_metrics = score_predictions(test_rows, selected_predictions)
         baseline_ci = _record_accuracy_ci(test_rows, baseline_predictions)
         selected_ci = baseline_ci if selected_predictions is baseline_predictions else _record_accuracy_ci(test_rows, selected_predictions)
         del base_model
-        if device == "mps":
-            torch.mps.empty_cache()
-        elif device == "cuda":
-            torch.cuda.empty_cache()
+        _clear_device_cache(torch, device)
 
         jobs.update(job_id, {"progress": 55, "stage": "scoring_frozen_adapter"})
+        adapter_load_started = time.perf_counter()
         adapted_model, adapter_tokenizer, _, _ = _load_local_model(adapter, adapter_path)
+        adapter_load_seconds = time.perf_counter() - adapter_load_started
+        adapter_footprint = _model_footprint_bytes(adapted_model)
+        adapter_inference_started = time.perf_counter()
         adapter_predictions = _generate(adapted_model, adapter_tokenizer, selected_prompt, test_rows)
+        adapter_inference_seconds = time.perf_counter() - adapter_inference_started
         adapter_metrics = score_predictions(test_rows, adapter_predictions)
         adapter_ci = _record_accuracy_ci(test_rows, adapter_predictions)
+        adapter_performance = {
+            "load_seconds": round(adapter_load_seconds, 4),
+            **_generation_performance(adapter_tokenizer, adapter_predictions, adapter_inference_seconds),
+            "model_footprint_bytes": adapter_footprint,
+        }
+        del adapted_model
+        _clear_device_cache(torch, device)
+
+        quantized_variants = []
+        for index, method in enumerate(quantization_methods):
+            jobs.update(job_id, {
+                "progress": 65 + int(25 * index / max(len(quantization_methods), 1)),
+                "stage": "scoring_quantized_adapter",
+                "message": f"Scoring {QUANTIZATION_METHODS[method]['label']} on the same frozen test rows.",
+            })
+            quantized_load_started = time.perf_counter()
+            quantized_model, quantized_tokenizer, quantized_device, quantized_torch = _load_local_model(
+                adapter, adapter_path, quantization_method=method
+            )
+            quantized_load_seconds = time.perf_counter() - quantized_load_started
+            model_footprint = _model_footprint_bytes(quantized_model)
+            inference_started = time.perf_counter()
+            predictions = _generate(quantized_model, quantized_tokenizer, selected_prompt, test_rows)
+            inference_seconds = time.perf_counter() - inference_started
+            metrics = score_predictions(test_rows, predictions)
+            metrics["record_exact_match_95ci"] = _record_accuracy_ci(test_rows, predictions)
+            quantized_variants.append({
+                "id": method,
+                **QUANTIZATION_METHODS[method],
+                "backend": "bitsandbytes",
+                "backend_version": quant_runtime["version"],
+                "device": quantized_device,
+                "compute_dtype": "float16" if quantized_device in ("mps", "cuda") else "float32",
+                "double_quantization": method == "bnb_nf4",
+                "llm_int8_threshold": 6.0 if method == "bnb_int8" else None,
+                "calibration_required": False,
+                "load_seconds": round(quantized_load_seconds, 4),
+                **_generation_performance(quantized_tokenizer, predictions, inference_seconds),
+                "model_footprint_bytes": model_footprint,
+                "metrics": metrics,
+            })
+            del quantized_model
+            _clear_device_cache(quantized_torch, quantized_device)
+
         report = {
             "schema_version": 1,
             "status": "completed",
@@ -425,6 +562,13 @@ def run_frozen_benchmark(job_id, request, jobs):
             "test_examples": len(test_rows),
             "test_source_groups": test_groups,
             "inference": {"max_new_tokens": 128, "do_sample": False, "temperature": None},
+            "performance": {
+                "base_full_precision_load_seconds": round(base_load_seconds, 4),
+                "base_initial_prompt_inference_seconds": round(baseline_seconds, 4),
+                "base_selected_prompt_inference_seconds": round(selected_seconds, 4),
+                "lora_full_precision": adapter_performance,
+                "memory_note": "Model footprint is not peak device memory; cold single-run timings are not a throughput benchmark.",
+            },
             "hardware": {
                 "device": device,
                 "machine": platform.machine(),
@@ -439,6 +583,15 @@ def run_frozen_benchmark(job_id, request, jobs):
             "configuration_sha256": configuration_digest,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        if quantization_methods:
+            report["quantized_inference"] = {
+                "backend": "bitsandbytes",
+                "backend_version": quant_runtime["version"],
+                "calibration_required": False,
+                "calibration_note": quant_runtime["calibration_note"],
+                "adapter_training_method": "Full-precision LoRA + SFT; this inference comparison is not QLoRA training.",
+                "variants": quantized_variants,
+            }
         final_report, created = _complete_report(report)
         jobs.update(job_id, {
             "status": "completed",

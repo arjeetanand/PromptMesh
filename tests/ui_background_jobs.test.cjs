@@ -94,3 +94,45 @@ for (const [type, label] of [
     assert.equal(elements.get(target).scrolled, true);
   });
 }
+
+test("quantized benchmark cards show task metrics, resource measurements, and the calibration caveat", () => {
+  const { context, elements } = loadApp();
+  const report = {
+    dataset_sha256: "a".repeat(64),
+    test_examples: 30,
+    test_source_groups: 10,
+    base_revision: "pinned-revision",
+    hardware: { device: "mps" },
+    adapter_run_id: "adapter-run",
+    metrics: {
+      base_initial_prompt: { record_exact_match: 0.1, field_accuracy: 0.2, json_valid_rate: 0.5 },
+      base_validation_selected_prompt: { record_exact_match: 0.2, field_accuracy: 0.3, json_valid_rate: 0.6 },
+      lora_validation_selected_prompt: {
+        record_exact_match: 0.5, field_accuracy: 0.7, json_valid_rate: 0.9,
+        record_exact_match_95ci: { lower: 0.3, upper: 0.7 }
+      }
+    },
+    performance: { lora_full_precision: { load_seconds: 2, inference_seconds: 3, tokens_per_second: 12, model_footprint_bytes: 800000000 } },
+    quantized_inference: {
+      backend: "bitsandbytes",
+      backend_version: "0.50.0",
+      adapter_training_method: "Full-precision LoRA + SFT; this inference comparison is not QLoRA training.",
+      variants: [{
+        id: "bnb_nf4", label: "bitsandbytes NF4", weight_bits: 4, compute_dtype: "float16",
+        metrics: { record_exact_match: 0.4, field_accuracy: 0.6, json_valid_rate: 0.8,
+          record_exact_match_95ci: { lower: 0.2, upper: 0.6 } },
+        load_seconds: 1, inference_seconds: 4, tokens_per_second: 8, model_footprint_bytes: 400000000
+      }]
+    }
+  };
+  context.report = JSON.stringify(report);
+  vm.runInContext("displayFrozenBenchmark(JSON.parse(report))", context);
+
+  const html = elements.get("frozenBenchmarkMetrics").innerHTML;
+  assert.match(html, /Quantized adapter inference/);
+  assert.match(html, /bitsandbytes NF4 · 4-bit/);
+  assert.match(html, /Calibration: not required/);
+  assert.match(html, /not QLoRA training/);
+  assert.match(html, /0\.37 GiB/);
+  assert.match(html, /8\.00 tok\/s/);
+});

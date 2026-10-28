@@ -32,7 +32,7 @@ def training_runtime():
     return {"available": not missing, "missing": missing, "device": device, "base_model": BASE_MODEL_ID}
 
 
-def _generate(model, tokenizer, prompt_template, rows):
+def _generate(model, tokenizer, prompt_template, rows, max_new_tokens=128):
     import torch
 
     from core.types import render_prompt
@@ -52,7 +52,7 @@ def _generate(model, tokenizer, prompt_template, rows):
         with torch.inference_mode():
             generated = model.generate(
                 **inputs,
-                max_new_tokens=128,
+                max_new_tokens=max_new_tokens,
                 do_sample=False,
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.eos_token_id,

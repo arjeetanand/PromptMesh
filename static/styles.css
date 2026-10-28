@@ -254,6 +254,20 @@ code, .mono { font-family: var(--mono); font-size: .92em; }
 .benchmark-result .results-heading h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .benchmark-result .results-heading p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .benchmark-result > .button { justify-self: start; }
+.quantization-options { display: grid; gap: 10px; max-width: 900px; margin: 0; padding: 13px; border: 1px solid var(--rule); border-radius: 6px; }
+.quantization-options legend { padding: 0 5px; font-size: 12px; font-weight: 600; }
+.quantization-options > p { max-width: 780px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.quantization-choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.quantization-choice label { display: flex; align-items: flex-start; gap: 9px; min-height: 54px; padding: 9px; border: 1px solid var(--rule); border-radius: 5px; cursor: pointer; }
+.quantization-choice input { margin: 2px 0 0; accent-color: var(--accent); }
+.quantization-choice label span { display: grid; gap: 3px; }
+.quantization-choice strong { font-size: 12px; font-weight: 600; }
+.quantization-choice small { color: var(--muted); font-size: 11px; }
+.quantization-choice label:has(input:disabled) { cursor: not-allowed; opacity: .58; }
+.quantization-explanation { padding-top: 9px; border-top: 1px solid var(--rule); }
+.quantization-report-heading { grid-column: 1 / -1; display: grid; gap: 4px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.quantization-report-heading h4 { margin: 0; font-size: 12px; }
+.quantization-report-heading p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .toggle-row { position: relative; display: flex; min-height: 52px; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 17px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; cursor: pointer; }
 .toggle-row > span:first-child { display: grid; gap: 2px; }
 .toggle-row strong { font-size: 12px; font-weight: 500; }

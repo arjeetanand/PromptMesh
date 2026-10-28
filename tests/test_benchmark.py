@@ -18,6 +18,11 @@ class JobRecorder:
         self.updates.append((job_id, changes))
 
 
+class FakeTokenizer:
+    def encode(self, text, add_special_tokens=False):
+        return text.split()
+
+
 class FrozenBenchmarkTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -136,7 +141,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
 
         request = types.SimpleNamespace(selection_id=selection_id, adapter_run_id=self.adapter_run_id)
         fake_torch = types.SimpleNamespace(__version__="test")
-        with patch.object(benchmark, "_load_local_model", return_value=(object(), object(), "cpu", fake_torch)) as load_model, patch.object(benchmark, "_generate", side_effect=generate):
+        with patch.object(benchmark, "_load_local_model", return_value=(object(), FakeTokenizer(), "cpu", fake_torch)) as load_model, patch.object(benchmark, "_generate", side_effect=generate):
             benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
@@ -163,6 +168,58 @@ class FrozenBenchmarkTests(unittest.TestCase):
             with self.assertLogs(benchmark.logger, level="ERROR"):
                 with self.assertRaisesRegex(ValueError, "final report already exists"):
                     benchmark.run_frozen_benchmark("benchmark-job-sweep", other_request, jobs)
+
+    def test_quantized_inference_is_measured_on_the_same_test_rows_and_marked_calibration_free(self):
+        selection_id, _ = self._select_prompt()
+        jobs = JobRecorder()
+        fake_torch = types.SimpleNamespace(__version__="test")
+        generated_inputs = []
+        loader_calls = []
+
+        class FakeModel:
+            def get_memory_footprint(self):
+                return 123456
+
+        def load_model(_manifest, _adapter_path=None, quantization_method=None):
+            loader_calls.append(quantization_method)
+            return FakeModel(), FakeTokenizer(), "cpu", fake_torch
+
+        def generate(_model, _tokenizer, prompt, rows, max_new_tokens=128):
+            generated_inputs.append((max_new_tokens, [row.get("group_id") for row in rows]))
+            if "group_id" not in rows[0]:
+                return ["synthetic canary"]
+            if prompt.startswith("Custom extractor"):
+                return [json.dumps(row["output"]) for row in rows]
+            return ["not json"] * len(rows)
+
+        request = types.SimpleNamespace(
+            selection_id=selection_id,
+            adapter_run_id=self.adapter_run_id,
+            quantization_methods=["bnb_nf4"],
+        )
+        runtime = {
+            "available": True,
+            "version": "0.50.0-test",
+            "device": "cpu",
+            "methods": [{"id": "bnb_nf4"}],
+            "calibration_note": "No calibration corpus used.",
+        }
+        with patch.object(benchmark, "quantization_runtime", return_value=runtime), \
+             patch.object(benchmark, "_load_local_model", side_effect=load_model), \
+             patch.object(benchmark, "_generate", side_effect=generate):
+            benchmark.run_frozen_benchmark("quantized-job", request, jobs)
+
+        report = next(changes["result"]["report"] for job_id, changes in jobs.updates if job_id == "quantized-job" and "result" in changes)
+        variant = report["quantized_inference"]["variants"][0]
+        self.assertEqual(loader_calls, ["bnb_nf4", None, None, "bnb_nf4"])
+        self.assertEqual(generated_inputs[0], (8, [None]))
+        self.assertEqual(generated_inputs[-1][1], generated_inputs[-2][1])
+        self.assertEqual(report["metrics_split"], "test")
+        self.assertFalse(report["quantized_inference"]["calibration_required"])
+        self.assertFalse(variant["calibration_required"])
+        self.assertEqual(variant["model_footprint_bytes"], 123456)
+        self.assertEqual(variant["metrics"]["record_exact_match"], 1.0)
+        self.assertIn("not QLoRA", report["quantized_inference"]["adapter_training_method"])
 
     def test_failed_test_inference_reserves_holdout_and_blocks_retry(self):
         selection_id, _ = self._select_prompt()

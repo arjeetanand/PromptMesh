@@ -69,8 +69,14 @@
 - [x] Review Fine-tune at desktop in Edge and inspect 1440px, 768px, and 390px layouts; synthetic data is blocked and the inspector reports no horizontal overflow. No physical phone test was performed.
 - [x] Rerun the full Python suite (51 passed), UI job checks (8 passed), syntax checks, and whitespace validation.
 - [x] Open PR #2 targeting `main` after verifying PR #1 was already merged; leave PR #2 unmerged.
+- [x] Add optional bitsandbytes LLM.int8 and NF4 runtime configuration and Fine-tune controls for a quantized inference comparison.
+- [x] Run a fixed synthetic backend canary before reserving test data; record matched test metrics, grouped intervals, load/inference time, generated-token rate, and model footprint.
+- [x] Explain that bitsandbytes methods do not use an offline calibration corpus; keep AWQ/GPTQ calibration and QLoRA training explicitly separate.
+- [x] Add regression coverage for INT8/NF4 configuration, identical test rows, calibration labeling, and invalid or unavailable API selections.
+- [x] Check Fine-tune at 1440px and 390px in Edge; the document has no horizontal overflow or browser console errors.
+- [ ] Restart the current host server with the new API and verify the adapter-attached NF4/INT8 canary on MPS; this sandbox could not expose its 6004 server to the browser.
 - [ ] Supply and human-review an authorized real dataset, train a new schema-v3 adapter, and run a real frozen benchmark; no model-quality result exists yet.
-- [ ] Measure quantized versus unquantized inference on supported hardware after selecting an installed backend.
+- [ ] Run the quantized comparison on that reviewed corpus; no real quality result or calibration experiment has been produced.
 ## Navigation and background-job follow-up
 
 - [x] Add a Back to overview control to every non-overview page.

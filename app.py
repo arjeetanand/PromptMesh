@@ -52,6 +52,7 @@ from training.benchmark import (
     validate_prompt_template,
 )
 from training.runner import run_lora_training, training_runtime
+from training.quantization import quantization_runtime
 from training.registry import get_benchmark_adapter, list_adapters
 
 
@@ -316,6 +317,7 @@ class PromptSelectionRequest(BaseModel):
 class FrozenBenchmarkRequest(BaseModel):
     selection_id: str = Field(min_length=32, max_length=32)
     adapter_run_id: str = Field(min_length=32, max_length=32)
+    quantization_methods: List[Literal["bnb_int8", "bnb_nf4"]] = Field(default_factory=list, max_items=2)
 
 
 class ApiSessionRequest(BaseModel):
@@ -415,7 +417,7 @@ async def get_models():
 
 @app.get("/api/training/datasets")
 async def get_training_datasets():
-    return {"datasets": list_datasets(), "runtime": training_runtime()}
+    return {"datasets": list_datasets(), "runtime": training_runtime(), "quantization": quantization_runtime()}
 
 
 @app.get("/api/training/adapters")
@@ -475,6 +477,15 @@ async def start_prompt_selection(request: PromptSelectionRequest, bg: Background
 
 @app.post("/api/training/benchmarks")
 async def start_frozen_benchmark(request: FrozenBenchmarkRequest, bg: BackgroundTasks, http_request: Request):
+    if len(request.quantization_methods) != len(set(request.quantization_methods)):
+        raise HTTPException(status_code=422, detail="Quantization methods must be unique")
+    if request.quantization_methods:
+        runtime = quantization_runtime()
+        if not runtime["available"]:
+            raise HTTPException(status_code=503, detail=runtime.get("reason") or "Quantized inference is unavailable")
+        available = {method["id"] for method in runtime.get("methods", [])}
+        if not set(request.quantization_methods).issubset(available):
+            raise HTTPException(status_code=422, detail="A requested quantization method is unsupported by this runtime")
     try:
         selection = load_prompt_selection(request.selection_id)
         if request.adapter_run_id != selection["adapter_run_id"]:
