@@ -246,7 +246,9 @@ shared dataset editing, or host model training and serving.
 The overview hero and the empty run-history states use original transparent
 PromptMesh companion artwork in `static/images/`. Its small float and thought
 animations are decorative, and the shared reduced-motion rule disables them
-for users who request less motion.
+for users who request less motion. Evaluate, Compare, Prompt evolution,
+Fine-tune, Test cases, and Run history pair the companion with a small
+task-specific SVG scene.
 
 The API provides `GET /api/training/datasets`, `GET /api/training/adapters`,
 and `POST /api/training/jobs`. The POST accepts only a dataset ID stored under

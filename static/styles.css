@@ -116,8 +116,25 @@ code, .mono { font-family: var(--mono); font-size: .92em; }
 .sheet { min-height: calc(100vh - 62px); padding: 30px clamp(20px, 3vw, 42px) 18px; border: 1px solid var(--rule); border-radius: var(--radius-sheet); background: var(--sheet); }
 .tab-content { width: 100%; max-width: 1280px; margin: 0 auto; }
 .page-heading { margin: 0 0 26px; }
+.page-heading--illustrated { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.page-heading__copy { min-width: 0; flex: 1; }
+.page-heading__title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .page-heading h1 { margin: 0; font-size: 25px; font-weight: 500; letter-spacing: -.035em; line-height: 1.2; }
 .page-heading > p, .page-heading div > p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+.section-illustration { position: relative; width: 98px; height: 66px; flex: 0 0 98px; }
+.section-illustration__companion { position: absolute; bottom: -3px; left: 0; display: block; width: 64px; height: auto; }
+.section-illustration__motif { position: absolute; top: 0; right: 0; width: 46px; height: 46px; overflow: visible; }
+.illustration-definitions { position: absolute; width: 0; height: 0; overflow: hidden; }
+.scene-paper { fill: var(--sheet); stroke: var(--rule); stroke-width: 1.5; }
+.scene-card-blue { stroke: var(--accent); }
+.scene-card-gold { stroke: var(--signal); }
+.scene-blue { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.scene-gold { fill: none; stroke: var(--signal); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.scene-ink { fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.scene-rule { fill: none; stroke: var(--rule); stroke-width: 1.8; stroke-linecap: round; }
+.scene-blue-fill { fill: var(--surface-soft); stroke: var(--accent); stroke-width: 1.5; }
+.scene-gold-fill { fill: var(--signal-bg); stroke: var(--signal); stroke-width: 1.5; }
+.scene-ink-fill { fill: var(--ink); }
 .heading-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .page-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 9px; border: 1px solid var(--signal); border-radius: 5px; background: var(--signal-bg); color: var(--signal-ink); font-size: 11px; white-space: nowrap; }
 .page-chip .status-dot { width: 6px; height: 6px; background: var(--signal); }
@@ -381,6 +398,11 @@ input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent);
   .page-heading { margin-bottom: 21px; }
   .page-heading h1 { font-size: 22px; }
   .page-heading > p, .page-heading div > p { font-size: 12px; }
+  .page-heading--illustrated { align-items: flex-start; gap: 10px; }
+  .page-heading__title-row { gap: 8px; }
+  .section-illustration { width: 78px; height: 54px; flex-basis: 78px; }
+  .section-illustration__companion { width: 54px; }
+  .section-illustration__motif { width: 38px; height: 38px; }
   .heading-row { align-items: flex-start; }
   .heading-row .button { min-height: 34px; padding: 0 9px; font-size: 11px; }
   .heading-row .button svg { width: 14px; height: 14px; }

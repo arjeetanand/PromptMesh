@@ -23,3 +23,9 @@
 - [x] Add the companion to the overview and empty run-history states with reduced-motion-aware animation.
 - [x] Verify image loading, desktop/mobile rendering, and the history empty state in the browser.
 - [x] Commit this follow-up locally on `codex/promptmesh-illustrations`; do not push or merge without approval.
+
+## Section illustration follow-up
+
+- [x] Add a compact companion vignette to every non-overview workspace page, with a motif specific to that page.
+- [x] Verify all six sections at desktop and 390px mobile widths with no horizontal overflow.
+- [ ] Commit this follow-up locally on `codex/promptmesh-section-illustrations`; do not push or merge without approval.

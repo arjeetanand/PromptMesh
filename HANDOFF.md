@@ -20,6 +20,13 @@
 - Confirmed the reduced-motion rule is present. `node --check static/app.js`, `bash -n run.sh`, and `git diff --check` passed.
 - Branch: `codex/promptmesh-illustrations`, based on `1e9c543`; implementation commit: `d1f1625`. This follow-up has not been pushed or merged.
 
+## Section illustration follow-up
+
+- Added a small companion vignette beside the page title on Evaluate, Compare, Prompt evolution, Fine-tune, Test cases, and Run history. Each uses the existing mascot artwork and a task-specific inline SVG scene (score/check, paired prompts, revision loop, model graph, test cards, or run timeline) in the PromptMesh blue and amber.
+- Kept the form and data areas unchanged; no JavaScript behavior or dependencies were added.
+- Browser verification passed at 1600px desktop and 390px mobile widths. All six images and SVG symbols rendered, with no horizontal overflow.
+- Branch: `codex/promptmesh-section-illustrations`, based on `107a847`; local commit details will be recorded after committing. This follow-up has not been pushed or merged.
+
 ## Concepts and interview framing
 
 - **Prompt evolution** edits instructions while keeping model weights unchanged.
