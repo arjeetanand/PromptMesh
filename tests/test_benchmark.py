@@ -71,7 +71,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
         adapter_dir.mkdir(parents=True)
         (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
         self.adapter_manifest = {
-            "schema_version": 3,
+            "schema_version": 4,
             "status": "completed",
             "run_id": run_id,
             "base_model": "Qwen/Qwen3-0.6B",
@@ -81,6 +81,8 @@ class FrozenBenchmarkTests(unittest.TestCase):
             "dataset_sha256": self.dataset_digest,
             "metrics_split": "validation",
             "test_split_used": False,
+            "split_seed": 42,
+            "split_strategy": "group-year-stratified-v1",
             "adapter_sha256": artifact_tree_sha256(adapter_dir),
             "environment": {"device": "cpu", "python_version": "3.12-test", "packages": {"torch": "test"}},
         }
@@ -127,6 +129,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
 
         self.assertEqual(selection["metrics_split"], "validation")
         self.assertFalse(selection["test_split_used"])
+        self.assertEqual(selection["split_strategy"], "group-year-stratified-v1")
         self.assertEqual(selection["selected_prompt_id"], "candidate-1")
         self.assertEqual(selection["environment"]["device"], "cpu")
         result = next(changes["result"] for _job_id, changes in jobs.updates if "result" in changes)
@@ -150,6 +153,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
             self.assertEqual(report["metrics_split"], "test")
+            self.assertEqual(report["split_strategy"], "group-year-stratified-v1")
             self.assertFalse(report["test_split_used_for_selection"])
             self.assertEqual(report["metrics"]["base_initial_prompt"]["record_exact_match"], 0.0)
             self.assertEqual(report["metrics"]["base_validation_selected_prompt"]["record_exact_match"], 1.0)

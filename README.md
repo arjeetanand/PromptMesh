@@ -133,11 +133,20 @@ The optional INT8/NF4 comparison records quality, latency, generated-token rate,
 and model footprint beside the full-precision LoRA control. Model footprint is
 not peak device memory, and one cold run is not a throughput benchmark.
 
-A local, git-ignored public-source review packet has 246 unreviewed draft rows
-in 82 source groups. Each group contains three phrasings of one source claim,
-not three independent facts. It covers 2020–2025 with one undated group, but 66
-of 82 groups are dated 2024, so the packet remains unsuitable as a balanced
-year benchmark. It is for review only and does not establish model-quality gains.
+A local, git-ignored public-source review packet has 351 unreviewed draft rows
+in 117 source groups. Each group contains three phrasings of one source claim,
+not three independent facts. It covers 2020–2025 with one undated group; 66
+groups are dated 2024, so this is still not a representative benchmark. Every
+candidate label and reuse decision remains pending human review, and the packet
+does not establish model-quality gains.
+
+For datasets with at least 30 source groups, the split keeps each group intact
+and stratifies by its event-year signature. Signatures with at least three
+groups contribute one group to validation and one to test; remaining held-out
+groups are allocated toward 15% per split. Sparse signatures remain in training.
+Smaller datasets use the deterministic group-hash split. Both policies use seed
+42 and are recorded in adapter, selection, and benchmark provenance. This
+controls year coverage, not organization, topic, or source-type balance.
 
 Open **Fine-tune → Review source candidates** to review one source group at a
 time. Compare every phrasing with its linked source, edit the labels, and record
@@ -343,7 +352,7 @@ checks the card fields and exact data fingerprint; this local self-attestation
 cannot independently prove that a human reviewed the labels. The UI states this
 limit beside readiness and selection controls.
 
-New schema-v3 adapter manifests, validation prompt-selection records, and frozen
+New schema-v4 adapter manifests, validation prompt-selection records, and frozen
 benchmark reports record the Python, platform, machine, device, and installed
 versions of the training and inference packages. The Fine-tune page surfaces
 the training, selection, and benchmark environments separately and labels

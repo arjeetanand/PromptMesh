@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from prompts.registry import PROMPT_BASE_PATH, PromptRegistry
-from training.datasets import benchmark_card_status, load_dataset_snapshot, split_dataset
+from training.datasets import SPLIT_SEED, benchmark_card_status, load_dataset_snapshot, split_dataset, split_strategy
 from training.environment import runtime_metadata
 from training.metrics import score_predictions
 from training.quantization import QUANTIZATION_METHODS, bitsandbytes_config, quantization_runtime
@@ -82,7 +82,7 @@ def load_prompt_selection(selection_id):
         selection = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("Prompt selection record is invalid") from exc
-    if not isinstance(selection, dict) or selection.get("schema_version") != 1 or selection.get("selection_id") != selection_id:
+    if not isinstance(selection, dict) or selection.get("schema_version") != 2 or selection.get("selection_id") != selection_id:
         raise ValueError("Prompt selection record identity is invalid")
     digest = selection.pop("selection_sha256", None)
     if not isinstance(digest, str) or digest != _json_digest(selection):
@@ -195,7 +195,10 @@ def run_prompt_selection(job_id, request, jobs):
         if not 1 <= len(request.candidate_prompts) <= MAX_PROMPT_CANDIDATES:
             raise ValueError(f"Provide 1–{MAX_PROMPT_CANDIDATES} prompt candidates")
         rows, dataset_digest, card_status = _reviewed_dataset(request.dataset_id)
-        adapter_path, adapter = get_benchmark_adapter(request.adapter_run_id, request.dataset_id, dataset_digest)
+        current_split_strategy = split_strategy(rows)
+        adapter_path, adapter = get_benchmark_adapter(
+            request.adapter_run_id, request.dataset_id, dataset_digest, current_split_strategy
+        )
         if adapter["base_model"] != BASE_MODEL_ID:
             raise ValueError("The selected adapter uses an unsupported base model")
 
@@ -244,7 +247,7 @@ def run_prompt_selection(job_id, request, jobs):
         )
         selection_id = uuid.uuid4().hex
         selection = {
-            "schema_version": 1,
+            "schema_version": 2,
             "selection_id": selection_id,
             "dataset_id": request.dataset_id,
             "dataset_sha256": dataset_digest,
@@ -256,7 +259,8 @@ def run_prompt_selection(job_id, request, jobs):
             "tokenizer_revision": adapter["tokenizer_revision"],
             "metrics_split": "validation",
             "test_split_used": False,
-            "split_seed": 42,
+            "split_seed": SPLIT_SEED,
+            "split_strategy": current_split_strategy,
             "validation_examples": len(validation_rows),
             "validation_source_groups": len({row["group_id"] for row in validation_rows}),
             "selection_rule": "record_exact_match, then field_accuracy, then json_valid_rate; ties keep the earlier prompt",
@@ -394,7 +398,12 @@ def run_frozen_benchmark(job_id, request, jobs):
         rows, dataset_digest, card_status = _reviewed_dataset(selection["dataset_id"])
         if dataset_digest != selection["dataset_sha256"] or card_status["card_sha256"] != selection["benchmark_card_sha256"]:
             raise ValueError("Dataset or benchmark card changed after validation prompt selection")
-        adapter_path, adapter = get_benchmark_adapter(request.adapter_run_id, selection["dataset_id"], dataset_digest)
+        current_split_strategy = split_strategy(rows)
+        if selection.get("split_seed") != SPLIT_SEED or selection.get("split_strategy") != current_split_strategy:
+            raise ValueError("Dataset split policy changed after validation prompt selection")
+        adapter_path, adapter = get_benchmark_adapter(
+            request.adapter_run_id, selection["dataset_id"], dataset_digest, current_split_strategy
+        )
         if request.adapter_run_id != selection["adapter_run_id"] or adapter["adapter_sha256"] != selection["adapter_sha256"]:
             raise ValueError("The adapter differs from the validation-selected adapter")
         if adapter["base_model"] != selection["base_model"] or adapter["base_revision"] != selection["base_revision"]:
@@ -544,7 +553,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             _clear_device_cache(quantized_torch, quantized_device)
 
         report = {
-            "schema_version": 1,
+            "schema_version": 2,
             "status": "completed",
             "dataset_id": selection["dataset_id"],
             "dataset_sha256": dataset_digest,
@@ -563,7 +572,8 @@ def run_frozen_benchmark(job_id, request, jobs):
             "selected_prompt_sha256": selection["selected_prompt_sha256"],
             "metrics_split": "test",
             "test_split_used_for_selection": False,
-            "split_seed": 42,
+            "split_seed": SPLIT_SEED,
+            "split_strategy": current_split_strategy,
             "test_examples": len(test_rows),
             "test_source_groups": test_groups,
             "inference": {"max_new_tokens": 128, "do_sample": False, "temperature": None},

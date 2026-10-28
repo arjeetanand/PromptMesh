@@ -10,8 +10,10 @@ from datetime import datetime, timezone
 from training.datasets import (
     format_sft_rows,
     load_dataset_snapshot,
+    SPLIT_SEED,
     split_counts,
     split_dataset,
+    split_strategy,
 )
 from training.environment import runtime_metadata
 from training.metrics import score_predictions
@@ -174,7 +176,7 @@ def run_lora_training(job_id, request, jobs):
         completed_at = datetime.now(timezone.utc).isoformat()
         metrics = {"base": base_metrics, "adapter": adapter_metrics}
         manifest = {
-            "schema_version": 3,
+            "schema_version": 4,
             "status": "completed",
             "run_id": run_id,
             "base_model": BASE_MODEL_ID,
@@ -187,6 +189,8 @@ def run_lora_training(job_id, request, jobs):
             "prompt_version": f"extraction/{prompt_version}",
             "prompt_sha256": prompt_hash,
             "split_counts": counts,
+            "split_seed": SPLIT_SEED,
+            "split_strategy": split_strategy(rows),
             "metrics_split": "validation",
             "test_split_used": False,
             "environment": runtime_metadata(device),
@@ -215,6 +219,8 @@ def run_lora_training(job_id, request, jobs):
                 "dataset_id": request.dataset_id,
                 "dataset_sha256": dataset_hash,
                 "split_counts": counts,
+                "split_seed": SPLIT_SEED,
+                "split_strategy": split_strategy(rows),
                 "metrics_split": "validation",
                 "device": device,
                 "metrics": metrics,

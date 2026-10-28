@@ -43,7 +43,15 @@ from optimization.failure_analysis import analyze_failure
 from optimization.evolver import evolve_prompt
 from optimization.testcase_generator import generate_test_cases
 from models.registry import get_model
-from training.datasets import benchmark_card_status, list_datasets, load_dataset, load_dataset_snapshot, split_dataset
+from training.datasets import (
+    SPLIT_SEED,
+    benchmark_card_status,
+    list_datasets,
+    load_dataset,
+    load_dataset_snapshot,
+    split_dataset,
+    split_strategy,
+)
 from training.benchmark import (
     MAX_PROMPT_CANDIDATES,
     load_prompt_selection,
@@ -513,7 +521,7 @@ async def start_prompt_selection(request: PromptSelectionRequest, bg: Background
             raise HTTPException(status_code=422, detail=card.get("reason") or "A matching review card is required")
         if not card["validation_ready"] or not card["final_test_ready"]:
             raise HTTPException(status_code=422, detail="Validation and final-test splits each need at least 30 examples across 10 source groups")
-        get_benchmark_adapter(request.adapter_run_id, request.dataset_id, digest)
+        get_benchmark_adapter(request.adapter_run_id, request.dataset_id, digest, split_strategy(rows))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset or adapter not found") from exc
     except ValueError as exc:
@@ -537,10 +545,13 @@ async def start_frozen_benchmark(request: FrozenBenchmarkRequest, bg: Background
         if request.adapter_run_id != selection["adapter_run_id"]:
             raise ValueError("The benchmark adapter must match validation prompt selection")
         rows, digest = load_dataset_snapshot(selection["dataset_id"])
+        current_split_strategy = split_strategy(rows)
+        if selection.get("split_seed") != SPLIT_SEED or selection.get("split_strategy") != current_split_strategy:
+            raise ValueError("Dataset split policy changed after validation prompt selection")
         card = benchmark_card_status(selection["dataset_id"], rows, digest)
         if not card["card_ready"] or digest != selection["dataset_sha256"] or card.get("card_sha256") != selection["benchmark_card_sha256"]:
             raise ValueError("Dataset or benchmark card changed after validation prompt selection")
-        get_benchmark_adapter(request.adapter_run_id, selection["dataset_id"], digest)
+        get_benchmark_adapter(request.adapter_run_id, selection["dataset_id"], digest, current_split_strategy)
         if not card["validation_ready"] or not card["final_test_ready"]:
             raise ValueError("Validation and final-test splits each need at least 30 examples across 10 source groups")
     except FileNotFoundError as exc:

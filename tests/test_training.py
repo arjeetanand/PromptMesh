@@ -14,6 +14,7 @@ from training.datasets import (
     load_benchmark_card,
     load_dataset,
     load_dataset_snapshot,
+    split_strategy,
     split_counts,
     split_dataset,
 )
@@ -155,11 +156,43 @@ class TrainingDatasetTests(unittest.TestCase):
         splits = split_dataset(rows)
         groups = {name: {row["group_id"] for row in split} for name, split in splits.items()}
 
+        self.assertEqual(split_strategy(rows), "group-hash-v1")
         self.assertEqual(split_counts(splits), split_counts(split_dataset(rows)))
         self.assertEqual(sum(split_counts(splits).values()), len(rows))
         self.assertFalse(groups["train"] & groups["validation"])
         self.assertFalse(groups["train"] & groups["test"])
         self.assertFalse(groups["validation"] & groups["test"])
+
+    def test_large_split_stratifies_event_year_without_splitting_source_groups(self):
+        rows = [
+            {
+                "group_id": f"{year}-{group}",
+                "input": f"Source fact {year}-{group}-{variant}.",
+                "output": {"organization": "Example Org", "year": year, "claim": "reported a result"},
+            }
+            for year in (2020, 2024, 2025)
+            for group in range(15)
+            for variant in range(3)
+        ]
+        rows.append({
+            "group_id": "undated-source",
+            "input": "An undated source passage.",
+            "output": {"organization": "Example Org", "year": None, "claim": "reported a result"},
+        })
+
+        splits = split_dataset(rows)
+        split_groups = {name: {row["group_id"] for row in part} for name, part in splits.items()}
+        validation_years = {row["output"]["year"] for row in splits["validation"]}
+        test_years = {row["output"]["year"] for row in splits["test"]}
+
+        self.assertEqual(split_strategy(rows), "group-year-stratified-v1")
+        self.assertEqual(split_counts(splits), split_counts(split_dataset(rows)))
+        self.assertEqual(validation_years, {2020, 2024, 2025})
+        self.assertEqual(test_years, {2020, 2024, 2025})
+        self.assertIn("undated-source", split_groups["train"])
+        self.assertFalse(split_groups["train"] & split_groups["validation"])
+        self.assertFalse(split_groups["train"] & split_groups["test"])
+        self.assertFalse(split_groups["validation"] & split_groups["test"])
 
     def test_held_out_metrics_count_invalid_json_as_incorrect(self):
         rows = [
@@ -199,7 +232,7 @@ class AdapterRegistryTests(unittest.TestCase):
             config_path = adapter_dir / "adapter_config.json"
             config_path.write_text("{}", encoding="utf-8")
             manifest = {
-                "schema_version": 3,
+                "schema_version": 4,
                 "status": "completed",
                 "run_id": run_id,
                 "base_model": "Qwen/Qwen3-0.6B",
@@ -210,16 +243,24 @@ class AdapterRegistryTests(unittest.TestCase):
                 "adapter_sha256": artifact_tree_sha256(adapter_dir),
                 "metrics_split": "validation",
                 "test_split_used": False,
+                "split_seed": 42,
+                "split_strategy": "group-year-stratified-v1",
             }
             (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
             with patch("training.registry.RUNS_DIR", Path(temp_dir)):
                 self.assertEqual(
-                    get_benchmark_adapter(run_id, "reviewed", dataset_digest)[1]["adapter_sha256"],
+                    get_benchmark_adapter(run_id, "reviewed", dataset_digest, "group-year-stratified-v1")[1]["adapter_sha256"],
                     manifest["adapter_sha256"],
                 )
+                manifest["split_strategy"] = "group-hash-v1"
+                (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "split policy"):
+                    get_benchmark_adapter(run_id, "reviewed", dataset_digest, "group-year-stratified-v1")
+                manifest["split_strategy"] = "group-year-stratified-v1"
+                (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
                 config_path.write_text("changed", encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "artifact fingerprint"):
-                    get_benchmark_adapter(run_id, "reviewed", dataset_digest)
+                    get_benchmark_adapter(run_id, "reviewed", dataset_digest, "group-year-stratified-v1")
 
     def test_frozen_benchmark_rejects_legacy_adapter_manifests(self):
         run_id = "f" * 32
@@ -235,7 +276,7 @@ class AdapterRegistryTests(unittest.TestCase):
             }), encoding="utf-8")
             with patch("training.registry.RUNS_DIR", Path(temp_dir)):
                 with self.assertRaisesRegex(ValueError, "lacks the frozen-benchmark provenance"):
-                    get_benchmark_adapter(run_id, "reviewed", "a" * 64)
+                    get_benchmark_adapter(run_id, "reviewed", "a" * 64, "group-year-stratified-v1")
 
     def test_adapters_without_a_metrics_split_are_marked_as_legacy_test_results(self):
         run_id = "b" * 32

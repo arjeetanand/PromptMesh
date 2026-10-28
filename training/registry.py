@@ -3,6 +3,8 @@ import json
 import re
 from pathlib import Path
 
+from training.datasets import SPLIT_SEED, load_dataset_snapshot, split_strategy
+
 
 RUNS_DIR = Path(__file__).parent / "runs"
 RUN_ID_RE = re.compile(r"^[a-f0-9]{32}$")
@@ -51,14 +53,16 @@ def artifact_tree_sha256(root):
     return digest.hexdigest()
 
 
-def get_benchmark_adapter(run_id, dataset_id, dataset_digest):
+def get_benchmark_adapter(run_id, dataset_id, dataset_digest, expected_split_strategy):
     adapter_path, manifest = get_adapter_path(run_id)
-    if manifest.get("schema_version") != 3:
+    if manifest.get("schema_version") != 4:
         raise ValueError("This adapter manifest lacks the frozen-benchmark provenance")
     if manifest.get("metrics_split") != "validation" or manifest.get("test_split_used") is not False:
         raise ValueError("Only validation-selected adapters are eligible for final benchmarking")
     if manifest.get("dataset_id") != dataset_id or manifest.get("dataset_sha256") != dataset_digest:
         raise ValueError("Adapter was trained on a different dataset fingerprint")
+    if manifest.get("split_seed") != SPLIT_SEED or manifest.get("split_strategy") != expected_split_strategy:
+        raise ValueError("Adapter was trained with a different or missing source-group split policy")
     if not manifest.get("base_revision") or manifest.get("tokenizer_revision") != manifest.get("base_revision"):
         raise ValueError("Adapter base and tokenizer revisions are incomplete or inconsistent")
     expected_digest = manifest.get("adapter_sha256")
@@ -78,6 +82,15 @@ def list_adapters():
             _, manifest = get_adapter_path(run_dir.name)
         except (OSError, ValueError, json.JSONDecodeError):
             continue
+        try:
+            rows, dataset_digest = load_dataset_snapshot(manifest["dataset_id"])
+            split_is_current = (
+                dataset_digest == manifest.get("dataset_sha256")
+                and manifest.get("split_seed") == SPLIT_SEED
+                and manifest.get("split_strategy") == split_strategy(rows)
+            )
+        except (KeyError, OSError, ValueError):
+            split_is_current = False
         results.append({
             "id": f"trained:{run_dir.name}",
             "run_id": run_dir.name,
@@ -88,9 +101,10 @@ def list_adapters():
             "metrics_split": manifest.get("metrics_split", "legacy_test"),
             "environment": manifest.get("environment"),
             "benchmark_manifest_ready": (
-                manifest.get("schema_version") == 3
+                manifest.get("schema_version") == 4
                 and manifest.get("metrics_split") == "validation"
                 and manifest.get("test_split_used") is False
+                and split_is_current
                 and bool(manifest.get("base_revision"))
                 and manifest.get("tokenizer_revision") == manifest.get("base_revision")
                 and isinstance(manifest.get("adapter_sha256"), str)

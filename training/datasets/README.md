@@ -40,19 +40,29 @@ The current `extraction/v1` prompt definition (`1.1.0`) and the guide both use
 the named actor/subject for `organization`; recipients and beneficiaries are
 not the target label.
 
+For datasets with at least 30 source groups, PromptMesh stratifies whole groups
+by event-year signature. A signature with at least three groups contributes
+one group to validation and one to test; additional held-out groups are
+allocated toward 15% in each split. Sparse signatures stay in training.
+Datasets with fewer than 30 groups keep the deterministic group-hash split.
+Both strategies use seed 42 and are recorded with training, prompt-selection,
+and final-benchmark results. This improves year coverage but does not balance
+organizations, topics, source types, or writing styles.
+
 Both the validation and frozen test splits must contain at least 30 examples
 across 10 source groups.
-For the current seed-42 group split, one workable planning shape is 67 source
-groups with three distinct, label-consistent examples per group; that yields
-30 examples across 10 groups in each held-out split. Check the app's readiness
-report after annotation because split counts depend on group membership.
-The local public-source review packet currently has 246 draft rows across 82
-groups. Its seed-42 split yields 174 training rows, 36 validation rows across
-12 groups, and 36 test rows across 12 groups. Each group has three controlled
+For the current seed-42 split, one workable planning shape is 67 source groups
+with three distinct, label-consistent examples per group; that yields 30
+examples across 10 groups in each held-out split. Check the app's readiness
+report after annotation because counts depend on group membership.
+The local public-source review packet has 351 draft rows across 117 groups.
+Its current split policy yields 243 training rows, 54 validation rows across
+18 groups, and 54 test rows across 18 groups. Each group has three controlled
 phrasings of one source claim; these are not independent facts. The proposed
-years are still highly imbalanced: 66 groups are from 2024, three each from
-2020, 2021, 2022, 2023, and 2025, and one is undated. Review the packet's
-limitations and source-specific questions before using any rows.
+years are still imbalanced: 66 groups are from 2024, ten each from 2020, 2021,
+2022, 2023, and 2025, and one is undated. The packet remains review-only and
+is not representative. Review each source, label, split, and reuse condition
+before using any examples.
 Use **Fine-tune → Review source candidates** to review the local CSV by source
 group. Check each wording against its linked source, edit labels, and record
 reuse permission separately with evidence. The queue saves only to the ignored

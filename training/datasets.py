@@ -14,6 +14,11 @@ MAX_DATASET_ROWS = 1000
 MAX_INPUT_CHARS = 4000
 MIN_FINAL_TEST_EXAMPLES = 30
 MIN_FINAL_TEST_GROUPS = 10
+SPLIT_SEED = 42
+GROUP_HASH_SPLIT = "group-hash-v1"
+GROUP_YEAR_SPLIT = "group-year-stratified-v1"
+# shortcut: fewer than 30 groups use hash splits; lower the cutoff only when small benchmark strata are useful.
+YEAR_STRATIFIED_MIN_GROUPS = 30
 DATASET_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 OUTPUT_FIELDS = {"organization", "year", "claim"}
 
@@ -271,21 +276,54 @@ def benchmark_card_status(dataset_id, rows=None, dataset_digest=None):
     }
 
 
-def split_dataset(rows, seed=42):
+def split_dataset(rows, seed=SPLIT_SEED):
     groups = sorted({row["group_id"] for row in rows})
     if len(groups) < 12:
         raise ValueError("Dataset needs at least 12 distinct group_id values for a held-out split")
 
-    groups.sort(key=lambda group: hashlib.sha256(f"{seed}:{group}".encode()).hexdigest())
-    validation_count = max(2, round(len(groups) * 0.15))
-    test_count = max(2, round(len(groups) * 0.15))
-    train_count = len(groups) - validation_count - test_count
-    if train_count < 8:
-        raise ValueError("Dataset needs at least 8 training groups and 2 groups per held-out split")
+    if split_strategy(rows) == GROUP_YEAR_SPLIT:
+        strata = _group_year_strata(rows)
+        ordered = {
+            signature: sorted(group_ids, key=lambda group: hashlib.sha256(f"{seed}:{group}".encode()).hexdigest())
+            for signature, group_ids in strata.items()
+            if len(group_ids) >= 3
+        }
+        validation_groups = {group_ids[0] for group_ids in ordered.values()}
+        test_groups = {group_ids[1] for group_ids in ordered.values()}
+        assigned = {
+            "validation": {signature: 1 for signature in ordered},
+            "test": {signature: 1 for signature in ordered},
+        }
+        remaining = {signature: group_ids[2:] for signature, group_ids in ordered.items()}
+        target = max(2, len(ordered), round(len(groups) * 0.15))
+        for name, split_groups in (("validation", validation_groups), ("test", test_groups)):
+            while len(split_groups) < target:
+                available = [signature for signature, group_ids in remaining.items() if group_ids]
+                if not available:
+                    break
+                signature = max(
+                    available,
+                    key=lambda item: (
+                        len(ordered[item]) * 0.15 - assigned[name][item],
+                        hashlib.sha256(f"{seed}:{name}:{item}".encode()).hexdigest(),
+                    ),
+                )
+                split_groups.add(remaining[signature].pop(0))
+                assigned[name][signature] += 1
+        train_groups = set(groups) - validation_groups - test_groups
+    else:
+        groups.sort(key=lambda group: hashlib.sha256(f"{seed}:{group}".encode()).hexdigest())
+        validation_count = max(2, round(len(groups) * 0.15))
+        test_count = max(2, round(len(groups) * 0.15))
+        train_count = len(groups) - validation_count - test_count
+        if train_count < 8:
+            raise ValueError("Dataset needs at least 8 training groups and 2 groups per held-out split")
+        train_groups = set(groups[:train_count])
+        validation_groups = set(groups[train_count:train_count + validation_count])
+        test_groups = set(groups[train_count + validation_count:])
 
-    train_groups = set(groups[:train_count])
-    validation_groups = set(groups[train_count:train_count + validation_count])
-    test_groups = set(groups[train_count + validation_count:])
+    if len(train_groups) < 8:
+        raise ValueError("Dataset needs at least 8 training groups and 2 groups per held-out split")
     splits = {"train": [], "validation": [], "test": []}
     for row in rows:
         if row["group_id"] in train_groups:
@@ -295,6 +333,24 @@ def split_dataset(rows, seed=42):
         else:
             splits["test"].append(row)
     return splits
+
+
+def _group_year_strata(rows):
+    years_by_group = {}
+    for row in rows:
+        years_by_group.setdefault(row["group_id"], set()).add(row["output"]["year"])
+    strata = {}
+    for group_id, years in years_by_group.items():
+        signature = tuple(sorted(years, key=lambda year: -1 if year is None else year))
+        strata.setdefault(signature, []).append(group_id)
+    return strata
+
+
+def split_strategy(rows):
+    strata = _group_year_strata(rows)
+    if len({row["group_id"] for row in rows}) >= YEAR_STRATIFIED_MIN_GROUPS and any(len(groups) >= 3 for groups in strata.values()):
+        return GROUP_YEAR_SPLIT
+    return GROUP_HASH_SPLIT
 
 
 def format_sft_rows(rows, prompt_template):
@@ -327,6 +383,8 @@ def list_datasets():
                 "examples": len(rows),
                 "groups": len({row["group_id"] for row in rows}),
                 "splits": counts,
+                "split_seed": SPLIT_SEED,
+                "split_strategy": split_strategy(rows),
                 "sha256": digest,
                 "synthetic": dataset_id == "entity_extraction_demo",
                 "benchmark": benchmark_card_status(dataset_id, rows, digest),

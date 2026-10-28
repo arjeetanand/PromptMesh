@@ -697,7 +697,10 @@ function renderFineTuneDatasetReadiness(dataset) {
 
   const validation = document.createElement("p");
   validation.className = "dataset-validation-note";
-  validation.textContent = "Schema validated · source groups stay together across splits";
+  const splitMethod = dataset.split_strategy === "group-year-stratified-v1"
+    ? "event-year stratified by source group"
+    : "deterministic source-group split";
+  validation.textContent = `Schema validated · ${splitMethod} · seed ${dataset.split_seed ?? 42}; source variants stay together`;
   container.append(validation);
 
   const benchmark = dataset.benchmark || {};

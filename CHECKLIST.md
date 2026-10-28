@@ -75,12 +75,15 @@
 - [x] Define `organization` as the claim actor in extraction prompt definition 1.1.0 and the annotation guide.
 - [x] Prepare a private 246-row public-source candidate review packet across 82 source groups with source URLs, draft labels, unresolved rights status, and reviewer fields; keep it outside the loadable dataset directory.
 - [x] Add 15 official-source candidate groups dated 2020, 2021, 2022, 2023, and 2025 to extend the packet’s year coverage.
+- [x] Add 35 more official-source candidate groups; the local review packet now has 351 draft rows across 117 groups, with 10 groups per proposed year from 2020, 2021, 2022, 2023, and 2025.
+- [x] Stratify datasets with at least 30 source groups by event-year signature; record the seed and strategy in adapter, prompt-selection, and frozen-report provenance and reject incompatible prior artifacts.
+- [x] Show the selected split strategy in the Fine-tune dataset readiness panel.
 - [ ] Human-review every candidate and wording variant against its linked source, confirm reuse rights, and build a more balanced, representative dataset before claiming general extraction quality.
 - [x] Add regression coverage for INT8/NF4 configuration, identical test rows, calibration labeling, and invalid or unavailable API selections.
 - [x] Assert that the loaded extraction prompt definition 1.1.0 keeps the actor/recipient rule.
 - [x] Check Fine-tune at 1440px and 390px in Edge; the document has no horizontal overflow or browser console errors.
 - [x] Verify adapter-attached NF4/INT8 generation on MPS with one synthetic canary input; this confirms the hardware path only, not benchmark quality.
-- [ ] Supply and human-review an authorized real dataset, train a new schema-v3 adapter, and run a real frozen benchmark; no model-quality result exists yet.
+- [ ] Supply and human-review an authorized real dataset, train a new schema-v4 adapter, and run a real frozen benchmark; no model-quality result exists yet.
 - [ ] Run the quantized comparison on that reviewed corpus; no real quality result or calibration experiment has been produced.
 
 ## Local candidate review workbench
@@ -89,7 +92,7 @@
 - [x] Add a Fine-tune review queue that keeps each source's phrasings together, applies the actor label rule, and separates label review from reuse permission.
 - [x] Keep the private packet out of Git and the loadable training datasets until an authorized reviewed JSONL is created.
 - [x] Add regression checks for source grouping, safe writes, symlink rejection, and loopback-only access even with an API key.
-- [ ] Review candidates against sources, confirm reuse permissions, diversify years, and create an authorized benchmark dataset/card.
+- [ ] Review candidates against sources, confirm reuse permissions, address topic/source-type imbalance, and create an authorized benchmark dataset/card.
 - [x] Verify the new Fine-tune queue in the browser at 1440px, 768px, and 390px; confirm group navigation and mobile menu behavior. No physical phone test was performed.
 - [x] Audit the live candidate-review form: all visible controls are named, tab order is logical, status regions and heading structure are present, key text contrast is at least 4.5:1, and there is no horizontal overflow at 320px, 390px, 768px, 1024px, or 1440px.
 - [ ] Verify the review flow with a screen reader and an automated axe-core scan; neither was run in this manual browser audit.

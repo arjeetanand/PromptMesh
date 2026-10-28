@@ -290,6 +290,8 @@ class ApiBoundaryTests(unittest.TestCase):
         dataset_digest = "a" * 64
         card_digest = "b" * 64
         selection = {
+            "split_seed": 42,
+            "split_strategy": "group-hash-v1",
             "selection_id": selection_id,
             "adapter_run_id": adapter_id,
             "dataset_id": "reviewed",
