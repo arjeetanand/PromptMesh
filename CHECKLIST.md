@@ -23,3 +23,26 @@
 - [x] Add the companion to the overview and empty run-history states with reduced-motion-aware animation.
 - [x] Verify image loading, desktop/mobile rendering, and the history empty state in the browser.
 - [x] Commit this follow-up locally on `codex/promptmesh-illustrations`; do not push or merge without approval.
+
+## Section illustration follow-up
+
+- [x] Add a compact companion vignette to every non-overview workspace page, with a motif specific to that page.
+- [x] Verify all six sections at desktop and 390px mobile widths with no horizontal overflow.
+- [x] Include the section illustrations in the current task branch for the existing PR targeting `main`.
+
+## Evaluation reliability follow-up
+
+- [x] Create a dedicated branch from the current clean PromptMesh tree.
+- [x] Fix classification and verification scoring weights and prevent judge outages from returning a score.
+- [x] Propagate judge failures through the scorer, app jobs, CLI, and diagnostic script.
+- [x] Add regression tests and clarify the LLM-judge scope in the UI and README.
+- [x] Run the complete suite (29 passed), Python compilation, JavaScript syntax check, and diff check.
+- [x] Verify the Evaluate label, API connection, mobile layout at 390px, and browser console.
+- [ ] Commit and update PR #1 targeting `main`; do not merge.
+
+## Next résumé milestones
+
+- [ ] Create a human-reviewed, versioned gold benchmark with grouped train/validation/test splits; keep prompt evolution and model selection on validation data only.
+- [ ] Compare base, prompt-only, and LoRA results on the same untouched test examples; report task metrics and uncertainty.
+- [ ] Measure quantized versus unquantized inference quality, latency, and memory on a declared backend and hardware.
+- [ ] Publish a reproducible run manifest and demo that distinguish synthetic workflow checks from model-quality evidence.

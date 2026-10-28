@@ -20,12 +20,20 @@
 - Confirmed the reduced-motion rule is present. `node --check static/app.js`, `bash -n run.sh`, and `git diff --check` passed.
 - Branch: `codex/promptmesh-illustrations`, based on `1e9c543`; implementation commit: `d1f1625`. This follow-up has not been pushed or merged.
 
+## Section illustration follow-up
+
+- Added a small companion vignette beside the page title on Evaluate, Compare, Prompt evolution, Fine-tune, Test cases, and Run history. Each uses the existing mascot artwork and a task-specific inline SVG scene (score/check, paired prompts, revision loop, model graph, test cards, or run timeline) in the PromptMesh blue and amber.
+- Kept the form and data areas unchanged; no JavaScript behavior or dependencies were added.
+- Browser verification passed at 1600px desktop and 390px mobile widths. All six images and SVG symbols rendered, with no horizontal overflow.
+- The section markup and styles are included in the evaluation reliability follow-up on `codex/promptmesh-evaluation-reliability`, based on `107a847`.
+
 ## Concepts and interview framing
 
 - **Prompt evolution** edits instructions while keeping model weights unchanged.
 - **SFT/LoRA** trains a small set of adapter weights on labeled prompt/answer examples while preserving the base checkpoint.
 - The training job scores the base checkpoint and adapter on the same untouched, grouped test examples. It records JSON-valid rate, record exact match, per-field accuracy, train/validation loss, dataset hash, split counts, model revision, and selected hyperparameters. The held-out scores use deterministic parsing, not an LLM judge.
 - Interview description: “I built a local, reproducible SFT experiment for structured extraction: grouped data splits prevent source leakage, LoRA adapts a small model, and a fixed held-out set compares the adapter against its base model with schema and exact-match metrics.”
+- Current evaluation claim: “I repaired an LLM-judge evaluation path so task-specific scoring is preserved and a failed judge produces a failed run instead of a plausible score.”
 - Do not claim a gain from the tracked 48-example synthetic demo. A résumé result requires a reviewed domain dataset, a separate test set, repeated runs or uncertainty analysis, and an observed improvement.
 - LoRA is the implemented low-resource choice. QLoRA is a memory-saving option for larger checkpoints; full fine-tuning updates all weights and costs more memory; RAG adds retrieved context at inference, DPO needs preference pairs, and distillation trains a smaller student from a teacher. Those methods are not implemented in this stage.
 
@@ -47,11 +55,27 @@
 - A UI-started local run completed on MPS and rendered the base/adapter comparison and loss history. Saved adapter inference through the model registry also passed. The six-example synthetic test remains workflow evidence only.
 - The first end-to-end attempt exposed Transformers 5 batch handling in both held-out scoring and adapter inference; both callers now pass `input_ids` and `attention_mask` to `generate`, and the regression test covers those paths.
 
+## Evaluation reliability follow-up
+
+- Corrected the task-specific classification/verification score formula; the duplicate generic formula had been overwriting it.
+- The judge no longer returns neutral scores after three failures. The shared scorer raises `JudgeUnavailableError`; API jobs fail visibly, the CLI rethrows it, and the diagnostic script reports no score.
+- Renamed the Evaluate-page chip to `LLM-judged run`; README now states that these scores are heuristics, not gold-label benchmark results.
+- Added four regression tests for task-specific weights, missing judge results, and retry exhaustion.
+- Full suite: 29 tests passed. Python compilation, JavaScript syntax, and `git diff --check` passed.
+- Browser verification on port 4004 showed `API connected` after reload and the `LLM-judged run` label. At a 390px viewport, the page width stayed 390px; the page rendered without horizontal overflow or browser console errors. No remote judge call was made.
+
+## Next résumé milestones
+
+1. Add a human-reviewed, versioned gold dataset with grouped train/validation/test splits. Route prompt evolution and model selection through validation data; the current evolution loop scores candidates on its supplied inputs, so those inputs cannot also serve as an independent final test.
+2. Compare a base model, prompt-only baseline, and LoRA adapter on the same untouched test examples. Report task metrics, repeated-run variation or confidence intervals, and exact model/data revisions.
+3. Add a quantized-inference experiment only after selecting a backend that works on the target hardware. Compare quality, latency, and peak memory against the unquantized model on the same frozen test set.
+4. Package one reproducible run manifest and a short demo, including dataset limitations and failure cases. Do not present the synthetic example scores as model-quality evidence.
+
 ## Branch and pull request
 
-- Branch: `codex/promptmesh-ui-redesign`.
-- Pull request: [#1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1), targeting `main`.
-- The task commits `8a4e0db`, `31ba8a0`, and `7767a81` are on the PR branch. GitHub CLI could not verify live PR metadata after the latest push because `api.github.com` was unreachable.
+- Working branch: `codex/promptmesh-evaluation-reliability`, based on local illustration commit `107a847`.
+- Pull request: [#1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1), targeting `main`; its existing head branch is `codex/promptmesh-ui-redesign`.
+- This follow-up is prepared to update PR #1 after committing; do not merge it.
 - Do not merge PR #1.
 
 ## Run instructions and next action

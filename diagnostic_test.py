@@ -58,7 +58,10 @@ for i, output in enumerate(test_outputs, 1):
     
     try:
         scores = judge_output(output, source_text)
-        print(f"✓ Scores: {scores}")
+        if scores is None:
+            print("⚠ Judge unavailable; no score was produced.")
+        else:
+            print(f"✓ Scores: {scores}")
     except Exception as e:
         print(f"❌ ERROR: {e}")
         import traceback

@@ -8,16 +8,17 @@ PromptMesh treats prompt engineering as a **system-level workflow** rather than 
 
 ## 🚀 Overview
 
-PromptMesh provides a **production-ready prompt experimentation platform** with an integrated API server and web interface.
+PromptMesh is a **portfolio-stage prompt experimentation workspace** with an integrated API server and web interface.
 
 It enables:
 
 * Programmatic prompt evaluation
-* Multi-model benchmarking
+* Same-input comparisons across configured models
 * Automated test generation
 * Prompt evolution with feedback loops
 * Real-time job tracking and result inspection
 * Local Qwen3-0.6B LoRA/SFT runs for structured entity extraction
+* Local inference with saved LoRA adapters
 
 All long-running operations execute asynchronously with progress reporting and result persistence in memory.
 
@@ -55,7 +56,7 @@ Each run captures:
 
 ### 3. LLM-as-a-Judge Scoring Pipeline
 
-Independent judge model scores outputs on:
+The configured judge model provides heuristic scores for:
 
 * Accuracy
 * Completeness
@@ -67,6 +68,12 @@ Features:
 * Robust JSON extraction
 * Graceful parsing fallback
 * Structured score breakdowns
+* Failed judge requests fail the evaluation instead of receiving substitute scores
+
+These scores are useful for reviewing prompt iterations, not a gold-label benchmark.
+Classification and verification use task-specific weights; other task types use
+the general completeness-weighted score. The bundled LoRA dataset is synthetic
+workflow data, and quantization is not implemented in this version.
 
 ---
 
@@ -104,6 +111,24 @@ Automatically generate evaluation datasets:
 * Distribution-aware test generation
 * Schema-based generation support
 * Custom base input expansion
+
+---
+
+## Making model-quality claims
+
+The repository demonstrates prompt evaluation with an LLM judge, local LoRA/SFT
+training, and local adapter inference. It does not yet establish model-quality
+gains: the demo data is synthetic, and the general evaluation score is a model
+judge heuristic. Prompt evolution currently selects revisions using the inputs
+supplied to that run, so those inputs are not an independent final test set.
+
+The next experiments should use human-reviewed labels and grouped,
+versioned train/validation/test splits. Use validation data for prompt evolution
+and model selection, keep the final test untouched, and compare the base model,
+prompt-only baseline, and LoRA adapter on identical test examples. Report task
+metrics with uncertainty alongside latency and memory. A quantized-inference
+comparison is a separate future step and should use the same frozen test set and
+declared hardware/backend.
 
 ---
 
