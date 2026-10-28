@@ -101,6 +101,13 @@
 - [x] Pin the current Python 3.12 / macOS ARM64 LoRA/SFT and bitsandbytes dependency closure; verify every lock pin matches the active `.venv` and `pip check` passes.
 - [ ] Install the local training lock into a clean environment and confirm setup before treating it as a freshly reproduced environment.
 
+## Whole-workspace UI audit — 2026-10-29
+
+- [x] Navigate Overview, Evaluate, Compare, Evolution, Fine-tune, Test cases, and Run history in the local browser; confirm the API-connected status and visible page heading.
+- [x] Check visible control names, duplicate IDs, and horizontal overflow at 320px, 390px, 767/768px, 1024px, and 1440px on all seven pages.
+- [ ] Complete a whole-workspace screen-reader and automated accessibility audit; the current evidence is a targeted manual browser inspection.
+- [ ] Verify provider-backed evaluation, model generation, local training, and quantized benchmark flows end to end; no jobs or provider calls were started in this audit.
+
 ## Navigation and background-job follow-up
 
 - [x] Add a Back to overview control to every non-overview page.

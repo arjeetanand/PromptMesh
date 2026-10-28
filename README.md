@@ -292,6 +292,11 @@ For isolated instances, `PROMPTMESH_PORT=5004 ./run.sh` starts a test instance;
 serves the UI and its API from the same process. `python app.py` remains
 available on Windows and for the legacy port `8000` workflow.
 
+The local workspace UI has been manually checked across its pages at widths
+from 320px to 1440px. This covers navigation and responsive layout, not a
+provider-backed end-to-end evaluation or a full screen-reader/automated
+accessibility audit; see `HANDOFF.md` for the latest verification scope.
+
 The redesigned UI provides model evaluation, prompt comparison and evolution,
 test-case generation, JSON export, local run summaries, and local LoRA/SFT
 training. Prompt evolution edits instructions; fine-tuning changes adapter

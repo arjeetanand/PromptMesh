@@ -229,3 +229,11 @@
 - The candidate review panel had no horizontal overflow at CSS viewport widths 320, 390, 768, 1024, and 1440. The mobile navigation toggle exposed `Open navigation` / `Close navigation` and changed `aria-expanded`. The browser reported no console warnings or errors.
 - Measured text contrast for the candidate summary, guidance, pending status, draft labels, source focus, and primary save button ranged from 6.29:1 to 17.37:1. This was a targeted manual check, not a whole-app contrast audit or accessibility certification. No screen-reader session or axe-core scan was run.
 - The task browser viewport was restored after testing. Human label review, reuse-rights decisions, a balanced benchmark corpus, and the clean-install test for the environment lock remain open.
+
+## Whole-workspace UI audit — 2026-10-29
+
+- In the local preview at `http://127.0.0.1:6004`, navigated Overview, Evaluate, Compare prompts, Prompt evolution, Fine-tune, Test cases, and Run history. Each page showed its expected visible H1 and the API-connected status.
+- Across the seven pages, the visible-control name check found no unnamed controls, no duplicate IDs were found, and there was no horizontal overflow at 320px, 390px, 767/768px, 1024px, or 1440px CSS widths.
+- No evaluation, prompt generation, case generation, training, review save, or history deletion was triggered. This is browser navigation/layout evidence, not an end-to-end model workflow or production-site check.
+- The user confirmed that extraction `organization` labels should identify the claim actor. The private candidate packet already uses that definition; its labels and source-reuse decisions remain unreviewed.
+- The task browser viewport was restored. Whole-workspace screen-reader/axe review, real provider-backed workflow checks, human label review, and reuse-rights decisions remain open.
