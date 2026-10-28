@@ -32,7 +32,8 @@ For an interview, describe the first three as implemented workflows and identify
 
 - Branch: `codex/promptmesh-ui-redesign`.
 - UI implementation commit: `2c574ef` (`Redesign PromptMesh experiment workspace UI`).
-- Branch is local and has not been pushed.
+- Branch is pushed to `origin/codex/promptmesh-ui-redesign`.
+- Pull request: [#1 — Redesign PromptMesh experiment workspace UI](https://github.com/arjeetanand/PromptMesh/pull/1), targeting `main`.
 - Setup: create/activate `.venv`, then `pip install -r requirements.txt`.
 - Main: `./run.sh` → `http://127.0.0.1:4004`.
 - Test: `PROMPTMESH_PORT=5004 ./run.sh`.
