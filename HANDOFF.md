@@ -43,7 +43,7 @@
 - Branch: `codex/promptmesh-ui-redesign`.
 - Pull request: [#1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1), targeting `main`.
 - Existing PR commits: `2c574ef`, `043a3e8`, and `877cacf`. The local LoRA/SFT changes were committed as `8a4e0db` and pushed to the same PR branch. GitHub CLI could not verify live PR metadata because `api.github.com` was unreachable after the push.
-- The FineTuneDB and palette follow-up is committed locally on this branch and was not pushed.
+- The FineTuneDB and palette follow-up is local commit `31ba8a0` on this branch and was not pushed.
 - Do not push local follow-up changes or merge PR #1 without explicit approval.
 
 ## Run instructions and next action
