@@ -13,4 +13,6 @@
 - [x] Run focused training tests, syntax checks, and loopback API checks after the dataset fingerprint and metric display changes.
 - [x] Reinspect the palette and Fine-tune page at desktop and mobile widths; verify the mobile drawer opens and closes without navigating away.
 - [x] Complete a one-epoch synthetic LoRA/SFT run on MPS, show its held-out results in the UI, and load the saved adapter through the model registry. The demo scores are workflow evidence only, not a quality claim.
-- [ ] Commit the verified task changes and update PR #1 targeting `main`; do not merge it.
+- [x] Commit the core LoRA/SFT implementation as `8a4e0db` and push it to PR #1; do not merge it.
+- [x] Commit the reverse-engineering and palette follow-up locally; do not push it without approval.
+- [ ] Reconfirm the live PR target is `main` when the GitHub API is reachable.

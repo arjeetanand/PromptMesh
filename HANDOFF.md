@@ -33,7 +33,8 @@
 - `./.venv/bin/python -m unittest discover -s tests -p 'test_training.py' -v`: 7 tests passed, including dataset path confinement, SHA-256 fingerprints, grouped split isolation, metric parsing, adapter path validation, lazy Cohere client construction, and Transformers batch generation.
 - Python compilation, `node --check static/app.js`, `bash -n run.sh`, and `git diff --check`: passed.
 - Loopback API checks for health, datasets, adapters, models, and tasks passed. The dataset endpoint returns the 64-character SHA-256 and MPS runtime; an unknown dataset returned 404 and an epoch count of 4 returned 422.
-- Browser review passed at desktop and 480px mobile width with no horizontal overflow. The Fine-tune page shows the readiness card and dataset fingerprint; the mobile drawer opens and closes without changing the current tab.
+- Browser review passed at desktop and 390px mobile width with no horizontal overflow. The Fine-tune page shows the readiness card and dataset fingerprint; the mobile drawer opens and closes without changing the current tab.
+- The design-taste inspector could not launch headless Edge in this environment; the connected in-app browser was used for rendered desktop/mobile and navigation checks.
 - A UI-started local run completed on MPS and rendered the base/adapter comparison and loss history. Saved adapter inference through the model registry also passed. The six-example synthetic test remains workflow evidence only.
 - The first end-to-end attempt exposed Transformers 5 batch handling in both held-out scoring and adapter inference; both callers now pass `input_ids` and `attention_mask` to `generate`, and the regression test covers those paths.
 
@@ -41,11 +42,13 @@
 
 - Branch: `codex/promptmesh-ui-redesign`.
 - Pull request: [#1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1), targeting `main`.
-- Existing PR commits: `2c574ef`, `043a3e8`, and `877cacf`. The user asked to keep changes in a PR targeting `main`; the current work is ready to commit and push to PR #1.
-- Do not merge PR #1.
+- Existing PR commits: `2c574ef`, `043a3e8`, and `877cacf`. The local LoRA/SFT changes were committed as `8a4e0db` and pushed to the same PR branch. GitHub CLI could not verify live PR metadata because `api.github.com` was unreachable after the push.
+- The FineTuneDB and palette follow-up is committed locally on this branch and was not pushed.
+- Do not push local follow-up changes or merge PR #1 without explicit approval.
 
 ## Run instructions and next action
 
+- Current local server: `http://127.0.0.1:4004`; `/api/health` returned `healthy` during handoff.
 - Create/activate `.venv`, then run `pip install -r requirements.txt`.
 - Main: `./run.sh` → `http://127.0.0.1:4004`; test and preview ports are 5004 and 6004.
-- Next: inspect the staged diff, commit task-owned changes on this branch, push to update PR #1, and confirm its target remains `main`.
+- Next: verify PR #1 still targets `main` when the GitHub API is reachable; do not push or merge without approval.
