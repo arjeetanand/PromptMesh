@@ -28,4 +28,4 @@
 
 - [x] Add a compact companion vignette to every non-overview workspace page, with a motif specific to that page.
 - [x] Verify all six sections at desktop and 390px mobile widths with no horizontal overflow.
-- [ ] Commit this follow-up locally on `codex/promptmesh-section-illustrations`; do not push or merge without approval.
+- [x] Commit this follow-up locally on `codex/promptmesh-section-illustrations`; do not push or merge without approval.

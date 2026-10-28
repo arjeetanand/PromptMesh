@@ -24,8 +24,9 @@
 
 - Added a small companion vignette beside the page title on Evaluate, Compare, Prompt evolution, Fine-tune, Test cases, and Run history. Each uses the existing mascot artwork and a task-specific inline SVG scene (score/check, paired prompts, revision loop, model graph, test cards, or run timeline) in the PromptMesh blue and amber.
 - Kept the form and data areas unchanged; no JavaScript behavior or dependencies were added.
-- Browser verification passed at 1600px desktop and 390px mobile widths. All six images and SVG symbols rendered, with no horizontal overflow.
-- Branch: `codex/promptmesh-section-illustrations`, based on `107a847`; local commit details will be recorded after committing. This follow-up has not been pushed or merged.
+- Browser verification passed at 1600px desktop and 390px mobile widths. All six images and SVG symbols rendered, with no overlap or horizontal overflow.
+- Preview: `http://127.0.0.1:6004` remains available from this worktree. Restarting through `run.sh` reported an existing listener and stopped nothing; PID 39677 was verified with this worktree as its working directory.
+- Branch: `codex/promptmesh-section-illustrations`, based on `107a847`; implementation commit: `2723a66`. This follow-up has not been pushed or merged.
 
 ## Concepts and interview framing
 
