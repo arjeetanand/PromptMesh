@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "dataset_id": "REPLACE_WITH_DATASET_ID",
+  "task": "entity_extraction",
+  "source": {
+    "description": "REPLACE_WITH_A_NON_SENSITIVE_SOURCE_DESCRIPTION",
+    "authorization_or_license": "REPLACE_WITH_PERMISSION_OR_LICENSE_REFERENCE"
+  },
+  "grouping": {
+    "unit": "source document or related example family",
+    "policy": "REPLACE_WITH_HOW_GROUP_ID_VALUES_ARE_ASSIGNED"
+  },
+  "annotation": {
+    "guidelines_version": "REPLACE_WITH_GUIDELINE_VERSION",
+    "review_status": "unreviewed",
+    "all_labels_human_reviewed": false,
+    "total_examples": 0,
+    "reviewed_examples": 0,
+    "total_source_groups": 0,
+    "reviewed_source_groups": 0,
+    "reviewed_at_utc": null,
+    "reviewer_role": null
+  },
+  "limitations": [
+    "REPLACE_WITH_KNOWN_COVERAGE_OR_LABELING_LIMITATIONS"
+  ]
+}

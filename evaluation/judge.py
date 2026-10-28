@@ -149,13 +149,6 @@ def judge_output(output: str, source_text: str) -> dict | None:
         except Exception as e:
             print(f"[DEBUG] Attempt {attempt+1} failed: {e}")
             if attempt == 2:
-                print(f"[ERROR] All judge attempts failed. Returning default scores.")
-                # Return neutral scores instead of failing
-                return {
-                    "accuracy": 5,
-                    "completeness": 5,
-                    "adherence": 5,
-                    "hallucination": 5
-                }
+                print("[ERROR] All judge attempts failed. No evaluation score was produced.")
     
     return None

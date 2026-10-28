@@ -1,6 +1,6 @@
 from evaluation.rules import rule_checks
 from evaluation.judge import judge_output
-from evaluation.types import EvaluationResult
+from evaluation.types import EvaluationResult, JudgeUnavailableError
 
 def evaluate(
     output: str,
@@ -17,18 +17,11 @@ def evaluate(
             passed=False
         )
 
-    # judge_scores = judge_output(output)
-    # source_text = prompt_constraints.get("_source_text", "")
     judge_scores = judge_output(output, source_text)
 
-
     if judge_scores is None:
-        return EvaluationResult(
-            score=0.0,
-            breakdown={"reason": "judge_failed"},
-            passed=False
-        )
-    
+        raise JudgeUnavailableError("The LLM judge failed; this evaluation was not scored")
+
     if task_type in ("verification", "classification"):
         final_score = (
             0.6 * judge_scores["accuracy"]
@@ -42,15 +35,6 @@ def evaluate(
             + 0.2 * judge_scores["adherence"]
             - 0.1 * judge_scores["hallucination"]
         )
-
-
-
-    final_score = (
-        0.4 * judge_scores["accuracy"]
-        + 0.3 * judge_scores["completeness"]
-        + 0.2 * judge_scores["adherence"]
-        - 0.1 * judge_scores["hallucination"]
-    )
 
     return EvaluationResult(
         score=round(final_score, 2),

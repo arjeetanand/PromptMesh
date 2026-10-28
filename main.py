@@ -5,6 +5,7 @@ from prompts.registry import PromptRegistry
 from core.types import render_prompt
 from core.executor import PromptExecutor
 from evaluation.scorer import evaluate
+from evaluation.types import JudgeUnavailableError
 
 from comparison.runner import run_prompt_comparison
 
@@ -263,6 +264,8 @@ for model_name in EVAL_MODELS:
             
             print(f"    Score: {eval_result.score}")
             
+        except JudgeUnavailableError:
+            raise
         except Exception as e:
             print(f"❌ Error: {e}")
             scores.append(0.0)

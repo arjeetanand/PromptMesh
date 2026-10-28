@@ -1,9 +1,13 @@
 import time
 import cohere
+from functools import lru_cache
 from models.base import BaseLLM
 from core.security import MODEL_REQUEST_TIMEOUT_SECONDS
 
-co = cohere.Client(timeout=MODEL_REQUEST_TIMEOUT_SECONDS)  # Uses COHERE_API_KEY env var
+
+@lru_cache(maxsize=1)
+def _get_client():
+    return cohere.Client(timeout=MODEL_REQUEST_TIMEOUT_SECONDS)
 
 
 class CohereModel(BaseLLM):
@@ -13,7 +17,7 @@ class CohereModel(BaseLLM):
     def run(self, prompt: str, params: dict):
         start = time.time()
 
-        response = co.chat(
+        response = _get_client().chat(
             model=self.model_name,
             message=prompt,
             temperature=params.get("temperature", 0.0),

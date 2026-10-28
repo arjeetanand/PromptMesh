@@ -1,0 +1,2 @@
+# TEMPLATE ONLY: remove this line and replace every placeholder before saving as <dataset_id>.jsonl.
+{"group_id":"REPLACE_WITH_SOURCE_OR_FAMILY_ID","input":"REPLACE_WITH_AUTHORIZED_SOURCE_TEXT","output":{"organization":"REPLACE_WITH_LABEL_OR_NULL","year":null,"claim":"REPLACE_WITH_GOLD_CLAIM_OR_NULL"}}

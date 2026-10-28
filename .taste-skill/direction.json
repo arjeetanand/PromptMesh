@@ -1,0 +1,158 @@
+{
+ "version": 1,
+ "kind": "app",
+ "at": "2026-10-28T09:03:17.571Z",
+ "seed": 142355357,
+ "input": {
+  "kind": "devtools",
+  "brief": "PromptMesh model evaluation and prompt experiment workspace",
+  "theme": null,
+  "screens": [
+   "overview"
+  ],
+  "keep": [],
+  "style": "framed-sheet"
+ },
+ "style": {
+  "id": "framed-sheet",
+  "name": "Framed sheet",
+  "theme": "light",
+  "basis": "6 screens: a developer platform overview, an analytics overview, an events analytics tab, a list detail, a reports dashboard, a flow builder",
+  "suits": [
+   "analytics",
+   "devtools",
+   "builder",
+   "smb-admin",
+   "support",
+   "commerce",
+   "report"
+  ],
+  "idea": "The app chrome is a near-black L-shaped frame; the work sits on a white sheet with a hairline edge and soft corners, so depth comes from a single tone step and no shadow.",
+  "colourBudget": "Use #0F41F3 for primary actions and selected navigation; keep #F9B318 to small workflow signals and chart accents.",
+  "tokens": {
+   "ground": "#0b0b0d",
+   "surface": "#ffffff",
+   "raised": "#f5f7ff",
+   "active": "#edf1ff",
+   "border": "#e1e4eb",
+   "rule": "#eff1f5",
+   "control": "#cfd4df",
+   "text": "#111318",
+   "muted": "#555c69",
+   "accent": "#0f41f3",
+   "positive": "#1e7b4f",
+   "negative": "#c4242a",
+   "warning": "#493400",
+   "chart": [
+    "#0f41f3",
+    "#3763eb",
+    "#9b6500"
+   ],
+   "pills": {
+    "positive": [
+     "#dcfae5",
+     "#04250e"
+    ],
+    "negative": [
+     "#ffedea",
+     "#831c1e"
+    ],
+    "warning": [
+     "#fff4d4",
+     "#493400"
+    ],
+    "neutral": [
+     "#ebedee",
+     "#353736"
+    ]
+   },
+   "radius": {
+    "card": 8,
+    "control": 6,
+    "sheet": 16
+   },
+   "sheetInset": 8,
+   "font": {
+    "family": "IBM Plex Sans",
+    "second": "IBM Plex Mono, for IDs and keys only",
+    "fallback": "Inter, system-ui, sans-serif",
+    "sizes": {
+     "title": 22,
+     "section": 16,
+     "kpi": 28,
+     "body": 14,
+     "small": 12
+    },
+    "weights": [
+     400,
+     500,
+     600
+    ],
+    "note": "KPI values at 400; the semibold goes on the label and the active tab."
+   },
+   "density": "medium",
+   "rowHeight": 48,
+   "sidebarWidth": 228,
+   "gap": 24,
+   "pad": 24,
+   "controlHeight": 32
+  },
+  "shell": "framed-sheet",
+  "shellAlternatives": [],
+  "signature": "One near-black frame holds the sidebar and top bar; the page is a white sheet inset from the window edges with a hairline border and soft corners. Blue marks primary actions and selected navigation; amber stays limited to small signals.",
+  "identity": [
+   "Use the requested near-black frame and keep the work surface white.",
+   "Use #0F41F3 for primary actions and selected navigation; reserve #F9B318 for small workflow signals and use dark amber for chart lines on white.",
+   "IBM Plex Mono for IDs, keys and the figures in tables (one job): its figures have their own drawing, and a developer reads them as the product's."
+  ],
+  "avoid": [
+   "a border between the sidebar and the top bar",
+   "a shadow under the sheet",
+   "cards whose border is heavier than the sheet's (#cdcfcf on cards read as heavy in the study)",
+   "a fourth nesting level: frame, sheet and card are enough",
+   "different gutters for the KPI row and the chart row (20 against 24 was flagged)"
+  ],
+  "notes": "The requested amber is a small signal color; chart accents use a darker amber for contrast on white."
+ },
+ "shell": {
+  "id": "framed-sheet",
+  "name": "Tinted frame, white sheet",
+  "basis": "8 of 23 screens, in three variants",
+  "suits": [
+   "analytics",
+   "devtools",
+   "builder",
+   "smb-admin",
+   "support"
+  ],
+  "numbers": {
+   "chrome": "near-black #0b0b0d",
+   "sheetInset": "8px from the window's right and bottom edges (12 and 16 once each)",
+   "sheetRadius": "10-16, median 16",
+   "sheetEdge": "1px #eaeaea-#ededed, no shadow",
+   "sidebarWidth": "220-263 (228 on two screens)",
+   "topBar": "48px on the chrome ground with no rule; search 548x32 centred on the window with a shortcut hint",
+   "contentPadding": 24,
+   "floatingVariant": "both panels inset 12px with a 12px gutter, radius 10"
+  },
+  "blueprint": "Sidebar and top bar share a near-black ground with no rule between them, forming an L; the page lives on a white sheet. Use blue for selected navigation and actions, with amber as a small accent. Variant one: the sheet butts against the sidebar and top bar and is inset from the window edges, with a hairline border and soft corners. Variant two: a flush L-frame with no inset, the frame marked by one rule. Variant three: sidebar and content are two floating panels inset 12px from every edge with a 12px gutter. Inside the sheet the content has 24px padding and starts with the breadcrumb or title row.",
+  "phone": "The white sheet fills the work area while the near-black top bar and navigation drawer remain visible; keep the menu button clear of the drawer's logo when the drawer is open."
+ },
+ "screens": [
+  {
+   "name": "overview",
+   "pattern": {
+    "id": "platform-overview-tray",
+    "name": "Platform overview with a usage tray",
+    "screen": "overview",
+    "kinds": [
+     "devtools",
+     "analytics"
+    ],
+    "basis": "a developer platform project overview",
+    "blueprint": "Sections stacked in one column about 48px apart, each with an 18/500 title on the left and a quiet action on the right ('View all', an outlined Refresh, a date-range button), and freshness in 14px grey after the title with a small status dot. First, a getting-started strip: one container split by 1px dividers into 4 equal cells (16/500 title, a 14px description, a grey arrow top right), shown until setup is done. Then the recent items table, capped at 4-5 rows on a 49px pitch: IDs in mono truncated to 8 characters plus an ellipsis with a copy icon, relative expiry in grey, rules that bleed 8px past the text column. Then usage: a #fafafa tray with 6px padding holding a KPI strip of 5 equal cells (a 14/500 label over a 24/400 value with a 14px unit suffix, '5 mins') and, 6px below, a chart card whose metric is chosen by the KPI cells themselves (the selected cell marked by a 2px rule or the active fill), never a second control repeating the KPI labels; the chart takes two-thirds of the width when its line is flat for most of the window, with the next answer beside it. Durations and timestamps in tabular figures. A missing value is a grey dash at label size, not '--' at value size.",
+    "phone": "The getting-started strip becomes a 2 x 2 grid or a list; the table becomes two-line rows; the KPI strip a 2-column grid."
+   }
+  }
+ ]
+}

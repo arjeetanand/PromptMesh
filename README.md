@@ -8,15 +8,17 @@ PromptMesh treats prompt engineering as a **system-level workflow** rather than 
 
 ## 🚀 Overview
 
-PromptMesh provides a **production-ready prompt experimentation platform** with an integrated API server and web interface.
+PromptMesh is a **portfolio-stage prompt experimentation workspace** with an integrated API server and web interface.
 
 It enables:
 
 * Programmatic prompt evaluation
-* Multi-model benchmarking
+* Same-input comparisons across configured models
 * Automated test generation
 * Prompt evolution with feedback loops
 * Real-time job tracking and result inspection
+* Local Qwen3-0.6B LoRA/SFT runs for structured entity extraction
+* Local inference with saved LoRA adapters
 
 All long-running operations execute asynchronously with progress reporting and result persistence in memory.
 
@@ -54,7 +56,7 @@ Each run captures:
 
 ### 3. LLM-as-a-Judge Scoring Pipeline
 
-Independent judge model scores outputs on:
+The configured judge model provides heuristic scores for:
 
 * Accuracy
 * Completeness
@@ -66,6 +68,12 @@ Features:
 * Robust JSON extraction
 * Graceful parsing fallback
 * Structured score breakdowns
+* Failed judge requests fail the evaluation instead of receiving substitute scores
+
+These scores are useful for reviewing prompt iterations, not a gold-label benchmark.
+Classification and verification use task-specific weights; other task types use
+the general completeness-weighted score. The bundled LoRA dataset is synthetic
+workflow data, and quantization is not implemented in this version.
 
 ---
 
@@ -106,6 +114,24 @@ Automatically generate evaluation datasets:
 
 ---
 
+## Making model-quality claims
+
+The repository demonstrates prompt evaluation with an LLM judge, local LoRA/SFT
+training, and local adapter inference. It does not yet establish model-quality
+gains: the demo data is synthetic, and the general evaluation score is a model
+judge heuristic. Prompt evolution currently selects revisions using the inputs
+supplied to that run, so those inputs are not an independent final test set.
+
+The next experiments should use human-reviewed labels and grouped,
+versioned train/validation/test splits. Use validation data for prompt evolution
+and model selection, keep the final test untouched, and compare the base model,
+prompt-only baseline, and LoRA adapter on identical test examples. Report task
+metrics with uncertainty alongside latency and memory. A quantized-inference
+comparison is a separate future step and should use the same frozen test set and
+declared hardware/backend.
+
+---
+
 ## 🧠 System Architecture
 
 ```
@@ -115,6 +141,7 @@ core/           → Prompt rendering and execution engine
 comparison/     → Prompt comparison logic
 evaluation/     → Judge and scoring logic
 optimization/   → Failure analysis and evolution engine
+training/       → Grouped datasets, LoRA jobs, held-out metrics, local adapters
 static/         → Frontend UI assets
 app.py          → FastAPI backend server
 main.py         → CLI experiment runner
@@ -174,10 +201,13 @@ PromptMesh/
 ### 1. Environment Setup
 
 ```bash
-python -m venv venv
-venv\Scripts\activate   # Windows
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+On Windows, create the environment with `python -m venv .venv` and activate it
+with `.venv\Scripts\activate` before installing requirements.
 
 Prerequisites:
 
@@ -186,19 +216,92 @@ Prerequisites:
 
 ---
 
-### 2. Start FastAPI Server
+### 2. Start the API and redesigned UI
 
 ```bash
-python app.py
+./run.sh
 ```
 
-Server starts at:
+The launcher safely restarts only a PromptMesh process it can identify by its
+PID, command, and working directory. The main instance uses port `4004`:
 
 ```
-http://localhost:8000
+http://127.0.0.1:4004
 ```
 
-The root endpoint automatically serves the frontend UI.
+For isolated instances, `PROMPTMESH_PORT=5004 ./run.sh` starts a test instance;
+`PROMPTMESH_PORT=6004 ./run.sh` starts a preview instance. The root endpoint
+serves the UI and its API from the same process. `python app.py` remains
+available on Windows and for the legacy port `8000` workflow.
+
+The redesigned UI provides model evaluation, prompt comparison and evolution,
+test-case generation, JSON export, local run summaries, and local LoRA/SFT
+training. Prompt evolution edits instructions; fine-tuning changes adapter
+weights. Prompt evolution selects revisions with LLM-judge heuristics on the
+same supplied optimization inputs; it is not a gold-label benchmark. Training
+compares the prompted Qwen3-0.6B base model and LoRA adapter on the same
+deterministic, source-grouped validation examples using JSON validity, record
+exact match, and field accuracy. These selection metrics are deterministic and
+do not use PromptMesh's configured LLM judge. Training jobs leave the final-test
+split unscored; a separate frozen benchmark runner is not implemented yet.
+
+### Local LoRA/SFT workflow
+
+Create a labeled JSONL file in `training/datasets/`; follow
+[`training/datasets/README.md`](training/datasets/README.md). Each row needs a
+`group_id`, `input`, and gold `output` object with `organization`, `year`, and
+`claim`. Keep paraphrases or chunks from one source under the same group ID.
+Start from the row example and benchmark-card template in
+[`training/datasets/README.md`](training/datasets/README.md). Keep filled cards
+and source data local. The current trainer does not yet enforce the card's
+human-review status.
+PromptMesh assigns complete groups to deterministic train, validation, and
+reserved final-test splits, requires at least 12 distinct groups, and records
+the dataset SHA-256 with the adapter. Private dataset files and trained runs
+are ignored by Git.
+
+Open **Fine-tune** in the UI to choose a dataset, epoch count, LoRA rank, and
+learning rate. The first run downloads the Qwen3-0.6B checkpoint from Hugging
+Face (about 1.5 GB); model training and validation scoring then run locally. The
+synthetic `entity_extraction_demo` set checks the workflow only; it is not a
+benchmark or résumé evidence. Use a reviewed, representative dataset and a
+fresh final-test set before reporting any model improvement.
+
+Every workspace page includes a Back to overview control. While local LoRA
+training or prompt evolution runs, choose **Run in background** to close the
+progress dialog and keep working in PromptMesh. The top bar shows progress and
+status; select it to reopen progress or view completed results. Keep the
+browser tab open while the job runs. Run
+`node --test tests/ui_background_jobs.test.cjs` for the background-progress
+regression checks.
+
+The Fine-tune page shows schema readiness, example and source-group counts,
+train/validation/reserved-test sizes, and a short SHA-256 dataset fingerprint.
+Completed runs keep that fingerprint, prompt hash, and validation metric split with the
+adapter. The UI shows aggregate plus per-field validation scores. Older
+adapters display their test scores as legacy results because those scores were
+exposed during iterative training. This covers the local dataset-validation
+and evaluation parts of FineTuneDB's workflow; PromptMesh does not collect
+production logs, support shared dataset editing, or host model training and
+serving.
+
+### Illustrations and motion
+
+The overview hero and the empty run-history states use original transparent
+PromptMesh companion artwork in `static/images/`. Its small float and thought
+animations are decorative, and the shared reduced-motion rule disables them
+for users who request less motion. Evaluate, Compare, Prompt evolution,
+Fine-tune, Test cases, and Run history pair the companion with a small
+task-specific SVG scene.
+
+The API provides `GET /api/training/datasets`, `GET /api/training/adapters`,
+and `POST /api/training/jobs`. The POST accepts only a dataset ID stored under
+`training/datasets/`, with bounded epochs, learning rate, and LoRA rank; it does
+not accept arbitrary file paths or upload dataset contents. The local runner
+saves adapter files under ignored `training/runs/` and registers them as
+`trained:<run-id>` models. PromptMesh's general evaluation page uses the
+configured judge model, which may be remote; use it only with data that may be
+sent to that provider.
 
 ---
 
@@ -226,6 +329,9 @@ GET /api/tasks/{task}/versions
 ```
 GET /api/models
 ```
+
+Local training datasets and saved adapters are listed by
+`GET /api/training/datasets` and `GET /api/training/adapters`.
 
 ---
 
@@ -266,6 +372,17 @@ Runs automated optimization loop.
 ```
 POST /api/test-cases/generate
 ```
+
+### Local fine-tuning
+
+```text
+POST /api/training/jobs
+```
+
+Starts one local LoRA/SFT job; poll its job ID through the existing
+`GET /api/jobs/{job_id}` route. Training is disabled until the local training
+dependencies are available. Only one training job can use the local model
+resources at a time.
 
 ---
 

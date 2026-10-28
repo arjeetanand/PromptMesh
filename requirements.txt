@@ -1,4 +1,6 @@
 # Existing packages
+fastapi
+uvicorn
 ollama
 oci
 cohere
@@ -8,3 +10,11 @@ pyyaml
 PyPDF2
 sentence-transformers  # For vector search
 numpy
+
+# Local small-model fine-tuning (LoRA + supervised fine-tuning)
+torch
+transformers
+peft
+trl
+datasets
+accelerate
