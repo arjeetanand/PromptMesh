@@ -118,8 +118,8 @@
 ## Branch and pull request
 
 - Previous implementation branch: `codex/promptmesh-evaluation-reliability`, evaluation reliability commit `913e392`.
-- This change is being committed on `codex/promptmesh-validation-selection`, based on local `origin/codex/promptmesh-ui-redesign` at `20cf220`.
-- [PR #1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1) was last verified to target `main` and uses the existing head branch `codex/promptmesh-ui-redesign`. GitHub could not be reached during the final local checks; verify the remote head before pushing, and update this PR rather than creating a parallel one.
+- Implementation commit `ff28abb` is on `codex/promptmesh-validation-selection`, based on `origin/codex/promptmesh-ui-redesign` at `20cf220`.
+- [PR #1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1) was last verified to target `main`; a fast-forward push updated its existing head branch `codex/promptmesh-ui-redesign` from `20cf220` to `ff28abb`. The PR was not merged.
 - The user's standing preference is to open/update a PR targeting `main`. Do not merge without explicit approval.
 
 ## Run instructions and next action
