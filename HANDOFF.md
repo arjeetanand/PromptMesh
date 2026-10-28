@@ -160,3 +160,18 @@
 - The user confirmed that `organization` means the claim actor. Updated `extraction/v1` to definition `1.1.0` and aligned the guide; the prompt template hash is captured by new benchmark selections.
 - No training, prompt selection, final test inference, or quantized comparison used these drafts. They are not quality evidence.
 - Added a regression check for the loaded prompt contract. Verification passed: 58 Python `unittest` tests, 9 Node tests, Python compilation, and `git diff --check`. `pytest` is not installed in the project environment; the project suite runs with `unittest`.
+
+## Benchmark sizing and backend capability check — 2026-10-28
+
+- Rechecked the private candidate packet: 19 rows across 19 source groups split 13/3/3, so it cannot pass the validation or final-test minimums.
+- With the current seed-42 group splitter, 67 independent source groups with three distinct, label-consistent examples each produce 141 train / 30 validation / 30 test examples and 47 / 10 / 10 groups. This is one way to meet the current floors, not a human-reviewed dataset; readiness must still be checked after annotation.
+- The restricted command environment's `.venv` has Torch 2.14.1 and bitsandbytes 0.50.0. MPS is built but reports unavailable there, so that quantization-runtime probe reported CPU; the separate host-context check below confirms MPS availability and the adapter-attached path.
+- PR #2 now has the latest head `376784c3f5fd9e43fb83adb801d81224c8f4ea42`, remains open against `main`, and GitGuardian Security Checks passed.
+
+## Adapter-attached MPS canary and preview — 2026-10-28
+
+- Rechecked in the local host context: Torch 2.14.1, bitsandbytes 0.50.0, and `torch.backends.mps.is_available() == True`. The restricted shell had reported MPS unavailable; the API process and escalated local command use the host MPS runtime.
+- Started the current branch with `PROMPTMESH_PORT=6004 ./run.sh` in a persistent local shell. `GET /api/health` is healthy, the current API reports MPS plus BNB INT8/NF4, and `/` returns HTTP 200 with title `PromptMesh — Evaluation workspace`. Existing 4004/5004 processes lack run.sh PID files; they were left untouched. Preview: `http://127.0.0.1:6004`.
+- Adapter-attached MPS smoke used cached Qwen/Qwen3-0.6B weights and the existing legacy synthetic-demo adapter `4d971ab48d8048c2a11af87562f54830`, with local-files-only loading and one fictional input. No dataset, benchmark reservation, or artifact was written. The legacy manifest lacks `tokenizer_revision`; `base_revision` and `tokenizer_revision` were supplied as `None` in memory for this hardware smoke only.
+- Both methods generated JSON on MPS. NF4: 7.366 s load, 1.424 s inference, 24 tokens; it returned year as a string and a shortened claim. INT8: 1.351 s load, 9.668 s inference, 24 tokens; it returned year as an integer and the same shortened claim. These sequential single-input timings are not a performance comparison, and the output is not a quality result.
+- This closes the adapter-attached hardware-path check only. A real prompt-only/LoRA/NF4/INT8 comparison remains pending a sufficiently sized human-reviewed, rights-cleared corpus.

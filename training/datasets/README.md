@@ -42,6 +42,10 @@ not the target label.
 
 Both the validation and frozen test splits must contain at least 30 examples
 across 10 source groups.
+For the current seed-42 group split, one workable planning shape is 67 source
+groups with three distinct, label-consistent examples per group; that yields
+30 examples across 10 groups in each held-out split. Check the app's readiness
+report after annotation because split counts depend on group membership.
 Prompt selection compares the built-in `extraction/v1` template with your
 candidate using validation labels only. After selection, the frozen runner
 compares the prompted base and the matching LoRA adapter on the same reserved

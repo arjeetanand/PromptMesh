@@ -77,7 +77,7 @@
 - [x] Add regression coverage for INT8/NF4 configuration, identical test rows, calibration labeling, and invalid or unavailable API selections.
 - [x] Assert that the loaded extraction prompt definition 1.1.0 keeps the actor/recipient rule.
 - [x] Check Fine-tune at 1440px and 390px in Edge; the document has no horizontal overflow or browser console errors.
-- [ ] Restart the current host server with the new API and verify the adapter-attached NF4/INT8 canary on MPS; this sandbox could not expose its 6004 server to the browser.
+- [x] Verify adapter-attached NF4/INT8 generation on MPS with one synthetic canary input; this confirms the hardware path only, not benchmark quality.
 - [ ] Supply and human-review an authorized real dataset, train a new schema-v3 adapter, and run a real frozen benchmark; no model-quality result exists yet.
 - [ ] Run the quantized comparison on that reviewed corpus; no real quality result or calibration experiment has been produced.
 ## Navigation and background-job follow-up
