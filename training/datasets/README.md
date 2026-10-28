@@ -46,6 +46,12 @@ For the current seed-42 group split, one workable planning shape is 67 source
 groups with three distinct, label-consistent examples per group; that yields
 30 examples across 10 groups in each held-out split. Check the app's readiness
 report after annotation because split counts depend on group membership.
+The local public-source review packet uses three controlled phrasings of one
+source claim per group to exercise wording variation. That meets the row/group
+floors, but it does not create three independent facts per group; uncertainty is
+based on only 10 source groups per held-out split. Its 48 added sources are all
+dated 2024, so it is not balanced for year extraction. Review the packet's
+limitations and source-specific questions before using any rows.
 Prompt selection compares the built-in `extraction/v1` template with your
 candidate using validation labels only. After selection, the frozen runner
 compares the prompted base and the matching LoRA adapter on the same reserved

@@ -73,7 +73,8 @@
 - [x] Run a fixed synthetic backend canary before reserving test data; record matched test metrics, grouped intervals, load/inference time, generated-token rate, and model footprint.
 - [x] Explain that bitsandbytes methods do not use an offline calibration corpus; keep AWQ/GPTQ calibration and QLoRA training explicitly separate.
 - [x] Define `organization` as the claim actor in extraction prompt definition 1.1.0 and the annotation guide.
-- [x] Prepare a private 19-row public-source candidate review packet with source URLs, draft labels, rights status, and reviewer fields; keep it outside the loadable dataset directory.
+- [x] Prepare a private 201-row public-source candidate review packet across 67 source groups with source URLs, draft labels, unresolved rights status, and reviewer fields; keep it outside the loadable dataset directory.
+- [ ] Human-review every candidate and wording variant against its linked source, confirm reuse rights, and expand year diversity before claiming general extraction quality.
 - [x] Add regression coverage for INT8/NF4 configuration, identical test rows, calibration labeling, and invalid or unavailable API selections.
 - [x] Assert that the loaded extraction prompt definition 1.1.0 keeps the actor/recipient rule.
 - [x] Check Fine-tune at 1440px and 390px in Edge; the document has no horizontal overflow or browser console errors.

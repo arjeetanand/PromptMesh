@@ -133,6 +133,11 @@ The optional INT8/NF4 comparison records quality, latency, generated-token rate,
 and model footprint beside the full-precision LoRA control. Model footprint is
 not peak device memory, and one cold run is not a throughput benchmark.
 
+A local, git-ignored public-source review packet has 201 unreviewed draft rows
+in 67 source groups. Each group contains three phrasings of one source claim,
+not three independent facts; all 48 added government-page candidates are dated
+2024. The packet is for review only and does not establish model-quality gains.
+
 ## Quantization, calibration, and QLoRA
 
 The frozen benchmark can optionally compare the full-precision LoRA adapter
