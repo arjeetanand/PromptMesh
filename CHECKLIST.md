@@ -119,6 +119,14 @@
 - [ ] Complete a whole-workspace screen-reader and automated accessibility audit; the current evidence is a targeted manual browser inspection.
 - [ ] Verify provider-backed evaluation, model generation, local training, and quantized benchmark flows end to end; no jobs or provider calls were started in this audit.
 
+## Cached model revision follow-up — 2026-10-29
+
+- [x] Resolve the cached Hugging Face snapshot commit before loading the LoRA base model and tokenizer, with local-only loading enforced.
+- [x] Add regression coverage for commit extraction and reject snapshot paths that cannot prove a pinned revision.
+- [x] Complete a local MPS synthetic smoke run; manifest records the same immutable base/tokenizer revision and keeps the six-example final test unused. Its scores remain workflow-only.
+- [ ] Repeat the smoke run after committing the fix so runtime provenance records a clean source revision.
+- [ ] Human-review and license-check enough candidate groups for a real benchmark; no real quality result is available yet.
+
 ## Navigation and background-job follow-up
 
 - [x] Add a Back to overview control to every non-overview page.

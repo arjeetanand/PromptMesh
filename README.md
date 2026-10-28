@@ -122,6 +122,9 @@ training, and local adapter inference. It does not yet establish model-quality
 gains: the demo data is synthetic, and the general evaluation score is a model
 judge heuristic. Prompt evolution currently selects revisions using the inputs
 supplied to that run, so those inputs are not an independent final test set.
+Each LoRA run resolves the cached Hub snapshot commit, loads the base model and
+tokenizer in local-only mode at that revision, and records the pin in its
+manifest.
 
 The next experiments should use human-reviewed labels and grouped,
 versioned train/validation/test splits. Use validation data for prompt evolution

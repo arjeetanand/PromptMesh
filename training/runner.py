@@ -6,6 +6,7 @@ import shutil
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from training.datasets import (
     format_sft_rows,
@@ -33,6 +34,15 @@ def training_runtime():
 
         device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
     return {"available": not missing, "missing": missing, "device": device, "base_model": BASE_MODEL_ID}
+
+
+def _resolve_cached_base_revision():
+    from huggingface_hub import snapshot_download
+
+    snapshot = Path(snapshot_download(BASE_MODEL_ID, local_files_only=True))
+    if snapshot.parent.name != "snapshots":
+        raise RuntimeError("Could not identify the cached base-model revision")
+    return snapshot.name
 
 
 def _generate(model, tokenizer, prompt_template, rows, max_new_tokens=128):
@@ -100,15 +110,19 @@ def run_lora_training(job_id, request, jobs):
         adapter_dir = run_dir / "adapter"
         jobs.update(job_id, {"progress": 5, "stage": "loading_model"})
         device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
+        base_revision = _resolve_cached_base_revision()
         model = AutoModelForCausalLM.from_pretrained(
             BASE_MODEL_ID,
+            revision=base_revision,
             dtype=torch.float32,
             trust_remote_code=False,
+            local_files_only=True,
         ).to(device)
-        base_revision = getattr(model.config, "_commit_hash", None)
-        tokenizer_args = {"trust_remote_code": False}
-        if base_revision:
-            tokenizer_args["revision"] = base_revision
+        tokenizer_args = {
+            "revision": base_revision,
+            "trust_remote_code": False,
+            "local_files_only": True,
+        }
         tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, **tokenizer_args)
 
         jobs.update(job_id, {"progress": 10, "stage": "evaluating_base"})

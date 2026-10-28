@@ -20,6 +20,20 @@ from training.datasets import (
 )
 from training.metrics import score_predictions
 from training.registry import artifact_tree_sha256, get_adapter_path, get_benchmark_adapter, list_adapters
+from training.runner import BASE_MODEL_ID, _resolve_cached_base_revision
+
+
+class TrainingRunnerProvenanceTests(unittest.TestCase):
+    def test_training_resolves_a_cached_snapshot_commit_without_network_access(self):
+        revision = "c" * 40
+        snapshot = Path("/cache/models--Qwen--Qwen3-0.6B/snapshots") / revision
+        with patch("huggingface_hub.snapshot_download", return_value=str(snapshot)) as download:
+            self.assertEqual(_resolve_cached_base_revision(), revision)
+        download.assert_called_once_with(BASE_MODEL_ID, local_files_only=True)
+
+        with patch("huggingface_hub.snapshot_download", return_value="/cache/model"):
+            with self.assertRaisesRegex(RuntimeError, "cached base-model revision"):
+                _resolve_cached_base_revision()
 
 
 class TrainingDatasetTests(unittest.TestCase):
