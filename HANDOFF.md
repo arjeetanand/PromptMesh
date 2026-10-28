@@ -323,3 +323,10 @@
 - Restarted the app on `http://127.0.0.1:4004/#finetune`; the rendered browser page showed API connected. The timing explanation and legacy fallback were checked with UI fixtures because no real frozen report is available.
 - Commit `03a20ae` (`Measure synchronized inference timing`) was pushed to `codex/promptmesh-validation-selection`, the existing PR #2 branch. PR #2 was previously confirmed to target `main`; the latest `gh pr view` failed because `api.github.com` was unreachable. No merge or deployment occurred.
 - Remaining: public-source labels and reuse permissions are still unreviewed (351 draft rows / 117 groups / zero eligible groups). No real benchmark quality, throughput, or calibration result exists. Next: complete human review and rights checks, build an eligible balanced dataset/card, then train, select on validation, and run one frozen evaluation.
+
+## Host MPS timing smoke — 2026-10-29
+
+- Exercised `_measure_generation` on host MPS with cached `Qwen/Qwen3-0.6B` revision `c1899de289a04d12100db370d81485cdf75e47ca` and validation-only adapter `53cdb2ff066647b4b1e09ef315a9be14`. Hub and Transformers were offline; the only input was the fictional sentence “Northstar announced a research center in 2024.” No dataset, frozen-test reservation, benchmark report, or output artifact was written.
+- One cold pass per arm: full-precision LoRA generated 24 token IDs in 0.4963 s (48.356 tok/s; valid JSON); NF4 generated 29 in 1.2044 s (24.079 tok/s; invalid JSON); INT8 generated 25 in 6.1787 s (4.046 tok/s; valid JSON).
+- These are a hardware-path and timer check only. A single example with different output lengths cannot establish a reliable speed ranking or model quality; the NF4 invalid-JSON result is a synthetic smoke observation, not a benchmark estimate.
+- The local app remains on port 4004. The existing data gate remains unchanged: all 351 candidate rows across 117 groups require human label/source review and reuse-rights evidence before any gold benchmark or calibration study.
