@@ -45,12 +45,13 @@ def _resolve_cached_base_revision():
     return snapshot.name
 
 
-def _generate(model, tokenizer, prompt_template, rows, max_new_tokens=128):
+def _generate(model, tokenizer, prompt_template, rows, max_new_tokens=128, return_token_counts=False):
     import torch
 
     from core.types import render_prompt
 
     outputs = []
+    token_counts = []
     for row in rows:
         prompt = render_prompt(prompt_template, {"text": row["input"]})
         prompt += "\nReturn only a JSON object with exactly these keys: organization, year, claim. Use null for missing fields."
@@ -70,8 +71,11 @@ def _generate(model, tokenizer, prompt_template, rows, max_new_tokens=128):
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.eos_token_id,
             )
-        outputs.append(tokenizer.decode(generated[0, input_length:], skip_special_tokens=True).strip())
-    return outputs
+        generated_tokens = generated[0, input_length:]
+        outputs.append(tokenizer.decode(generated_tokens, skip_special_tokens=True).strip())
+        if return_token_counts:
+            token_counts.append(int(generated_tokens.numel()))
+    return (outputs, token_counts) if return_token_counts else outputs
 
 
 def _score_validation(model, tokenizer, prompt_template, splits):

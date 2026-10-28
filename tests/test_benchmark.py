@@ -208,14 +208,38 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertIsNone(slices["2023"]["record_exact_match_95ci"])
         self.assertEqual(slices["undated"]["record_exact_match"], 1.0)
 
+    def test_generation_timing_synchronizes_accelerators_and_uses_wall_clock(self):
+        events = []
+        fake_torch = types.SimpleNamespace(
+            mps=types.SimpleNamespace(synchronize=lambda: events.append("mps")),
+            cuda=types.SimpleNamespace(synchronize=lambda: events.append("cuda")),
+        )
+
+        def generate(*_args, **kwargs):
+            self.assertTrue(kwargs["return_token_counts"])
+            events.append("generate")
+            return ["prediction"], [7]
+
+        with patch.object(benchmark, "_generate", side_effect=generate), \
+             patch.object(benchmark.time, "perf_counter", side_effect=[10.0, 12.0]):
+            result = benchmark._measure_generation("model", "tokenizer", "prompt", [], fake_torch, "mps")
+
+        self.assertEqual(result, (["prediction"], [7], 2.0))
+        self.assertEqual(events, ["mps", "generate", "mps"])
+        benchmark._synchronize_device(fake_torch, "cuda")
+        benchmark._synchronize_device(fake_torch, "cpu")
+        self.assertEqual(events, ["mps", "generate", "mps", "cuda"])
+
     def test_frozen_report_compares_matched_arms_and_cannot_be_reused_for_a_sweep(self):
         selection_id, _ = self._select_prompt()
         jobs = JobRecorder()
 
-        def generate(_model, _tokenizer, prompt, rows):
+        def generate(_model, _tokenizer, prompt, rows, return_token_counts=False):
             if prompt.startswith("Custom extractor"):
-                return [json.dumps(row["output"]) for row in rows]
-            return ["not json"] * len(rows)
+                predictions = [json.dumps(row["output"]) for row in rows]
+            else:
+                predictions = ["not json"] * len(rows)
+            return (predictions, [2] * len(rows)) if return_token_counts else predictions
 
         request = types.SimpleNamespace(selection_id=selection_id, adapter_run_id=self.adapter_run_id)
         fake_torch = types.SimpleNamespace(__version__="test")
@@ -234,6 +258,8 @@ class FrozenBenchmarkTests(unittest.TestCase):
             self.assertEqual(report["metrics"]["base_initial_prompt"]["record_exact_match"], 0.0)
             self.assertEqual(report["metrics"]["base_validation_selected_prompt"]["record_exact_match"], 1.0)
             self.assertEqual(report["metrics"]["lora_validation_selected_prompt"]["record_exact_match"], 1.0)
+            self.assertEqual(report["performance"]["lora_full_precision"]["generated_tokens"], 60)
+            self.assertIn("Synchronized wall-clock generation", report["performance"]["timing_method"])
             year_slice = report["metrics"]["lora_validation_selected_prompt"]["by_gold_year"]["2024"]
             self.assertEqual(year_slice["examples"], 30)
             self.assertEqual(year_slice["source_groups"], 30)
@@ -288,13 +314,15 @@ class FrozenBenchmarkTests(unittest.TestCase):
             loader_calls.append(quantization_method)
             return FakeModel(), FakeTokenizer(), "cpu", fake_torch
 
-        def generate(_model, _tokenizer, prompt, rows, max_new_tokens=128):
+        def generate(_model, _tokenizer, prompt, rows, max_new_tokens=128, return_token_counts=False):
             generated_inputs.append((max_new_tokens, [row.get("group_id") for row in rows]))
             if "group_id" not in rows[0]:
-                return ["synthetic canary"]
-            if prompt.startswith("Custom extractor"):
-                return [json.dumps(row["output"]) for row in rows]
-            return ["not json"] * len(rows)
+                predictions = ["synthetic canary"]
+            elif prompt.startswith("Custom extractor"):
+                predictions = [json.dumps(row["output"]) for row in rows]
+            else:
+                predictions = ["not json"] * len(rows)
+            return (predictions, [2] * len(rows)) if return_token_counts else predictions
 
         request = types.SimpleNamespace(
             selection_id=selection_id,
@@ -324,6 +352,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertFalse(report["quantized_inference"]["calibration_required"])
         self.assertFalse(variant["calibration_required"])
         self.assertEqual(variant["model_footprint_bytes"], 123456)
+        self.assertEqual(variant["generated_tokens"], 60)
         self.assertEqual(variant["metrics"]["record_exact_match"], 1.0)
         self.assertEqual(variant["metrics"]["by_gold_year"]["2024"]["source_groups"], 30)
         quantized_delta = variant["metrics"]["paired_record_exact_match_delta_95ci"]

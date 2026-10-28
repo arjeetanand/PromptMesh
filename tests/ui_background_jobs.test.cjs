@@ -212,7 +212,10 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
         }
       }
     },
-    performance: { lora_full_precision: { load_seconds: 2, inference_seconds: 3, tokens_per_second: 12, model_footprint_bytes: 800000000 } },
+    performance: {
+      lora_full_precision: { load_seconds: 2, inference_seconds: 3, tokens_per_second: 12, model_footprint_bytes: 800000000 },
+      timing_method: "Synchronized wall-clock generation on MPS/CUDA; CPU generation is synchronous.",
+    },
     environment: { device: "mps", python_version: "3.12.1", platform: "macOS-test", machine: "arm64", packages: { torch: "2.14.1", transformers: "5.1.0", bitsandbytes: "0.50.0" } },
     quantized_inference: {
       backend: "bitsandbytes",
@@ -241,6 +244,7 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
   assert.match(html, /bitsandbytes NF4 · 4-bit/);
   assert.match(html, /Calibration: not required/);
   assert.match(html, /not QLoRA training/);
+  assert.match(html, /Timing: Synchronized wall-clock generation on MPS\/CUDA/);
   assert.match(html, /Paired source-group exact-match Δ vs Base · validation-selected prompt/);
   assert.match(html, /\+30\.0 pp \(\+10\.0 pp to \+50\.0 pp\)/);
   assert.match(html, /Paired source-group exact-match Δ vs Full-precision LoRA control/);
@@ -251,6 +255,14 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
   assert.match(html, /2 source groups · 6 examples/);
   assert.match(html, /Group counts are per year slice/);
   assert.match(html, /unavailable \(&lt;2 groups\)/);
+  delete report.performance.timing_method;
+  context.report = JSON.stringify(report);
+  vm.runInContext("displayFrozenBenchmark(JSON.parse(report))", context);
+  assert.match(elements.get("frozenBenchmarkMetrics").innerHTML, /Timing method not recorded in this report/);
+  delete report.quantized_inference;
+  context.report = JSON.stringify(report);
+  vm.runInContext("displayFrozenBenchmark(JSON.parse(report))", context);
+  assert.match(elements.get("frozenBenchmarkMetrics").innerHTML, /Timing method not recorded in this report/);
   assert.match(html, /0\.37 GiB/);
   assert.match(html, /8\.00 tok\/s/);
   assert.equal(vm.runInContext("pairedDeltaMarkup({})", context), "", "legacy reports render without a paired interval");

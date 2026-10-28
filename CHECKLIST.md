@@ -128,6 +128,13 @@
 - [x] State the local checkpoint-cache requirement consistently in the Fine-tune help and README.
 - [ ] Human-review and license-check enough candidate groups for a real benchmark; no real quality result is available yet.
 
+## Benchmark timing accuracy — 2026-10-29
+
+- [x] Synchronize MPS/CUDA around frozen-benchmark generation and model loading; count generated output token IDs instead of re-tokenizing decoded text.
+- [x] Record the timing method in reports and show a clear fallback for older reports that lack it.
+- [x] Add focused regressions for generated token counts, accelerator synchronization, report metadata, and legacy UI rendering.
+- [ ] Run this timing method on the human-reviewed benchmark corpus; no real quality or throughput result exists yet.
+
 ## Navigation and background-job follow-up
 
 - [x] Add a Back to overview control to every non-overview page.

@@ -155,8 +155,23 @@ def _model_footprint_bytes(model):
         return None
 
 
-def _generation_performance(tokenizer, predictions, elapsed_seconds):
-    generated_tokens = sum(len(tokenizer.encode(text, add_special_tokens=False)) for text in predictions)
+def _synchronize_device(torch, device):
+    if device == "mps":
+        torch.mps.synchronize()
+    elif device == "cuda":
+        torch.cuda.synchronize()
+
+
+def _measure_generation(model, tokenizer, prompt, rows, torch, device):
+    _synchronize_device(torch, device)
+    started = time.perf_counter()
+    predictions, token_counts = _generate(model, tokenizer, prompt, rows, return_token_counts=True)
+    _synchronize_device(torch, device)
+    return predictions, token_counts, time.perf_counter() - started
+
+
+def _generation_performance(token_counts, elapsed_seconds):
+    generated_tokens = sum(token_counts)
     return {
         "inference_seconds": round(elapsed_seconds, 4),
         "generated_tokens": generated_tokens,
@@ -534,6 +549,7 @@ def run_frozen_benchmark(job_id, request, jobs):
                     [{"input": "Northstar announced a research center in 2024."}],
                     max_new_tokens=8,
                 )
+                _synchronize_device(canary_torch, canary_device)
             finally:
                 del canary_model
                 _clear_device_cache(canary_torch, canary_device)
@@ -541,12 +557,13 @@ def run_frozen_benchmark(job_id, request, jobs):
         jobs.update(job_id, {"progress": 5, "stage": "loading_local_base_model"})
         base_load_started = time.perf_counter()
         base_model, tokenizer, device, torch = _load_local_model(adapter)
+        _synchronize_device(torch, device)
         base_load_seconds = time.perf_counter() - base_load_started
         _reserve_frozen_benchmark(selection["dataset_id"], dataset_digest, configuration_digest, request.selection_id)
         jobs.update(job_id, {"progress": 15, "stage": "scoring_frozen_test"})
-        baseline_started = time.perf_counter()
-        baseline_predictions = _generate(base_model, tokenizer, baseline_prompt, test_rows)
-        baseline_seconds = time.perf_counter() - baseline_started
+        baseline_predictions, _, baseline_seconds = _measure_generation(
+            base_model, tokenizer, baseline_prompt, test_rows, torch, device
+        )
         baseline_metrics = score_predictions(test_rows, baseline_predictions)
         baseline_metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, baseline_predictions)
         if selection["selected_prompt_sha256"] == _prompt_sha256(baseline_prompt):
@@ -554,9 +571,9 @@ def run_frozen_benchmark(job_id, request, jobs):
             selected_metrics = baseline_metrics
             selected_seconds = baseline_seconds
         else:
-            selected_started = time.perf_counter()
-            selected_predictions = _generate(base_model, tokenizer, selected_prompt, test_rows)
-            selected_seconds = time.perf_counter() - selected_started
+            selected_predictions, _, selected_seconds = _measure_generation(
+                base_model, tokenizer, selected_prompt, test_rows, torch, device
+            )
             selected_metrics = score_predictions(test_rows, selected_predictions)
             selected_metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, selected_predictions)
         baseline_ci = _record_accuracy_ci(test_rows, baseline_predictions)
@@ -567,11 +584,12 @@ def run_frozen_benchmark(job_id, request, jobs):
         jobs.update(job_id, {"progress": 55, "stage": "scoring_frozen_adapter"})
         adapter_load_started = time.perf_counter()
         adapted_model, adapter_tokenizer, _, _ = _load_local_model(adapter, adapter_path)
+        _synchronize_device(torch, device)
         adapter_load_seconds = time.perf_counter() - adapter_load_started
         adapter_footprint = _model_footprint_bytes(adapted_model)
-        adapter_inference_started = time.perf_counter()
-        adapter_predictions = _generate(adapted_model, adapter_tokenizer, selected_prompt, test_rows)
-        adapter_inference_seconds = time.perf_counter() - adapter_inference_started
+        adapter_predictions, adapter_token_counts, adapter_inference_seconds = _measure_generation(
+            adapted_model, adapter_tokenizer, selected_prompt, test_rows, torch, device
+        )
         adapter_metrics = score_predictions(test_rows, adapter_predictions)
         adapter_metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, adapter_predictions)
         adapter_ci = _record_accuracy_ci(test_rows, adapter_predictions)
@@ -591,7 +609,7 @@ def run_frozen_benchmark(job_id, request, jobs):
         )
         adapter_performance = {
             "load_seconds": round(adapter_load_seconds, 4),
-            **_generation_performance(adapter_tokenizer, adapter_predictions, adapter_inference_seconds),
+            **_generation_performance(adapter_token_counts, adapter_inference_seconds),
             "model_footprint_bytes": adapter_footprint,
         }
         del adapted_model
@@ -608,11 +626,12 @@ def run_frozen_benchmark(job_id, request, jobs):
             quantized_model, quantized_tokenizer, quantized_device, quantized_torch = _load_local_model(
                 adapter, adapter_path, quantization_method=method
             )
+            _synchronize_device(quantized_torch, quantized_device)
             quantized_load_seconds = time.perf_counter() - quantized_load_started
             model_footprint = _model_footprint_bytes(quantized_model)
-            inference_started = time.perf_counter()
-            predictions = _generate(quantized_model, quantized_tokenizer, selected_prompt, test_rows)
-            inference_seconds = time.perf_counter() - inference_started
+            predictions, token_counts, inference_seconds = _measure_generation(
+                quantized_model, quantized_tokenizer, selected_prompt, test_rows, quantized_torch, quantized_device
+            )
             metrics = score_predictions(test_rows, predictions)
             metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, predictions)
             metrics["record_exact_match_95ci"] = _record_accuracy_ci(test_rows, predictions)
@@ -634,7 +653,7 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "llm_int8_threshold": 6.0 if method == "bnb_int8" else None,
                 "calibration_required": False,
                 "load_seconds": round(quantized_load_seconds, 4),
-                **_generation_performance(quantized_tokenizer, predictions, inference_seconds),
+                **_generation_performance(token_counts, inference_seconds),
                 "model_footprint_bytes": model_footprint,
                 "metrics": metrics,
             })
@@ -671,6 +690,7 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "base_initial_prompt_inference_seconds": round(baseline_seconds, 4),
                 "base_selected_prompt_inference_seconds": round(selected_seconds, 4),
                 "lora_full_precision": adapter_performance,
+                "timing_method": "Synchronized wall-clock generation on MPS/CUDA; CPU generation is synchronous. Counts are generated token IDs. One cold pass per arm, not a throughput benchmark.",
                 "memory_note": "Model footprint is not peak device memory; cold single-run timings are not a throughput benchmark.",
             },
             "hardware": {

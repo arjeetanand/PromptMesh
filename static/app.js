@@ -1433,6 +1433,8 @@ function displayFrozenBenchmark(report, created = true) {
     const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
     return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span><div><small>Record exact match</small><strong>" + exact + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics?.field_accuracy) + "</strong></div><div><small>Valid JSON</small><strong>" + formatPercent(metrics?.json_valid_rate) + "</strong></div><b>95% grouped CI " + escapeHTML(ciText) + "</b>" + pairedDeltaMarkup(metrics) + goldYearSlicesMarkup(metrics?.by_gold_year) + "</article>";
   }).join("");
+  const timingMethod = report.performance?.timing_method || "Timing method not recorded in this report.";
+  const timingNote = "<p class=\"benchmark-timing-note\">Timing: " + escapeHTML(timingMethod) + "</p>";
   const quantized = report.quantized_inference;
   if (quantized?.variants?.length) {
     const controlMetrics = report.metrics?.lora_validation_selected_prompt;
@@ -1446,12 +1448,13 @@ function displayFrozenBenchmark(report, created = true) {
       variant
       );
     }).join("");
-    const note = "Calibration: not required for bitsandbytes INT8/NF4. Adapter training: " + quantized.adapter_training_method + " Backend: " + quantized.backend + " " + quantized.backend_version + ". Model footprint is not peak device memory; timings are single cold runs.";
+    const note = "Calibration: not required for bitsandbytes INT8/NF4. Adapter training: " + quantized.adapter_training_method + " Backend: " + quantized.backend + " " + quantized.backend_version + ". Model footprint is not peak device memory.";
     $("frozenBenchmarkMetrics").innerHTML = metricCards
+      + timingNote
       + "<div class=\"quantization-report-heading\"><h4>Quantized adapter inference</h4><p>Matched test quality and single-run resource measurements. " + escapeHTML(note) + "</p></div>"
       + control + variants;
   } else {
-    $("frozenBenchmarkMetrics").innerHTML = metricCards;
+    $("frozenBenchmarkMetrics").innerHTML = timingNote + metricCards;
   }
   updateBenchmarkControls();
 }

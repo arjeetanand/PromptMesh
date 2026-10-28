@@ -134,7 +134,10 @@ metrics with uncertainty alongside latency and memory. A quantized-inference
 comparison should use the same frozen test set and declare the hardware/backend.
 The optional INT8/NF4 comparison records quality, latency, generated-token rate,
 and model footprint beside the full-precision LoRA control. Model footprint is
-not peak device memory, and one cold run is not a throughput benchmark.
+not peak device memory. New reports synchronize MPS/CUDA around timed
+generation and count the generated token IDs directly; CPU timing uses its
+synchronous execution. The report records this method, but each arm still gets
+one cold pass, so these numbers are not a throughput benchmark.
 Frozen reports also include paired source-group bootstrap 95% intervals for
 record exact-match differences: selected prompt vs. initial prompt, LoRA vs.
 the validation-selected base prompt, and each quantized variant vs. full-
