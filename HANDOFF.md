@@ -314,3 +314,12 @@
 - Branch `codex/promptmesh-validation-selection`; implementation commit `c62203d` is on the branch for existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2), previously confirmed to target `main`. No merge or deployment occurred.
 - Remaining: 351 public-source candidate rows / 117 groups are still draft with zero reviewed labels and zero export-eligible groups. Human source, label, and reuse-rights review is required before creating a real benchmark, selecting on validation, running one frozen final test, or making quality claims. Quantized adapter inference remains a synthetic hardware-path check only.
 - Next action: review the candidate packet and source reuse terms, then export only after the 30-example / 10-group floors are met in both validation and final test. Train and select with validation data, then run the final test once and compare full precision with the quantized inference arms.
+
+## Synchronized benchmark timing — 2026-10-29
+
+- Frozen benchmark generation now synchronizes MPS/CUDA before and after timed work and synchronizes model loads before stopping their load timers. CPU execution is synchronous. Throughput counts generated token IDs directly, so decoded text is no longer re-tokenized for this metric.
+- Reports record the timing method without changing the report schema. Fine-tune results show the method for both standard and quantized runs and label older reports that lack it.
+- Verification: 76 Python tests and 14 Node UI tests passed; Python compilation, JavaScript syntax, `bash -n run.sh`, and `git diff --check` passed. Tests use mocked generation; no real accelerator benchmark or model-quality run occurred.
+- Restarted the app on `http://127.0.0.1:4004/#finetune`; the rendered browser page showed API connected. The timing explanation and legacy fallback were checked with UI fixtures because no real frozen report is available.
+- Commit `03a20ae` (`Measure synchronized inference timing`) was pushed to `codex/promptmesh-validation-selection`, the existing PR #2 branch. PR #2 was previously confirmed to target `main`; the latest `gh pr view` failed because `api.github.com` was unreachable. No merge or deployment occurred.
+- Remaining: public-source labels and reuse permissions are still unreviewed (351 draft rows / 117 groups / zero eligible groups). No real benchmark quality, throughput, or calibration result exists. Next: complete human review and rights checks, build an eligible balanced dataset/card, then train, select on validation, and run one frozen evaluation.

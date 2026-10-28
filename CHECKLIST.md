@@ -133,6 +133,7 @@
 - [x] Synchronize MPS/CUDA around frozen-benchmark generation and model loading; count generated output token IDs instead of re-tokenizing decoded text.
 - [x] Record the timing method in reports and show a clear fallback for older reports that lack it.
 - [x] Add focused regressions for generated token counts, accelerator synchronization, report metadata, and legacy UI rendering.
+- [x] Restart the main local app on port 4004 and confirm the Fine-tune page reports API connected.
 - [ ] Run this timing method on the human-reviewed benchmark corpus; no real quality or throughput result exists yet.
 
 ## Navigation and background-job follow-up
