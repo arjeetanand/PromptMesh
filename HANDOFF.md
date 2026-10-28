@@ -166,7 +166,7 @@
 - Rechecked the private candidate packet: 19 rows across 19 source groups split 13/3/3, so it cannot pass the validation or final-test minimums.
 - With the current seed-42 group splitter, 67 independent source groups with three distinct, label-consistent examples each produce 141 train / 30 validation / 30 test examples and 47 / 10 / 10 groups. This is one way to meet the current floors, not a human-reviewed dataset; readiness must still be checked after annotation.
 - The restricted command environment's `.venv` has Torch 2.14.1 and bitsandbytes 0.50.0. MPS is built but reports unavailable there, so that quantization-runtime probe reported CPU; the separate host-context check below confirms MPS availability and the adapter-attached path.
-- PR #2 now has the latest head `376784c3f5fd9e43fb83adb801d81224c8f4ea42`, remains open against `main`, and GitGuardian Security Checks passed.
+- At the time of this checkpoint, PR #2 was at head `376784c3f5fd9e43fb83adb801d81224c8f4ea42`, open against `main`, and GitGuardian Security Checks had passed.
 
 ## Adapter-attached MPS canary and preview — 2026-10-28
 
@@ -184,3 +184,4 @@
 - Source claims and dates were checked against official pages; source-specific ambiguity notes remain in the review sheet, including funding opportunities versus awards, selected versus completed awards, department/office naming, and a USDA headline/URL amount mismatch. Human label review and rights clearance are still required.
 - The actor convention remains `organization` = focal claim actor, as confirmed by the user. No training, prompt selection, frozen benchmark, quantized comparison, or quality claim used this packet.
 - Updated the dataset instructions, README, checklist, and handoff. The production JSONL parser accepted the draft; the 67 groups split 47 / 10 / 10 with 141 / 30 / 30 rows, and all reviewer fields remain blank. This follow-up does not modify application code or load the packet.
+- Documentation commit `146810a` is on `codex/promptmesh-validation-selection` and was pushed to existing PR #2, previously verified to target `main`. The GitHub API was unreachable during this turn, so the PR's current check and merge state was not re-queried.
