@@ -361,11 +361,12 @@ limit beside readiness and selection controls.
 
 Schema-v4 adapter manifests, schema-v2 validation prompt-selection records,
 and schema-v3 frozen benchmark reports record the Python, platform, machine,
-device, and installed versions of the training and inference packages. The
-Fine-tune page surfaces
-the training, selection, and benchmark environments separately and labels
-legacy runs when their environment was not recorded. This is run provenance,
-and the local training stack has an exact macOS ARM64 snapshot in
+device, and installed versions of the training and inference packages, plus
+the PromptMesh Git revision and whether its working tree was dirty when each
+stage finished. Both source fields are `null` when Git metadata is unavailable.
+The Fine-tune page surfaces the training, selection, and benchmark environments
+separately and labels legacy runs when their environment was not recorded. This
+is run provenance, and the local training stack has an exact macOS ARM64 snapshot in
 `requirements-training-macos-arm64.lock`. The rest of `requirements.txt` is
 still unpinned, and the lock has not been validated by installing into a clean
 environment.

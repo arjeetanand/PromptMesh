@@ -84,7 +84,10 @@ class FrozenBenchmarkTests(unittest.TestCase):
             "split_seed": 42,
             "split_strategy": "group-year-stratified-v1",
             "adapter_sha256": artifact_tree_sha256(adapter_dir),
-            "environment": {"device": "cpu", "python_version": "3.12-test", "packages": {"torch": "test"}},
+            "environment": {
+                "device": "cpu", "python_version": "3.12-test", "source_revision": "a" * 40,
+                "source_dirty": False, "packages": {"torch": "test"},
+            },
         }
         (run_dir / "manifest.json").write_text(json.dumps(self.adapter_manifest), encoding="utf-8")
         self.adapter_run_id = run_id
@@ -117,7 +120,11 @@ class FrozenBenchmarkTests(unittest.TestCase):
                 return [json.dumps(row["output"]) for row in rows]
             return ["not json"] * len(rows)
 
-        with patch.object(benchmark, "_load_local_model", return_value=(object(), object(), "cpu", types.SimpleNamespace(__version__="test"))), patch.object(benchmark, "_generate", side_effect=generate):
+        with patch.object(benchmark, "_load_local_model", return_value=(object(), object(), "cpu", types.SimpleNamespace(__version__="test"))), \
+             patch.object(benchmark, "_generate", side_effect=generate), \
+             patch.object(benchmark, "runtime_metadata", return_value={
+                 "device": "cpu", "source_revision": "b" * 40, "source_dirty": True,
+             }):
             benchmark.run_prompt_selection("selection-job", request, jobs)
         self.assertEqual(generated_groups, [validation_groups, validation_groups])
         result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "selection-job" and "result" in changes)
@@ -132,6 +139,8 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertEqual(selection["split_strategy"], "group-year-stratified-v1")
         self.assertEqual(selection["selected_prompt_id"], "candidate-1")
         self.assertEqual(selection["environment"]["device"], "cpu")
+        self.assertEqual(selection["environment"]["source_revision"], "b" * 40)
+        self.assertTrue(selection["environment"]["source_dirty"])
         result = next(changes["result"] for _job_id, changes in jobs.updates if "result" in changes)
         self.assertEqual(result["environment"]["device"], "cpu")
         self.assertEqual(len(selection["selection_sha256"]), 64)
@@ -184,7 +193,11 @@ class FrozenBenchmarkTests(unittest.TestCase):
 
         request = types.SimpleNamespace(selection_id=selection_id, adapter_run_id=self.adapter_run_id)
         fake_torch = types.SimpleNamespace(__version__="test")
-        with patch.object(benchmark, "_load_local_model", return_value=(object(), FakeTokenizer(), "cpu", fake_torch)) as load_model, patch.object(benchmark, "_generate", side_effect=generate):
+        with patch.object(benchmark, "_load_local_model", return_value=(object(), FakeTokenizer(), "cpu", fake_torch)) as load_model, \
+             patch.object(benchmark, "_generate", side_effect=generate), \
+             patch.object(benchmark, "runtime_metadata", return_value={
+                 "device": "cpu", "source_revision": "c" * 40, "source_dirty": False,
+             }):
             benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
@@ -204,8 +217,14 @@ class FrozenBenchmarkTests(unittest.TestCase):
             self.assertEqual(report["test_examples"], 30)
             self.assertEqual(report["test_source_groups"], 30)
             self.assertEqual(report["adapter_environment"]["python_version"], "3.12-test")
+            self.assertEqual(report["adapter_environment"]["source_revision"], "a" * 40)
+            self.assertFalse(report["adapter_environment"]["source_dirty"])
             self.assertEqual(report["prompt_selection_environment"]["device"], "cpu")
+            self.assertEqual(report["prompt_selection_environment"]["source_revision"], "b" * 40)
+            self.assertTrue(report["prompt_selection_environment"]["source_dirty"])
             self.assertEqual(report["environment"]["device"], "cpu")
+            self.assertEqual(report["environment"]["source_revision"], "c" * 40)
+            self.assertFalse(report["environment"]["source_dirty"])
             self.assertEqual(report["metrics"]["lora_validation_selected_prompt"]["record_exact_match_95ci"]["method"], "source-group bootstrap percentile interval")
             report_path = self.benchmarks_dir / "reviewed" / self.dataset_digest / "final.json"
             reservation_path = self.benchmarks_dir / "reviewed" / self.dataset_digest / "reservation.json"

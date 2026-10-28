@@ -205,6 +205,15 @@
 - Branch/commit: `codex/promptmesh-validation-selection`, implementation commit `ee93c0a`, pushed to the existing PR #2 targeting `main`. The push succeeded; GitHub API and DNS were unavailable afterward, so the PR's live state and checks could not be re-queried during this follow-up.
 - No new training or benchmark job ran in this follow-up. Synthetic and public-source candidate data remain unused for model-quality claims; human review and rights clearance are still the next gate.
 
+## Source revision reproducibility — 2026-10-29
+
+- Runtime metadata now captures the current PromptMesh Git revision and a dirty/clean working-tree flag from one `git status --porcelain=v2` snapshot. If Git is unavailable or the source is outside a checkout, both values are `null`; no paths or diffs are saved.
+- New adapter manifests and validation selections carry their own source state. Frozen reports keep separate adapter-training, prompt-selection, and benchmark source states. The existing schemas remain backward compatible because these are optional environment fields.
+- Fine-tune runtime summaries show the short code revision and dirty/clean state; the details tooltip retains the full revision. Older environment records still render normally.
+- Verification: 70 Python `unittest` tests and 12 Node UI tests passed; Python compilation, JavaScript syntax, `run.sh` syntax, and `git diff --check` passed. In the local browser at `http://127.0.0.1:4004/#finetune`, the page loaded with API connected and the unchanged review packet showed 351 rows / 117 groups / 0 reviewed. Existing adapter records are legacy and do not have source metadata, so no real record with the new label was available in the browser; the focused UI test covers it.
+- No model-training, prompt-selection, frozen-benchmark, or quantized-inference job ran. The public-source candidate labels and reuse rights remain unreviewed, so no model-quality or calibration claim is supported.
+- Branch: `codex/promptmesh-validation-selection`. This update is prepared for the existing PR #2 targeting `main`; the GitHub API was unreachable during this turn, so its live state could not be re-queried.
+
 ## Year-diverse public-source candidates — 2026-10-29
 
 - Appended 45 rows across 15 groups to the ignored local review packet, using official sources from Apple, United Launch Alliance, Xbox, Google, Microsoft, NIST, OpenAI, NVIDIA, DeepMind, NASA, and Anthropic. The candidates add proposed years 2020, 2021, 2022, 2023, and 2025; all source claims remain unreviewed drafts.

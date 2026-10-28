@@ -203,7 +203,11 @@ test("runtime labels distinguish missing metadata from measured environments", (
   const { context } = loadApp();
   const measured = vm.runInContext("runtimeSummary({device:'mps', python_version:'3.12.1', packages:{torch:'2.14.1', transformers:'5.1.0'}})", context);
   const missing = vm.runInContext("runtimeSummary(null) || 'Runtime versions not recorded (legacy run)'", context);
+  const source = vm.runInContext("runtimeSummary({device:'mps', source_revision:'abcdef0123456789', source_dirty:true})", context);
+  const details = vm.runInContext("runtimeDetails({platform:'macOS-test', source_revision:'abcdef0123456789', source_dirty:false})", context);
 
   assert.equal(measured, "mps · Python 3.12.1 · torch 2.14.1 · transformers 5.1.0");
   assert.equal(missing, "Runtime versions not recorded (legacy run)");
+  assert.equal(source, "mps · code abcdef01 (dirty)");
+  assert.match(details, /source revision abcdef0123456789 · source tree clean/);
 });

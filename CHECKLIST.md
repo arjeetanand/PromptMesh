@@ -102,6 +102,7 @@
 ## Runtime reproducibility follow-up
 
 - [x] Record Python, platform, device, and installed training/inference package versions in adapter, validation-selection, and frozen-benchmark records.
+- [x] Record the PromptMesh source revision and clean/dirty working-tree state in each stage's runtime metadata, and surface it in the Fine-tune UI.
 - [x] Surface training, selection, and benchmark runtime metadata in the Fine-tune UI and distinguish older runs with missing metadata.
 - [x] Pin the current Python 3.12 / macOS ARM64 LoRA/SFT and bitsandbytes dependency closure; verify every lock pin matches the active `.venv` and `pip check` passes.
 - [ ] Install the local training lock into a clean environment and confirm setup before treating it as a freshly reproduced environment.

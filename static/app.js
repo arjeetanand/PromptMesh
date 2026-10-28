@@ -1391,19 +1391,25 @@ function displayFrozenBenchmark(report, created = true) {
 function runtimeSummary(environment) {
   if (!environment) return "";
   const packages = environment.packages || {};
+  const source = typeof environment.source_revision === "string" && environment.source_revision && "code " + environment.source_revision.slice(0, 8)
+    + (typeof environment.source_dirty === "boolean" ? (environment.source_dirty ? " (dirty)" : " (clean)") : "");
   return [
     environment.device,
     environment.python_version && "Python " + environment.python_version,
     packages.torch && "torch " + packages.torch,
     packages.transformers && "transformers " + packages.transformers,
-    packages.bitsandbytes && "bitsandbytes " + packages.bitsandbytes
+    packages.bitsandbytes && "bitsandbytes " + packages.bitsandbytes,
+    source
   ].filter(Boolean).join(" · ");
 }
 
 function runtimeDetails(environment) {
   if (!environment) return "";
   const packages = Object.entries(environment.packages || {}).map(([name, version]) => name + " " + (version || "not installed"));
-  return [environment.platform, environment.machine, ...packages].filter(Boolean).join(" · ");
+  const source = typeof environment.source_revision === "string" && environment.source_revision
+    ? ["source revision " + environment.source_revision, typeof environment.source_dirty === "boolean" && "source tree " + (environment.source_dirty ? "dirty" : "clean")]
+    : [];
+  return [environment.platform, environment.machine, ...source, ...packages].filter(Boolean).join(" · ");
 }
 
 function formatDeltaPoints(value) {
