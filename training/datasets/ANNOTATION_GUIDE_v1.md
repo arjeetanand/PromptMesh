@@ -1,7 +1,7 @@
 # Entity extraction annotation guide v1
 
 - **Guideline ID:** `entity-extraction-v1`
-- **Task prompt:** `extraction/v1`
+- **Task prompt:** `extraction/v1` (definition `1.1.0`)
 - **Output fields:** `organization`, `year`, `claim`
 
 Use this protocol to create or review gold labels. Examples below are fictional
@@ -18,10 +18,13 @@ reference without relying on outside knowledge.
 
 ## Field rules
 
-- **`organization`**: Use the organization explicitly connected to the event.
-  Preserve the name form used in the passage; do not expand an abbreviation,
-  resolve an alias, infer a parent company, or choose a better-known entity from
-  external knowledge. If no organization is stated, use JSON `null`.
+- **`organization`**: Use the named organization that performs the focal action
+  in the claim (the actor/subject). Do not substitute a recipient or beneficiary
+  just because it is also named. Preserve the name form used in the passage; do
+  not expand an abbreviation, resolve an alias, infer a parent company, or
+  choose a better-known entity from external knowledge. If the actor is not
+  stated, use JSON `null`. Exclude passages with multiple equally central actors
+  unless the task explicitly defines how to represent them.
 - **`year`**: Use the four-digit year explicitly tied to the event, as an integer.
   Do not substitute the article's publication year, the current year, a decade,
   or a year inferred from relative wording such as “last year.” Use `null` if no
@@ -52,6 +55,15 @@ in Kochi in 2024.”
 ```
 
 The event year is 2024; 2025 is only the publication year.
+
+Input: “Fictional Transit Authority awarded a grant to Cedar Mobility in 2024 to open a
+transit route.”
+
+```json
+{"organization":"Fictional Transit Authority","year":2024,"claim":"awarded a grant to Cedar Mobility to open a transit route"}
+```
+
+The agency is the actor that awarded the grant; Cedar Mobility is the recipient.
 
 Input: “A fictional notice says Alder Transit may open a depot in Kochi next
 year.”

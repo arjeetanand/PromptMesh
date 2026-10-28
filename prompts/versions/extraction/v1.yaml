@@ -1,5 +1,5 @@
 prompt_id: entity_extraction
-version: "1.0.0"
+version: "1.1.0"
 task: extraction
 task_type: structured_output
 
@@ -30,6 +30,7 @@ template: |
 
   Rules:
   - Use ONLY explicitly stated facts.
+  - For organization, use the explicitly named actor/subject performing the claim, not a recipient or beneficiary.
   - If missing, return null.
   - Do not infer.
 

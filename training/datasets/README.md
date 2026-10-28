@@ -36,6 +36,10 @@ cannot independently verify that a reviewer checked the labels. Ordinary
 training remains available for experimentation. No human-reviewed benchmark
 has been supplied. Do not report a quality result from the synthetic demo.
 
+The current `extraction/v1` prompt definition (`1.1.0`) and the guide both use
+the named actor/subject for `organization`; recipients and beneficiaries are
+not the target label.
+
 Both the validation and frozen test splits must contain at least 30 examples
 across 10 source groups.
 Prompt selection compares the built-in `extraction/v1` template with your

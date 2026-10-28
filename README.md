@@ -291,6 +291,8 @@ and source data local. Follow the versioned
 when reviewing labels. Training is available for experimentation without a
 review card; prompt selection and final benchmarking enforce its matching hash
 and `human_reviewed` attestation.
+The current extraction prompt definition treats `organization` as the actor
+performing the claim, not its recipient.
 PromptMesh assigns complete groups to deterministic train, validation, and
 reserved final-test splits, requires at least 12 distinct groups, and records
 the dataset SHA-256 with the adapter. Private dataset files and trained runs

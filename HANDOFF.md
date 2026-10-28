@@ -151,3 +151,12 @@
 - Corrected stale README language: training may run without review metadata, while prompt selection and frozen benchmarking require the matching `human_reviewed` card and dataset fingerprint. That card remains a local self-attestation.
 - No authorized corpus was added or marked reviewed. A human still needs to populate and review the ignored dataset/card before model-quality or quantization claims can be made.
 - Annotation guide and documentation commit `b8c4e4f` is on `codex/promptmesh-validation-selection`; whitespace and benchmark-card JSON checks passed. Runtime tests were not rerun because this follow-up changes documentation and templates only.
+
+## Public-source review packet follow-up — 2026-10-28
+
+- Prepared an ignored review packet under `training/datasets/review_packets/`: 19 concise source-based candidate inputs in `UNREVIEWED_DRAFT_candidates_20261028.jsonl`, a review sheet with source links/draft labels/rights status/reviewer fields, and packet instructions.
+- The packet is not in Git and is below benchmark minimums. With 19 source groups, PromptMesh splits it 13/3/3; the validation and test splits each need at least 30 examples across 10 groups. No card is present and the app does not list the nested packet as a dataset.
+- The existing parser accepts the row schema; readiness reports `missing_card`. All entries remain `NEEDS_HUMAN_REVIEW`, and source reuse permission is unverified. NASA pages need page-level third-party checks; commercial pages need reuse terms checked. NASA’s official media-use guidance explains these exceptions: https://www.nasa.gov/nasa-brand-center/images-and-media/.
+- The user confirmed that `organization` means the claim actor. Updated `extraction/v1` to definition `1.1.0` and aligned the guide; the prompt template hash is captured by new benchmark selections.
+- No training, prompt selection, final test inference, or quantized comparison used these drafts. They are not quality evidence.
+- Added a regression check for the loaded prompt contract. Verification passed: 58 Python `unittest` tests, 9 Node tests, Python compilation, and `git diff --check`. `pytest` is not installed in the project environment; the project suite runs with `unittest`.

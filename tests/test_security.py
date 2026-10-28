@@ -71,6 +71,12 @@ class PromptRenderingTests(unittest.TestCase):
 
 
 class PromptRegistryTests(unittest.TestCase):
+    def test_extraction_prompt_defines_organization_as_the_claim_actor(self):
+        prompt = PromptRegistry().load("extraction", "v1")
+        self.assertEqual(prompt["version"], "1.1.0")
+        self.assertIn("actor/subject performing the claim", prompt["template"])
+        self.assertIn("not a recipient or beneficiary", prompt["template"])
+
     def test_loads_a_valid_prompt_and_lists_versions(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "versions"
