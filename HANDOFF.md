@@ -18,14 +18,14 @@
 - Added gentle character float and thought-dot animation; the existing `prefers-reduced-motion` rule disables it.
 - Browser verification passed at 1600px desktop and 390px mobile widths. Both poses loaded (1345px source width), neither view had horizontal overflow, and the run-history empty state rendered its alternate pose.
 - Confirmed the reduced-motion rule is present. `node --check static/app.js`, `bash -n run.sh`, and `git diff --check` passed.
-- Branch: `codex/promptmesh-illustrations`, based on `1e9c543`; implementation commit: `d1f1625`. This follow-up has not been pushed or merged.
+- Original illustration implementation commit `d1f1625` is included in the updated PR #1 history; PR #1 remains unmerged.
 
 ## Section illustration follow-up
 
 - Added a small companion vignette beside the page title on Evaluate, Compare, Prompt evolution, Fine-tune, Test cases, and Run history. Each uses the existing mascot artwork and a task-specific inline SVG scene (score/check, paired prompts, revision loop, model graph, test cards, or run timeline) in the PromptMesh blue and amber.
 - Kept the form and data areas unchanged; no JavaScript behavior or dependencies were added.
 - Browser verification passed at 1600px desktop and 390px mobile widths. All six images and SVG symbols rendered, with no horizontal overflow.
-- The section markup and styles are included in the evaluation reliability follow-up on `codex/promptmesh-evaluation-reliability`, based on `107a847`.
+- The section markup and styles are included in implementation commit `913e392` on `codex/promptmesh-evaluation-reliability`, based on `107a847`.
 
 ## Concepts and interview framing
 
@@ -73,9 +73,8 @@
 
 ## Branch and pull request
 
-- Working branch: `codex/promptmesh-evaluation-reliability`, based on local illustration commit `107a847`.
-- Pull request: [#1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1), targeting `main`; its existing head branch is `codex/promptmesh-ui-redesign`.
-- This follow-up is prepared to update PR #1 after committing; do not merge it.
+- Working branch: `codex/promptmesh-evaluation-reliability`, implementation commit `913e392`, based on local illustration commit `107a847`.
+- Updated [PR #1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1), targeting `main`; its head branch is `codex/promptmesh-ui-redesign` at `913e392`.
 - Do not merge PR #1.
 
 ## Run instructions and next action
@@ -83,4 +82,4 @@
 - Current local server: `http://127.0.0.1:4004`; start with `source .venv/bin/activate && ./run.sh` in this environment. `/api/health` returned `healthy` during handoff.
 - Create/activate `.venv`, then run `pip install -r requirements.txt`.
 - Main: `./run.sh` → `http://127.0.0.1:4004`; test and preview ports are 5004 and 6004.
-- Next: verify PR #1 still targets `main` when the GitHub API is reachable; do not merge it.
+- Next: build the reviewed gold benchmark and validation-only prompt/model selection before reporting quality gains.

@@ -22,7 +22,7 @@
 - [x] Generate an original two-pose PromptMesh companion and optimize the transparent images as WebP.
 - [x] Add the companion to the overview and empty run-history states with reduced-motion-aware animation.
 - [x] Verify image loading, desktop/mobile rendering, and the history empty state in the browser.
-- [x] Commit this follow-up locally on `codex/promptmesh-illustrations`; do not push or merge without approval.
+- [x] Include the original illustration implementation in PR #1 targeting `main`; leave the PR unmerged.
 
 ## Section illustration follow-up
 
@@ -38,7 +38,7 @@
 - [x] Add regression tests and clarify the LLM-judge scope in the UI and README.
 - [x] Run the complete suite (29 passed), Python compilation, JavaScript syntax check, and diff check.
 - [x] Verify the Evaluate label, API connection, mobile layout at 390px, and browser console.
-- [ ] Commit and update PR #1 targeting `main`; do not merge.
+- [x] Commit as `913e392` and update PR #1 targeting `main`; leave the PR unmerged.
 
 ## Next résumé milestones
 
