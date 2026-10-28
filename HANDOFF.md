@@ -74,7 +74,7 @@
 ## Branch and pull request
 
 - Working branch: `codex/promptmesh-evaluation-reliability`, implementation commit `913e392`, based on local illustration commit `107a847`.
-- Updated [PR #1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1), targeting `main`; its head branch is `codex/promptmesh-ui-redesign` at `913e392`.
+- Updated [PR #1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1), targeting `main`, on its existing head branch `codex/promptmesh-ui-redesign`; implementation commit `913e392` is included.
 - Do not merge PR #1.
 
 ## Run instructions and next action
