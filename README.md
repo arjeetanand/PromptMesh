@@ -205,7 +205,8 @@ it over an INT8/NF4 base measures quantized adapter inference; it is not QLoRA
 training. QLoRA would require training the adapter while the frozen base is
 loaded in 4-bit NF4, which is not implemented here. The tracked demo dataset is
 synthetic, so its output is workflow evidence only and cannot support a model
-quality claim.
+quality claim. Fine-tune results, saved adapter cards, and model selectors keep
+that synthetic status beside the displayed metrics.
 
 ---
 

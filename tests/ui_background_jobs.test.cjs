@@ -16,11 +16,13 @@ function loadApp() {
       classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
       addEventListener(event, handler) { this.listeners[event] = handler; },
       add(option) { (this.options ||= []).push(option); },
+      append(...children) { (this.children ||= []).push(...children); },
       replaceChildren(...children) { this.children = children; this.options = []; },
       setAttribute(name, value) { this.attributes[name] = value; },
       getAttribute(name) { return this.attributes[name] ?? null; },
       showModal() { this.open = true; }, close() { this.open = false; }, scrollIntoView() { this.scrolled = true; },
-      querySelector() { return element(id + "Submit"); }
+      querySelector() { return element(id + "Submit"); },
+      querySelectorAll() { return []; }
     });
     return elements.get(id);
   }
@@ -35,7 +37,7 @@ function loadApp() {
     window,
     URL,
     Option: function (text, value) { return { textContent: text, value }; },
-    document: { getElementById: element, querySelectorAll() { return []; }, querySelector() { return null; }, addEventListener() {} },
+    document: { getElementById: element, createElement(tag) { return { ...element("created-" + tag + "-" + elements.size), tagName: tag }; }, querySelectorAll() { return []; }, querySelector() { return null; }, addEventListener() {} },
     clearInterval(id) { timers.delete(id); },
     fetch: async () => ({ ok: true, json: async () => jobResponse })
   });
@@ -51,6 +53,27 @@ test("candidate source changes are announced to assistive technology", () => {
 
   assert.match(sourceRegion, /aria-live="polite"/);
   assert.match(sourceRegion, /aria-atomic="true"/);
+});
+
+test("synthetic adapter metrics keep their workflow-only context", () => {
+  const { context, elements } = loadApp();
+  context.adapterData = JSON.stringify([{
+    id: "trained:demo", dataset_id: "entity_extraction_demo", metrics_split: "validation",
+    dataset_sha256: "demo-hash", benchmark_manifest_ready: true, run_id: "demo-run",
+    metrics: { record_exact_match: 0.5 }
+  }]);
+  context.modelData = JSON.stringify({ all: ["trained:demo"], fast: [] });
+  vm.runInContext("state.trainedAdapters = JSON.parse(adapterData); state.models = JSON.parse(modelData); populateModelSelectors(); renderSavedAdapters()", context);
+
+  assert.match(elements.get("evalModels").children[0].children[1].textContent, /synthetic demo · workflow only/);
+  assert.match(elements.get("evolveModel").options[0].textContent, /synthetic demo · workflow only/);
+  assert.match(elements.get("savedAdapterList").children[0].children[0].innerHTML, /synthetic demo · workflow only/);
+  context.datasetData = JSON.stringify([{ id: "entity_extraction_demo", sha256: "demo-hash", synthetic: true }]);
+  vm.runInContext("state.trainingDatasets = JSON.parse(datasetData); $('fineTuneDataset').value = 'entity_extraction_demo'; updateBenchmarkControls()", context);
+  assert.match(elements.get("benchmarkAdapter").options[0].textContent, /synthetic demo · workflow only/);
+
+  vm.runInContext("renderLossChart = () => {}; displayFineTuneRun({dataset_id:'entity_extraction_demo', split_counts:{validation:6}, metrics:{}, elapsed_seconds:1})", context);
+  assert.match(elements.get("fineTuneSummary").textContent, /synthetic demo · workflow evidence only, not model-quality evidence/);
 });
 
 test("candidate review coverage exposes draft year and source-host concentration", () => {

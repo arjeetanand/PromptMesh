@@ -144,6 +144,12 @@
 - [x] Restart the app on port 4004 and confirm the Fine-tune page reports API connected.
 - [ ] Verify the announcement with a screen reader and run axe; neither was run in this browser check.
 
+## Synthetic adapter provenance — 2026-10-29
+
+- [x] Label synthetic-demo metrics as workflow-only in fine-tune results, saved adapters, benchmark adapter choices, and trained-model selectors.
+- [x] Add a focused UI regression; all 16 UI tests pass, with JavaScript syntax and diff checks clean.
+- [x] Reload the Fine-tune page on port 4004 and confirm the updated UI is served; inspect evaluation model labels too.
+
 ## Navigation and background-job follow-up
 
 - [x] Add a Back to overview control to every non-overview page.

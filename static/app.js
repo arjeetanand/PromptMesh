@@ -132,6 +132,7 @@ async function loadInitialData() {
   populateTrainingDatasets();
   renderCandidateReviewPacket();
   await loadSavedAdapters();
+  populateModelSelectors();
   $("overviewTaskCount").textContent = String(state.tasks.length);
   $("overviewModelCount").textContent = String((state.models.all || []).length);
   const unavailable = [tasksResult, modelsResult].some((result) => result.status === "rejected");
@@ -152,6 +153,9 @@ function populateTaskDropdowns() {
 }
 
 function populateModelSelectors() {
+  const modelLabel = (model) => state.trainedAdapters.some((adapter) =>
+    adapter.id === model && adapter.dataset_id === "entity_extraction_demo"
+  ) ? model + " · synthetic demo · workflow only" : model;
   ["evalModels", "compareModels"].forEach((id) => {
     const container = $(id);
     const prior = new Set(Array.from(container.querySelectorAll("input:checked"), (input) => input.value));
@@ -172,7 +176,7 @@ function populateModelSelectors() {
       input.checked = prior.has(model) || (id === "evalModels" && !prior.size && (state.models.fast || []).includes(model));
       const name = document.createElement("span");
       name.className = "model-name";
-      name.textContent = model;
+      name.textContent = modelLabel(model);
       label.append(input, name);
       container.append(label);
     });
@@ -180,7 +184,7 @@ function populateModelSelectors() {
   const select = $("evolveModel");
   const prior = select.value;
   select.replaceChildren(new Option("Select a model", ""));
-  (state.models.all || []).forEach((model) => select.add(new Option(model, model)));
+  (state.models.all || []).forEach((model) => select.add(new Option(modelLabel(model), model)));
   if ((state.models.all || []).includes(prior)) select.value = prior;
 }
 
@@ -894,7 +898,8 @@ function renderSavedAdapters() {
     const copy = document.createElement("div");
     const fingerprint = adapter.dataset_sha256 ? " · data " + adapter.dataset_sha256.slice(0, 12) : "";
     const metricLabel = adapter.metrics_split === "validation" ? "validation exact match " : "legacy test metric (previously exposed) ";
-    copy.innerHTML = "<strong>" + escapeHTML(adapter.dataset_id) + "</strong><span>" + escapeHTML(adapter.id + fingerprint) + " · " + metricLabel + formatPercent(adapter.metrics?.record_exact_match) + "</span>";
+    const provenance = adapter.dataset_id === "entity_extraction_demo" ? " · synthetic demo · workflow only" : "";
+    copy.innerHTML = "<strong>" + escapeHTML(adapter.dataset_id) + "</strong><span>" + escapeHTML(adapter.id + fingerprint) + " · " + metricLabel + formatPercent(adapter.metrics?.record_exact_match) + escapeHTML(provenance) + "</span>";
     const runtime = document.createElement("span");
     runtime.textContent = runtimeSummary(adapter.environment) || "Runtime versions not recorded (legacy run)";
     runtime.title = runtimeDetails(adapter.environment);
@@ -920,7 +925,8 @@ function updateBenchmarkControls() {
     dataset && adapter.dataset_id === dataset.id && adapter.dataset_sha256 === dataset.sha256 && adapter.metrics_split === "validation" && adapter.benchmark_manifest_ready
   );
   compatible.forEach((adapter) => {
-    select.add(new Option(adapter.run_id + " · validation exact match " + formatPercent(adapter.metrics?.record_exact_match), adapter.run_id));
+    const provenance = adapter.dataset_id === "entity_extraction_demo" ? " · synthetic demo · workflow only" : "";
+    select.add(new Option(adapter.run_id + " · validation exact match " + formatPercent(adapter.metrics?.record_exact_match) + provenance, adapter.run_id));
   });
   if (compatible.some((adapter) => adapter.run_id === previous)) select.value = previous;
   else if (compatible.length === 1) select.value = compatible[0].run_id;
@@ -1372,8 +1378,9 @@ function displayFineTuneRun(result) {
   const base = result.metrics?.base || {};
   const adapter = result.metrics?.adapter || {};
   const fingerprint = result.dataset_sha256 ? " · data " + result.dataset_sha256.slice(0, 12) : "";
+  const provenance = result.dataset_id === "entity_extraction_demo" ? " · synthetic demo · workflow evidence only, not model-quality evidence" : "";
   $("fineTuneResults").hidden = false;
-  $("fineTuneSummary").textContent = result.dataset_id + fingerprint + " · " + (splits.validation || 0) + " validation examples scored · final test reserved · " + (result.elapsed_seconds || 0) + " seconds";
+  $("fineTuneSummary").textContent = result.dataset_id + fingerprint + provenance + " · " + (splits.validation || 0) + " validation examples scored · final test reserved · " + (result.elapsed_seconds || 0) + " seconds";
   $("fineTuneStats").innerHTML = statMarkup("Base checkpoint", result.base_model)
     + statMarkup("Adapter", result.model_id)
     + statMarkup("Training examples", splits.train || 0)
