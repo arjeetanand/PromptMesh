@@ -7,7 +7,7 @@ Build PromptMesh into a reproducible structured-extraction study that can suppor
 ## Architecture decisions
 
 - Keep the existing `group_id` JSONL contract and deterministic source-group splits.
-- Use validation data for prompt, hyperparameter, and adapter selection. Do not expose final-test scores during iterative training or prompt evolution.
+- Use validation data for prompt and adapter selection. Keep the reserved test split out of training and prompt selection; reserve it before inference and do not retry after a possible test access.
 - Use deterministic gold-label metrics as primary evidence. Keep the configured LLM judge as an optional heuristic diagnostic.
 - Store dataset hash, prompt/version hash, base model and tokenizer revisions, adapter identity, seed, split counts, hardware, and inference settings with every benchmark report.
 - Do not install a quantization backend or download additional model weights until a compatible path is selected and authorized.
@@ -19,32 +19,35 @@ Tasks and checkpoints are tracked in the repository's existing `CHECKLIST.md`.
 ### Phase 1: Stop test-set feedback during selection
 
 1. **Fine-tuning selection metrics:** score the base and LoRA adapter on validation rows during training; reserve the test rows; label old adapter results as legacy test metrics. Add a regression that proves the training comparison receives validation rows. (Implemented, verified, and committed as `68204e1`.)
-2. **Prompt-evolution split:** keep candidate generation and selection on an optimization set, then add a separate, explicit final evaluation path that reports deterministic gold metrics only after prompt selection is frozen. The current UI labels optimization inputs and LLM-judge heuristics; it cannot enforce separation from a future benchmark yet.
+2. **Prompt-selection boundary:** keep the existing LLM-judge evolution workflow as a heuristic optimization tool. Candidate prompts can be copied into the Fine-tune validation selector, which compares them with `extraction/v1` using gold validation metrics before final evaluation.
 
 ### Checkpoint: selection boundary
 
 - [x] LoRA training selection uses validation rows only; the final-test split is not scored during training.
 - [x] UI labels distinguish validation metrics from historical exposed test results and reserved final-test counts; prompt evolution identifies its heuristic optimization scores.
 - [x] Regression checks cover validation-only LoRA scoring and prompt-evolution score provenance.
-- [ ] Prompt evolution and training cannot access examples reserved for the final benchmark, and a separate frozen evaluator exists.
+- [x] Local LoRA training scores validation only; prompt selection scores validation only; the frozen evaluator uses the test split only after selection.
+- [x] A frozen report cannot be rerun with a different prompt selection or adapter for the same dataset fingerprint.
 
 ### Phase 2: Human-reviewed benchmark and matched comparison
 
-3. **Benchmark provenance:** accept a user-authorized, human-reviewed dataset; enforce review/provenance metadata without committing private examples. A JSONL row template and an unreviewed card template are now prepared; no reviewed dataset has been supplied.
-4. **Frozen benchmark runner:** compare the base model with a selected prompt-only configuration and a selected LoRA adapter on one untouched test split. Record exact data, model, tokenizer, prompt, adapter, seed, metrics, and failure slices; report uncertainty when sample size allows.
-5. **Benchmark UI and report:** make validation results usable during iteration and show the final test report as a distinct, frozen result.
+3. **Benchmark provenance:** validate the user-authored card against exact dataset bytes and require a local review attestation and complete counts before selection/evaluation. Both validation and test splits need the minimum size. Templates are ready; no reviewed dataset has been supplied, and the card cannot independently prove the review occurred.
+4. **Validation prompt selector:** compare `extraction/v1` plus up to three candidate prompts on grouped validation rows using exact match, field accuracy, and JSON-valid rate. Save a hash-checked selection record with adapter/data/card/model provenance.
+5. **Frozen benchmark runner:** reserve the dataset version before scoring; compare base+initial prompt, base+validation-selected prompt, and LoRA+the same selected prompt on the identical untouched test rows. Save aggregate metrics, source-group bootstrap intervals, split/model/tokenizer/prompt/adapter/data/card hashes, device and inference settings. Use only cached pinned weights. If a run fails after reservation, create a new dataset version before another final run.
+6. **Benchmark UI and report:** add validation-selection and final-report controls to Fine-tune; show the test report as a separate frozen result.
 
 ### Checkpoint: quality evidence
 
-- [ ] Human review is verified from the dataset card and the user-provided source.
-- [ ] Prompt-only and LoRA scores use identical untouched examples.
-- [ ] Results are reproducible from saved hashes/revisions and include failure analysis.
+- [ ] A user supplies an authorized, representative corpus and performs human label review; the local card remains a self-attestation.
+- [x] Prompt-only and LoRA report arms use identical untouched examples after validation-based selection.
+- [x] Reports carry data/card/model/tokenizer/prompt/adapter hashes and revisions, exact split counts, hardware, decoding settings, and grouped uncertainty intervals.
+- [ ] Add per-slice failure analysis and inspect real model outputs on the supplied corpus.
 
 ### Phase 3: Quantized inference study
 
-6. **Backend decision:** choose an installed, hardware-compatible quantization backend; ask before installing packages or downloading new weights.
-7. **Matched inference report:** run unquantized and quantized variants on the same frozen benchmark and hardware; record quality, warm/cold latency, peak memory, precision, and serving settings.
-8. **UI disclosure:** show backend/hardware and keep quantization claims absent until the measured comparison completes.
+7. **Backend decision:** choose an installed, hardware-compatible quantization backend; ask before installing packages or downloading new weights.
+8. **Matched inference report:** run unquantized and quantized variants on the same frozen benchmark and hardware; record quality, warm/cold latency, peak memory, precision, and serving settings.
+9. **UI disclosure:** show backend/hardware and keep quantization claims absent until the measured comparison completes.
 
 ### Checkpoint: efficiency evidence
 
@@ -54,9 +57,10 @@ Tasks and checkpoints are tracked in the repository's existing `CHECKLIST.md`.
 
 ## Current verified gaps
 
-- `training/runner.py` now computes base and adapter selection metrics on validation rows only. New manifests mark `metrics_split: validation`, `test_split_used: false`, the prompt hash/version, and tokenizer revision. No final-test benchmark runner exists yet.
-- `optimization/evolver.py` evaluates and selects prompt candidates on the same supplied `task_inputs` using LLM-judge scores. The UI now calls these optimization inputs and the export records score method, input role, and count; there is no gold-label scoring or enforced final-test boundary for this flow.
-- The repository contains only the synthetic demo dataset. The card template remains `unreviewed`; no human-review provenance or user-authorized benchmark corpus is present, and the training flow does not enforce the card yet.
+- `training/runner.py` trains LoRA and scores the base/adapter on validation only; schema-v3 manifests fingerprint the adapter artifact and record validation provenance. Prompt selection and the frozen matched benchmark are implemented in `training/benchmark.py` and exposed in the Fine-tune UI.
+- `optimization/evolver.py` still scores revisions on user-supplied optimization inputs with an LLM judge. It is not directly wired to the gold validation selector; users paste a candidate into the Fine-tune flow to score it.
+- The repository contains only the synthetic demo dataset. The tracked card template remains `unreviewed`; no user-authorized human-reviewed corpus or real model benchmark exists. The card is checked as a self-attestation and is not an independent review audit.
+- Local final evaluation uses only already-cached pinned weights; the training flow can download Qwen weights when explicitly run on an uncached machine. No training, model download, provider request, or final test evaluation occurred in this implementation turn.
 - The live PromptMesh API reports MPS and its server process has loaded the Apple Metal driver, while a fresh CLI probe reports MPS unavailable. Reconcile this before quantization measurements. `mlx`, `mlx_lm`, `llama_cpp`, and `bitsandbytes` are not installed.
 
 ## Risks and open questions
@@ -64,6 +68,6 @@ Tasks and checkpoints are tracked in the repository's existing `CHECKLIST.md`.
 | Risk / question | Impact | Mitigation |
 |---|---|---|
 | No human-reviewed dataset is available in the repository | Cannot substantiate quality claims | Use an authorized redacted dataset supplied by the user; keep it gitignored |
-| Prompt evolution still selects revisions on its supplied inputs | Scores can overfit the evolution set | Route candidate selection through validation and keep the final benchmark separate |
+| Prompt evolution still selects revisions on its supplied inputs | Judge scores can overfit the optimization set | Treat evolution as heuristic generation; use the gold validation selector before any final report |
 | No compatible quantization runtime is installed; the app/CLI MPS reports differ | No valid quantized measurement yet | Reconcile the live runtime and choose a supported backend before requesting installation |
 | Hosted judge/model calls may send example text externally and incur cost | Privacy and cost exposure | Keep hosted calls out of benchmark runs unless specifically authorized |

@@ -15,7 +15,9 @@ const state = {
   jobHistory: [],
   lastEvaluationResults: null,
   lastComparisonResults: null,
-  lastEvolutionResults: null
+  lastEvolutionResults: null,
+  lastPromptSelection: null,
+  lastBenchmarkReport: null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -232,7 +234,7 @@ function setupNavigation() {
 }
 
 function validTab(tab) { return ["overview", "evaluate", "compare", "evolve", "finetune", "testcases", "history"].includes(tab); }
-function canRunInBackground(type) { return type === "training" || type === "evolution"; }
+function canRunInBackground(type) { return ["training", "evolution", "promptSelection", "frozenBenchmark"].includes(type); }
 
 function activateTab(tab, updateHash) {
   if (!validTab(tab)) tab = "overview";
@@ -310,6 +312,10 @@ function setupForms() {
   $("testcasesForm").addEventListener("submit", handleTestcase);
   $("fineTuneForm").addEventListener("submit", handleFineTune);
   $("fineTuneDataset").addEventListener("change", updateFineTuneDatasetNote);
+  $("promptSelectionForm").addEventListener("submit", handlePromptSelection);
+  $("benchmarkAdapter").addEventListener("change", updateBenchmarkControls);
+  $("benchmarkCandidatePrompt").addEventListener("input", updateBenchmarkControls);
+  $("runFrozenBenchmarkBtn").addEventListener("click", handleFrozenBenchmark);
   $("evaluateAdapterBtn").addEventListener("click", () => useAdapterInEvaluation(state.activeAdapterModel));
   $("savedAdapterList").addEventListener("click", (event) => {
     const button = event.target.closest("[data-model]");
@@ -381,8 +387,9 @@ function renderFineTuneDatasetReadiness(dataset) {
   const title = document.createElement("strong");
   title.textContent = "Dataset readiness";
   const status = document.createElement("span");
-  status.className = "dataset-quality-status" + (dataset.error ? " is-warning" : " is-ready");
-  status.textContent = dataset.error ? "Needs repair" : "Ready";
+  const benchmarkReady = Boolean(dataset.benchmark?.validation_ready && dataset.benchmark?.final_test_ready);
+  status.className = "dataset-quality-status" + (dataset.error || !benchmarkReady ? " is-warning" : " is-ready");
+  status.textContent = dataset.error ? "Needs repair" : benchmarkReady ? "Review card complete" : dataset.synthetic ? "Demo only" : dataset.benchmark?.card_ready ? "Split too small" : "Training ready";
   heading.append(title, status);
   container.append(heading);
 
@@ -416,10 +423,12 @@ function renderFineTuneDatasetReadiness(dataset) {
   const benchmark = dataset.benchmark || {};
   const benchmarkNote = document.createElement("p");
   benchmarkNote.className = "dataset-validation-note";
-  if (benchmark.ready) {
-    benchmarkNote.textContent = `Final benchmark card: reviewer-attested · ${benchmark.reviewed_examples} examples · ${benchmark.reviewed_source_groups} source groups · dataset hash matched`;
+  if (benchmark.card_ready && benchmark.validation_ready && benchmark.final_test_ready) {
+    benchmarkNote.textContent = `Review metadata matches this dataset hash. Review is self-attested; PromptMesh cannot verify label quality. Validation: ${benchmark.validation_examples} examples / ${benchmark.validation_source_groups} groups. Final test: ${benchmark.final_test_examples} examples / ${benchmark.final_test_source_groups} groups.`;
+  } else if (benchmark.card_ready) {
+    benchmarkNote.textContent = `Review metadata matches this dataset hash, but selection and final scoring require at least ${benchmark.minimum_final_test_examples || 30} examples across ${benchmark.minimum_final_test_groups || 10} source groups in both validation and final test. Review is self-attested.`;
   } else {
-    benchmarkNote.textContent = "Final benchmark unavailable · " + (benchmark.reason || "Add a reviewer-attested benchmark card.");
+    benchmarkNote.textContent = "Final benchmark unavailable · " + (benchmark.reason || "Add a matching review card; review status is self-attested.");
   }
   container.append(benchmarkNote);
 
@@ -446,11 +455,13 @@ function renderFineTuneDatasetReadiness(dataset) {
   digest.title = dataset.sha256 || "Dataset fingerprint unavailable";
   fingerprint.append(label, digest);
   container.append(fingerprint);
+  updateBenchmarkControls();
 }
 
 function updateFineTuneSubmit() {
   const dataset = state.trainingDatasets.find((item) => item.id === $("fineTuneDataset").value);
   $("fineTuneSubmit").disabled = state.jobBusy || !state.trainingRuntime?.available || !dataset || Boolean(dataset.error);
+  updateBenchmarkControls();
 }
 
 async function loadSavedAdapters() {
@@ -461,6 +472,7 @@ async function loadSavedAdapters() {
   } catch {
     state.trainedAdapters = [];
     $("savedAdapters").hidden = true;
+    updateBenchmarkControls();
   }
 }
 
@@ -484,6 +496,50 @@ function renderSavedAdapters() {
     row.append(copy, button);
     list.append(row);
   });
+  updateBenchmarkControls();
+}
+
+function updateBenchmarkControls() {
+  const select = $("benchmarkAdapter");
+  if (!select) return;
+  const dataset = state.trainingDatasets.find((item) => item.id === $("fineTuneDataset").value);
+  const previous = select.value;
+  select.replaceChildren(new Option("Select a validation adapter", ""));
+  const compatible = state.trainedAdapters.filter((adapter) =>
+    dataset && adapter.dataset_id === dataset.id && adapter.dataset_sha256 === dataset.sha256 && adapter.metrics_split === "validation" && adapter.benchmark_manifest_ready
+  );
+  compatible.forEach((adapter) => {
+    select.add(new Option(adapter.run_id + " · validation exact match " + formatPercent(adapter.metrics?.record_exact_match), adapter.run_id));
+  });
+  if (compatible.some((adapter) => adapter.run_id === previous)) select.value = previous;
+  else if (compatible.length === 1) select.value = compatible[0].run_id;
+  select.disabled = !compatible.length || state.jobBusy;
+  $("benchmarkCandidatePrompt").disabled = state.jobBusy;
+
+  const note = $("benchmarkWorkflowNote");
+  const candidate = $("benchmarkCandidatePrompt").value.trim();
+  const cardReady = Boolean(dataset?.benchmark?.card_ready);
+  const validationReady = Boolean(dataset?.benchmark?.validation_ready);
+  const testReady = Boolean(dataset?.benchmark?.final_test_ready);
+  const selectionMatches = Boolean(
+    state.lastPromptSelection && dataset &&
+    state.lastPromptSelection.dataset_id === dataset.id &&
+    state.lastPromptSelection.dataset_sha256 === dataset.sha256 &&
+    state.lastPromptSelection.adapter_run_id === select.value
+  );
+  if (!dataset) note.textContent = "Choose a local dataset to check benchmark readiness.";
+  else if (dataset.synthetic) note.textContent = "Synthetic demo data cannot be used for prompt selection or a final benchmark.";
+  else if (!cardReady) note.textContent = dataset.benchmark?.reason || "A matching review card is required; review status is self-attested.";
+  else if (!validationReady || !testReady) note.textContent = "Validation selection and final scoring each require at least 30 examples across 10 source groups.";
+  else if (!compatible.length) note.textContent = "Train a validation-scored LoRA adapter on this exact dataset fingerprint first.";
+  else if (selectionMatches && state.lastBenchmarkReport?.dataset_sha256 === dataset.sha256) note.textContent = "A frozen report already exists for this dataset version; another test sweep is blocked.";
+  else if (selectionMatches) note.textContent = "Prompt selected on validation. Run the frozen comparison once to score the reserved test set. Review metadata is self-attested.";
+  else note.textContent = "Selection uses validation labels only; final-test results stay hidden until the frozen comparison. Review metadata is self-attested.";
+
+  const promptValid = /\{\{\s*text\s*\}\}/.test(candidate);
+  const finalAlreadyRun = state.lastBenchmarkReport?.dataset_sha256 === dataset?.sha256;
+  $("promptSelectionSubmit").disabled = state.jobBusy || !state.trainingRuntime?.available || !cardReady || !validationReady || !testReady || !compatible.length || !promptValid || finalAlreadyRun;
+  $("runFrozenBenchmarkBtn").disabled = state.jobBusy || !state.trainingRuntime?.available || !selectionMatches || !validationReady || !testReady || finalAlreadyRun;
 }
 
 async function connectAPI() {
@@ -601,6 +657,52 @@ async function handleFineTune(event) {
   }
 }
 
+async function handlePromptSelection(event) {
+  event.preventDefault();
+  if (state.jobBusy) return showToast("Wait for the current local model run to finish.", "warning");
+  const dataset = $("fineTuneDataset").value;
+  const adapterRunId = $("benchmarkAdapter").value;
+  const candidate = $("benchmarkCandidatePrompt").value.trim();
+  if (!dataset || !adapterRunId) return showToast("Choose a reviewed dataset and matching validation adapter.", "error");
+  if (!/\{\{\s*text\s*\}\}/.test(candidate)) return showToast("The candidate prompt must include {{text}}.", "error");
+  state.jobBusy = true;
+  setExperimentButtonsDisabled(true);
+  try {
+    const result = await apiCall("training/prompt-selections", {
+      method: "POST",
+      body: JSON.stringify({ dataset_id: dataset, adapter_run_id: adapterRunId, candidate_prompts: [candidate] })
+    });
+    if (!result.job_id) throw new Error("The API did not return a prompt-selection job ID.");
+    startPolling(result.job_id, "promptSelection");
+  } catch (error) {
+    state.jobBusy = false;
+    setExperimentButtonsDisabled(false);
+    showToast("Could not start validation prompt selection: " + error.message, "error");
+  }
+}
+
+async function handleFrozenBenchmark() {
+  if (state.jobBusy) return showToast("Wait for the current local model run to finish.", "warning");
+  if (!state.lastPromptSelection?.selection_id) return showToast("Select a prompt on validation first.", "error");
+  state.jobBusy = true;
+  setExperimentButtonsDisabled(true);
+  try {
+    const result = await apiCall("training/benchmarks", {
+      method: "POST",
+      body: JSON.stringify({
+        selection_id: state.lastPromptSelection.selection_id,
+        adapter_run_id: state.lastPromptSelection.adapter_run_id
+      })
+    });
+    if (!result.job_id) throw new Error("The API did not return a frozen benchmark job ID.");
+    startPolling(result.job_id, "frozenBenchmark");
+  } catch (error) {
+    state.jobBusy = false;
+    setExperimentButtonsDisabled(false);
+    showToast("Could not start the frozen benchmark: " + error.message, "error");
+  }
+}
+
 async function submitJob(endpoint, payload, type) {
   if (state.jobBusy) return showToast("Wait for the current model run to finish.", "warning");
   state.jobBusy = true;
@@ -628,7 +730,7 @@ function updateBackgroundJobStatus() {
   const job = state.backgroundJob;
   const button = $("backgroundJobStatus");
   if (!job || !canRunInBackground(job.type)) { button.hidden = true; return; }
-  const label = job.type === "training" ? "LoRA" : "Evolution";
+  const label = ({ training: "LoRA", evolution: "Evolution", promptSelection: "Prompt selection", frozenBenchmark: "Benchmark" })[job.type] || "Model job";
   const descriptions = {
     running: [label + " " + Math.round(job.progress || 0) + "%", "in progress. Select to view progress."],
     paused: [label + " status paused", "updates paused. Select to retry."],
@@ -638,7 +740,7 @@ function updateBackgroundJobStatus() {
   const [text, detail] = descriptions[job.status] || descriptions.running;
   $("backgroundJobStatusText").textContent = text;
   button.dataset.status = job.status;
-  button.setAttribute("aria-label", (job.type === "training" ? "Local LoRA training " : "Prompt evolution ") + detail);
+  button.setAttribute("aria-label", label + " " + detail);
   button.title = button.getAttribute("aria-label");
   button.hidden = false;
 }
@@ -661,11 +763,12 @@ function openBackgroundJob() {
     showToast(job.message || "The background job failed.", "error");
     return;
   }
-  const tab = job.type === "training" ? "finetune" : "evolve";
+  const tab = ["training", "promptSelection", "frozenBenchmark"].includes(job.type) ? "finetune" : "evolve";
   state.backgroundJob = null;
   updateBackgroundJobStatus();
   activateTab(tab, true);
-  $(tab === "finetune" ? "fineTuneResults" : "evolveResults").scrollIntoView({ behavior: "smooth", block: "start" });
+  const target = job.type === "promptSelection" ? "promptSelectionResults" : job.type === "frozenBenchmark" ? "frozenBenchmarkResults" : tab === "finetune" ? "fineTuneResults" : "evolveResults";
+  $(target).scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function startPolling(jobId, type) {
@@ -679,7 +782,7 @@ function startPolling(jobId, type) {
   }
   showProgressModal(type);
   let polls = 0;
-  const maxPolls = type === "training" ? 1800 : 150;
+  const maxPolls = ["training", "promptSelection", "frozenBenchmark"].includes(type) ? 1800 : 150;
   state.pollingTimer = window.setInterval(async () => {
     polls += 1;
     if (polls > maxPolls) {
@@ -703,6 +806,28 @@ function startPolling(jobId, type) {
           setBackgroundJobStatus(type, "completed", "Local adapter training completed.");
           await loadInitialData();
           showToast("Local LoRA training completed. Results are ready in Fine-tune.", "success");
+          return;
+        }
+        if (type === "promptSelection") {
+          if (!job.result?.selection_id) {
+            setBackgroundJobStatus(type, "failed", "Prompt selection completed without a saved result.");
+            showToast("Prompt selection completed without a saved result.", "warning");
+            return;
+          }
+          displayPromptSelection(job.result);
+          setBackgroundJobStatus(type, "completed", "Validation prompt selection completed.");
+          showToast("Prompt selected using validation labels. The final test remains untouched.", "success");
+          return;
+        }
+        if (type === "frozenBenchmark") {
+          if (!job.result?.report) {
+            setBackgroundJobStatus(type, "failed", "Benchmark completed without a report.");
+            showToast("Benchmark completed without a report.", "warning");
+            return;
+          }
+          displayFrozenBenchmark(job.result.report, job.result.created);
+          setBackgroundJobStatus(type, "completed", "Frozen benchmark report saved.");
+          showToast("Frozen benchmark report is ready in Fine-tune.", "success");
           return;
         }
         const hasResults = Array.isArray(job.results)
@@ -741,10 +866,10 @@ function stopPolling() {
 }
 
 function showProgressModal(type) {
-  const labels = { evaluation: "Running model evaluation", comparison: "Comparing prompt versions", evolution: "Evolving the prompt", training: "Training a local LoRA adapter" };
+  const labels = { evaluation: "Running model evaluation", comparison: "Comparing prompt versions", evolution: "Evolving the prompt", training: "Training a local LoRA adapter", promptSelection: "Selecting a prompt on validation", frozenBenchmark: "Running the frozen benchmark" };
   $("progressTitle").textContent = labels[type] || "Running your job";
   const backgroundJob = state.backgroundJob?.type === type && state.backgroundJob.status === "running" ? state.backgroundJob : null;
-  $("progressText").textContent = backgroundJob?.message || (type === "training" ? "Loading the local base model and preparing validation metrics." : "The API is waiting for model responses.");
+  $("progressText").textContent = backgroundJob?.message || (type === "training" ? "Loading the local base model and preparing validation metrics." : type === "promptSelection" ? "Comparing prompt candidates with gold labels on validation data." : type === "frozenBenchmark" ? "Scoring the untouched test split with the frozen configuration." : "The API is waiting for model responses.");
   $("progressFootnote").textContent = canRunInBackground(type) ? "You can navigate elsewhere in PromptMesh. Keep this browser tab open for progress updates." : "You can keep this tab open while the models respond.";
   $("progressFill").style.width = (backgroundJob?.progress || 0) + "%";
   $("progressBackgroundBtn").hidden = !canRunInBackground(type);
@@ -760,6 +885,11 @@ function updateProgress(percent, status, stage) {
     evaluating_base: "Scoring the base model on validation examples.",
     training: "Training LoRA weights and measuring validation loss.",
     evaluating_adapter: "Scoring the adapter on the same validation examples.",
+    loading_local_model: "Loading the cached local checkpoint; network downloads are disabled.",
+    scoring_validation_prompt: "Scoring candidate prompts on validation labels only.",
+    loading_local_base_model: "Loading the pinned local base checkpoint.",
+    scoring_frozen_test: "Scoring the reserved test split with the frozen prompt.",
+    scoring_frozen_adapter: "Scoring the same reserved examples with the selected LoRA adapter.",
     completed: "Training is complete; final-test examples remain reserved."
   };
   const message = labels[stage] || (status === "running" ? "Models are processing the selected inputs." : (status || "Working…"));
@@ -834,6 +964,42 @@ function displayFineTuneRun(result) {
     ...["organization", "year", "claim"].map((field) => trainingMetricMarkup(field + " exact", base.field_exact_match?.[field], adapter.field_exact_match?.[field]))
   ].join("");
   renderLossChart(result.training_loss || [], result.validation_loss || []);
+}
+
+function displayPromptSelection(result) {
+  state.lastPromptSelection = result;
+  $("promptSelectionResults").hidden = false;
+  $("promptSelectionSummary").textContent = result.validation_examples + " validation examples · selected " + result.selected_prompt_id + " · final test not accessed";
+  $("promptSelectionMetrics").innerHTML = (result.candidates || []).map((candidate) => {
+    const metrics = candidate.metrics || {};
+    return "<article class=\"training-metric\"><span>" + escapeHTML(candidate.id) + "</span><div><small>Record exact match</small><strong>" + formatPercent(metrics.record_exact_match) + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics.field_accuracy) + "</strong></div><b>" + formatPercent(metrics.json_valid_rate) + " valid JSON</b></article>";
+  }).join("");
+  updateBenchmarkControls();
+}
+
+function displayFrozenBenchmark(report, created = true) {
+  state.lastBenchmarkReport = report;
+  const fingerprint = report.dataset_sha256 ? report.dataset_sha256.slice(0, 12) : "—";
+  $("frozenBenchmarkResults").hidden = false;
+  $("frozenBenchmarkSummary").textContent = (created ? "Saved once" : "Loaded existing frozen report") + " · dataset " + fingerprint + " · selection and adapter were fixed before test scoring.";
+  $("frozenBenchmarkStats").innerHTML = statMarkup("Test examples", report.test_examples)
+    + statMarkup("Source groups", report.test_source_groups)
+    + statMarkup("Pinned base revision", report.base_revision)
+    + statMarkup("Device", report.hardware?.device)
+    + statMarkup("LoRA adapter", report.adapter_run_id)
+    + statMarkup("Dataset SHA-256", fingerprint);
+  const labels = [
+    ["Base · extraction/v1", report.metrics?.base_initial_prompt],
+    ["Base · validation-selected prompt", report.metrics?.base_validation_selected_prompt],
+    ["LoRA · validation-selected prompt", report.metrics?.lora_validation_selected_prompt]
+  ];
+  $("frozenBenchmarkMetrics").innerHTML = labels.map(([label, metrics]) => {
+    const exact = formatPercent(metrics?.record_exact_match);
+    const interval = metrics?.record_exact_match_95ci;
+    const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
+    return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span><div><small>Record exact match</small><strong>" + exact + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics?.field_accuracy) + "</strong></div><div><small>Valid JSON</small><strong>" + formatPercent(metrics?.json_valid_rate) + "</strong></div><b>95% grouped CI " + escapeHTML(ciText) + "</b></article>";
+  }).join("");
+  updateBenchmarkControls();
 }
 
 function trainingMetricMarkup(label, base, adapter) {

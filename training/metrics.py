@@ -26,6 +26,18 @@ def _parse_output(output):
     return parsed
 
 
+def _is_exact_record(row, parsed):
+    if parsed is None:
+        return False
+    for field in FIELDS:
+        actual = parsed[field]
+        expected = row["output"][field]
+        matches = actual == expected if field == "year" else _normalize_text(actual) == _normalize_text(expected)
+        if not matches:
+            return False
+    return True
+
+
 def score_predictions(rows, predictions):
     if len(rows) != len(predictions) or not rows:
         raise ValueError("Predictions must match a non-empty held-out split")
@@ -38,7 +50,6 @@ def score_predictions(rows, predictions):
         if parsed is None:
             continue
         valid_json += 1
-        exact = True
         for field in FIELDS:
             actual = parsed[field]
             expected = row["output"][field]
@@ -47,8 +58,7 @@ def score_predictions(rows, predictions):
             else:
                 match = _normalize_text(actual) == _normalize_text(expected)
             field_correct[field] += int(match)
-            exact = exact and match
-        exact_records += int(exact)
+        exact_records += int(_is_exact_record(row, parsed))
 
     count = len(rows)
     field_accuracy = round(sum(field_correct.values()) / (count * len(FIELDS)), 4)

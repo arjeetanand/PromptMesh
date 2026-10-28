@@ -49,7 +49,7 @@
 - [x] Prepare a non-ingested JSONL row template and an `unreviewed` benchmark-card template; keep filled data and cards gitignored.
 - [x] Label prompt-evolution examples as optimization inputs, disclose LLM-judge heuristic scores, and include score/input provenance in exported results.
 - [x] Run focused training and evolution regressions, the full suite, syntax checks, and desktop/mobile UI checks at 390px.
-- [ ] Route prompt evolution through validation data and add a separate frozen final-benchmark runner.
+- [x] Add a separate gold-validation prompt selector and frozen final-benchmark runner; evolution remains a heuristic workflow whose candidates can be copied into the selector.
 
 ## Next résumé milestones
 
@@ -57,6 +57,19 @@
 - [ ] Compare base, prompt-only, and LoRA results on the same untouched test examples; report task metrics and uncertainty.
 - [ ] Measure quantized versus unquantized inference quality, latency, and memory on a declared backend and hardware.
 - [ ] Publish a reproducible run manifest and demo that distinguish synthetic workflow checks from model-quality evidence.
+
+## Gold benchmark workflow
+
+- [x] Validate the reviewer card against the exact JSONL fingerprint, review/count metadata, and source-group split; keep synthetic data ineligible.
+- [x] Mark readiness as a self-attested review card, not independently verified human review; require at least 30 validation and test examples across 10 source groups each.
+- [x] Compare extraction/v1 and a candidate prompt on gold validation data only, and save a hash-checked selection record tied to a validation-only schema-v3 LoRA adapter.
+- [x] Reserve the frozen test set before inference, then compare base+initial prompt, base+selected prompt, and LoRA+selected prompt on identical test rows; include aggregate metrics and source-group bootstrap intervals.
+- [x] Store selection/report artifacts locally with private permissions and keep them out of Git.
+- [x] Add Fine-tune UI controls and background-job progress/result states for prompt selection and final benchmarking.
+- [x] Review Fine-tune at desktop in Edge and inspect 1440px, 768px, and 390px layouts; synthetic data is blocked and the inspector reports no horizontal overflow. No physical phone test was performed.
+- [x] Rerun the full Python suite (51 passed), UI job checks (8 passed), syntax checks, and whitespace validation.
+- [ ] Supply and human-review an authorized real dataset, train a new schema-v3 adapter, and run a real frozen benchmark; no model-quality result exists yet.
+- [ ] Measure quantized versus unquantized inference on supported hardware after selecting an installed backend.
 ## Navigation and background-job follow-up
 
 - [x] Add a Back to overview control to every non-overview page.

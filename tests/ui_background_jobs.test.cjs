@@ -15,6 +15,8 @@ function loadApp() {
       textContent: "", title: "", attributes: {}, listeners: {},
       classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
       addEventListener(event, handler) { this.listeners[event] = handler; },
+      add(option) { (this.options ||= []).push(option); },
+      replaceChildren(...children) { this.children = children; this.options = []; },
       setAttribute(name, value) { this.attributes[name] = value; },
       getAttribute(name) { return this.attributes[name] ?? null; },
       showModal() { this.open = true; }, close() { this.open = false; }, scrollIntoView() { this.scrolled = true; },
@@ -31,6 +33,7 @@ function loadApp() {
   };
   const context = vm.createContext({
     window,
+    Option: function (text, value) { return { textContent: text, value }; },
     document: { getElementById: element, querySelectorAll() { return []; }, querySelector() { return null; }, addEventListener() {} },
     clearInterval(id) { timers.delete(id); },
     fetch: async () => ({ ok: true, json: async () => jobResponse })
@@ -41,7 +44,12 @@ function loadApp() {
   return { context, elements, timers, setJobResponse(response) { jobResponse = response; } };
 }
 
-for (const [type, label] of [["training", "LoRA"], ["evolution", "Evolution"]]) {
+for (const [type, label] of [
+  ["training", "LoRA"],
+  ["evolution", "Evolution"],
+  ["promptSelection", "Prompt selection"],
+  ["frozenBenchmark", "Benchmark"]
+]) {
   test(`${label} progress can close and reopen while polling stays active`, () => {
     const { context, elements, timers } = loadApp();
     vm.runInContext(`state.backgroundJob = { jobId: "job-1", type: "${type}", status: "paused", progress: 32 }; openBackgroundJob();`, context);
@@ -64,9 +72,16 @@ for (const [type, label] of [["training", "LoRA"], ["evolution", "Evolution"]]) 
     const { context, elements, timers, setJobResponse } = loadApp();
     const response = type === "training"
       ? { status: "completed", result: {} }
-      : { status: "completed", results: { history: [{ score: 1, prompt: "improved" }] } };
+      : type === "evolution"
+        ? { status: "completed", results: { history: [{ score: 1, prompt: "improved" }] } }
+        : { status: "completed", result: type === "promptSelection" ? { selection_id: "selection-1" } : { report: { status: "completed" } } };
     setJobResponse(response);
-    vm.runInContext(`showToast = () => {}; ${type === "training" ? "displayFineTuneRun = () => {}; loadInitialData = async () => {};" : "displayEvolution = () => {}; addToHistory = () => {};"} startPolling("job-1", "${type}");`, context);
+    const setup = type === "training"
+      ? "displayFineTuneRun = () => {}; loadInitialData = async () => {};"
+      : type === "evolution"
+        ? "displayEvolution = () => {}; addToHistory = () => {};"
+        : type === "promptSelection" ? "displayPromptSelection = () => {};" : "displayFrozenBenchmark = () => {};";
+    vm.runInContext(`showToast = () => {}; ${setup} startPolling("job-1", "${type}");`, context);
     elements.get("progressBackgroundBtn").listeners.click();
     await timers.values().next().value();
 
@@ -74,7 +89,8 @@ for (const [type, label] of [["training", "LoRA"], ["evolution", "Evolution"]]) 
     assert.equal(vm.runInContext("state.backgroundJob.status", context), "completed");
     assert.equal(elements.get("backgroundJobStatusText").textContent, `${label} complete`);
     elements.get("backgroundJobStatus").listeners.click();
-    assert.equal(vm.runInContext("state.activeTab", context), type === "training" ? "finetune" : "evolve");
-    assert.equal(elements.get(type === "training" ? "fineTuneResults" : "evolveResults").scrolled, true);
+    assert.equal(vm.runInContext("state.activeTab", context), ["training", "promptSelection", "frozenBenchmark"].includes(type) ? "finetune" : "evolve");
+    const target = type === "promptSelection" ? "promptSelectionResults" : type === "frozenBenchmark" ? "frozenBenchmarkResults" : type === "training" ? "fineTuneResults" : "evolveResults";
+    assert.equal(elements.get(target).scrolled, true);
   });
 }

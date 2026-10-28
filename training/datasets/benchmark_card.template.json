@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "dataset_id": "REPLACE_WITH_DATASET_ID",
+  "dataset_sha256": "REPLACE_WITH_SHA256_FROM_DATASET_READINESS",
   "task": "entity_extraction",
   "source": {
     "description": "REPLACE_WITH_A_NON_SENSITIVE_SOURCE_DESCRIPTION",

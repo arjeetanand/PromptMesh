@@ -43,9 +43,16 @@ from optimization.failure_analysis import analyze_failure
 from optimization.evolver import evolve_prompt
 from optimization.testcase_generator import generate_test_cases
 from models.registry import get_model
-from training.datasets import list_datasets, load_dataset, split_dataset
+from training.datasets import benchmark_card_status, list_datasets, load_dataset, load_dataset_snapshot, split_dataset
+from training.benchmark import (
+    MAX_PROMPT_CANDIDATES,
+    load_prompt_selection,
+    run_frozen_benchmark,
+    run_prompt_selection,
+    validate_prompt_template,
+)
 from training.runner import run_lora_training, training_runtime
-from training.registry import list_adapters
+from training.registry import get_benchmark_adapter, list_adapters
 
 
 # ============================================================
@@ -210,8 +217,12 @@ def _run_admitted_job(job_id, runner, request_model):
 
 
 def _run_admitted_training_job(job_id, request_model):
+    _run_admitted_local_model_job(job_id, run_lora_training, request_model)
+
+
+def _run_admitted_local_model_job(job_id, runner, request_model):
     try:
-        run_lora_training(job_id, request_model, jobs)
+        runner(job_id, request_model, jobs)
     finally:
         jobs.finish(job_id)
         TRAINING_LOCK.release()
@@ -294,6 +305,17 @@ class FineTuneRequest(BaseModel):
     epochs: int = Field(default=1, ge=1, le=3)
     learning_rate: float = Field(default=0.0002, gt=0, le=0.0005)
     lora_rank: Literal[4, 8, 16] = 8
+
+
+class PromptSelectionRequest(BaseModel):
+    dataset_id: str = Field(min_length=1, max_length=64)
+    adapter_run_id: str = Field(min_length=32, max_length=32)
+    candidate_prompts: List[str] = Field(min_length=1, max_length=MAX_PROMPT_CANDIDATES)
+
+
+class FrozenBenchmarkRequest(BaseModel):
+    selection_id: str = Field(min_length=32, max_length=32)
+    adapter_run_id: str = Field(min_length=32, max_length=32)
 
 
 class ApiSessionRequest(BaseModel):
@@ -420,6 +442,68 @@ async def start_training(request: FineTuneRequest, bg: BackgroundTasks, http_req
     try:
         job_id = _admit_job(http_request)
         bg.add_task(_run_admitted_training_job, job_id, request)
+    except Exception:
+        if job_id:
+            jobs.finish(job_id)
+        TRAINING_LOCK.release()
+        raise
+    return {"job_id": job_id, "status": "started"}
+
+
+@app.post("/api/training/prompt-selections")
+async def start_prompt_selection(request: PromptSelectionRequest, bg: BackgroundTasks, http_request: Request):
+    _validate_text_values(request.candidate_prompts, "prompt candidate", max_length=MAX_PROMPT_CHARS)
+    try:
+        for prompt in request.candidate_prompts:
+            validate_prompt_template(prompt)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        rows, digest = load_dataset_snapshot(request.dataset_id)
+        card = benchmark_card_status(request.dataset_id, rows, digest)
+        if not card["card_ready"]:
+            raise HTTPException(status_code=422, detail=card.get("reason") or "A matching review card is required")
+        if not card["validation_ready"] or not card["final_test_ready"]:
+            raise HTTPException(status_code=422, detail="Validation and final-test splits each need at least 30 examples across 10 source groups")
+        get_benchmark_adapter(request.adapter_run_id, request.dataset_id, digest)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset or adapter not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _schedule_local_model_job(bg, http_request, request, run_prompt_selection)
+
+
+@app.post("/api/training/benchmarks")
+async def start_frozen_benchmark(request: FrozenBenchmarkRequest, bg: BackgroundTasks, http_request: Request):
+    try:
+        selection = load_prompt_selection(request.selection_id)
+        if request.adapter_run_id != selection["adapter_run_id"]:
+            raise ValueError("The benchmark adapter must match validation prompt selection")
+        rows, digest = load_dataset_snapshot(selection["dataset_id"])
+        card = benchmark_card_status(selection["dataset_id"], rows, digest)
+        if not card["card_ready"] or digest != selection["dataset_sha256"] or card.get("card_sha256") != selection["benchmark_card_sha256"]:
+            raise ValueError("Dataset or benchmark card changed after validation prompt selection")
+        get_benchmark_adapter(request.adapter_run_id, selection["dataset_id"], digest)
+        if not card["validation_ready"] or not card["final_test_ready"]:
+            raise ValueError("Validation and final-test splits each need at least 30 examples across 10 source groups")
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset or adapter not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _schedule_local_model_job(bg, http_request, request, run_frozen_benchmark)
+
+
+def _schedule_local_model_job(bg, http_request, request, runner):
+    runtime = training_runtime()
+    if not runtime["available"]:
+        missing = ", ".join(runtime["missing"])
+        raise HTTPException(status_code=503, detail=f"Local model dependencies are missing: {missing}")
+    if not TRAINING_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="A local model job is already running")
+    job_id = None
+    try:
+        job_id = _admit_job(http_request)
+        bg.add_task(_run_admitted_local_model_job, job_id, runner, request)
     except Exception:
         if job_id:
             jobs.finish(job_id)

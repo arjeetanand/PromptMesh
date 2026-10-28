@@ -50,7 +50,7 @@
 - **SFT/LoRA** trains a small set of adapter weights on labeled prompt/answer examples while preserving the base checkpoint.
 - The current training job scores the base checkpoint and adapter on the same grouped validation examples. It records JSON-valid rate, record exact match, per-field accuracy, train/validation loss, dataset and prompt hashes, split counts, model/tokenizer revisions, metric split, and selected hyperparameters. The validation scores use deterministic parsing, not an LLM judge. Training does not score the final-test split.
 - Earlier saved adapters and the synthetic demo results below were produced before this validation-only change; their test scores are legacy results that were exposed during iteration, not an independent final benchmark.
-- Interview description (process claim): “I built a local structured-extraction SFT workflow with grouped splits, LoRA training, deterministic schema and exact-match metrics, and reproducibility metadata. I separated validation-based selection from final-test reporting; the human-reviewed benchmark and final comparison are still in progress.”
+- Interview description (process claim): “I built a local structured-extraction evaluation and LoRA/SFT workflow with grouped splits, deterministic gold metrics, hash-tracked artifacts, and validation-only prompt/model selection. A frozen evaluator compares prompt-only and LoRA arms on one shared test split with source-group uncertainty intervals.” Add that no real benchmark corpus or quality gain is available until you complete human review and run it on your authorized dataset.
 - Current evaluation claim: “I repaired an LLM-judge evaluation path so task-specific scoring is preserved and a failed judge produces a failed run instead of a plausible score.”
 - Do not claim a gain from the tracked 48-example synthetic demo. A résumé result requires a reviewed domain dataset, a separate test set, repeated runs or uncertainty analysis, and an observed improvement.
 - LoRA is the implemented low-resource choice. QLoRA is a memory-saving option for larger checkpoints; full fine-tuning updates all weights and costs more memory; RAG adds retrieved context at inference, DPO needs preference pairs, and distillation trains a smaller student from a teacher. Those methods are not implemented in this stage.
@@ -93,23 +93,39 @@
 - Runtime note: the app API reports MPS and its server process loaded Apple's Metal driver, while a fresh CLI probe reported MPS unavailable. Resolve this discrepancy before quantization measurements; no quantization package or model was installed/downloaded for that work.
 - Prompt evolution reuses the supplied examples for candidate selection and uses the configured LLM judge without gold labels. The UI now calls them optimization inputs, labels scores as judge heuristics, and exported results record the method, input role, and count. This does not enforce separation from a future final benchmark.
 
+## Gold validation selection and frozen benchmark follow-up
+
+- Added exact-byte dataset snapshots and a benchmark-card gate. The card must match the current JSONL SHA-256, have all review/count fields, and mark `human_reviewed`; the synthetic demo cannot pass. This is a self-attestation check, not independent proof of review.
+- Added 30-example / 10-source-group minimums on both validation and final-test splits. Training may still run without a review card for experimentation; prompt selection and final evaluation require a matching self-attested card.
+- Added `/api/training/prompt-selections` to compare the built-in `extraction/v1` prompt and up to three user candidates using deterministic gold metrics on validation rows only. The lexicographic rule is record exact match, field accuracy, then JSON-valid rate; ties keep the earlier prompt. It writes a hash-checked private selection record tied to the dataset/card and validation-only schema-v3 LoRA artifact.
+- Added `/api/training/benchmarks` and the Fine-tune UI action for the matched three-arm comparison: base+initial prompt, base+validation-selected prompt, and LoRA+the same selected prompt. All arms use the same reserved test rows. An exclusive reservation is written before the first test inference, preventing another process or retry from consuming that dataset version's holdout. A failed run after reservation requires a new dataset version.
+- Reports store aggregate metrics, source-group bootstrap intervals, data/card/selection/prompt/adapter hashes, model/tokenizer revisions, split counts, device, and deterministic decoding settings. They do not store source text or per-example outputs. Selection and report files are private local JSON under gitignored `training/selections/` and `training/benchmarks/`; the one-time reservation stays with the dataset fingerprint after possible test access.
+- The final evaluator loads only the pinned model revision already in the local cache (`local_files_only`); it does not download weights or call a provider. The existing training job may download Qwen weights when run on an uncached machine.
+- Prompt evolution remains an LLM-judge heuristic workflow. Users can copy a candidate prompt into the gold-validation selector; the evolution job itself is not wired to read the private dataset.
+- Focused mocked-runner, training, and API checks cover validation-only selection, undersized-split rejection, matched test arms, source-group intervals, reservation/retry behavior, report idempotency, and rejection of a second configuration. No real model inference, local training, corpus review, model download, or quantization measurement occurred.
+- `run.sh` now prefers the project virtualenv. Edge rendered the Fine-tune screen from the launcher-owned 5004 test instance. The design inspector captured 1440px, 768px, and 390px views with zero horizontal overflow or browser console errors; no physical phone test was performed. It reports a false `no-title` flag even though its own hero metric and screenshot identify the visible h1, plus a warning that 72% of text is under 13px (field hints and metadata use 11–12px).
+- Port 4004 remains held by Python PID 33390 with this repository as its working directory, but no launcher PID file exists and local requests were refused. I left that process untouched. The final browser check used port 5004.
+- UI copy now calls review metadata self-attested and explicitly says PromptMesh cannot verify label quality. It also gates validation selection on both split minimums and corrects the adapter label, placeholder line breaks, and screen-reader status announcement.
+- The remaining evidence gap is an authorized human-reviewed corpus and a real local run; no quality claim is supported yet.
+
 ## Next résumé milestones
 
-1. Add a human-reviewed, versioned gold dataset with grouped train/validation/test splits. Training model selection now uses validation data. Prompt evolution identifies its supplied inputs as an optimization set, but a separate frozen evaluator and enforced data boundary remain to be built.
-2. Compare a base model, prompt-only baseline, and LoRA adapter on the same untouched test examples. Report task metrics, repeated-run variation or confidence intervals, and exact model/data revisions.
-3. Add a quantized-inference experiment only after selecting a backend that works on the target hardware. Compare quality, latency, and peak memory against the unquantized model on the same frozen test set.
-4. Package one reproducible run manifest and a short demo, including dataset limitations and failure cases. Do not present the synthetic example scores as model-quality evidence.
+1. Add an authorized, human-reviewed dataset using the JSONL and benchmark-card templates. The local card is a self-attestation, so preserve the annotation guidelines and review evidence separately.
+2. Train a new schema-v3 adapter on that dataset, select prompts on validation only, then run the frozen matched benchmark once. Review per-example errors before making any quality claim.
+3. Select a compatible installed quantization backend and compare it with the base model on the same frozen test set, recording quality, latency, peak memory, hardware, and limitations.
+4. Package the measured run manifest and a short demo. Do not present synthetic results as model-quality evidence.
 
 ## Branch and pull request
 
 - Previous implementation branch: `codex/promptmesh-evaluation-reliability`, evaluation reliability commit `913e392`.
-- Validation-selection implementation commit `68204e1` and handoff commit `ce69f21` are on `codex/promptmesh-validation-selection`, based on PR head `745bf89`.
-- [PR #1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1) targets `main` and uses its existing head branch `codex/promptmesh-ui-redesign`. Its last confirmed head before this update was `046e426`; the navigation and illustration follow-ups are being added to that PR.
-- Standing preference: merge PRs into `main` when their changes are not already present.
+- This change is being committed on `codex/promptmesh-validation-selection`, based on local `origin/codex/promptmesh-ui-redesign` at `20cf220`.
+- [PR #1 — PromptMesh UI redesign](https://github.com/arjeetanand/PromptMesh/pull/1) was last verified to target `main` and uses the existing head branch `codex/promptmesh-ui-redesign`. GitHub could not be reached during the final local checks; verify the remote head before pushing, and update this PR rather than creating a parallel one.
+- The user's standing preference is to open/update a PR targeting `main`. Do not merge without explicit approval.
 
 ## Run instructions and next action
 
-- Current local server: `http://127.0.0.1:4004`; start with `source .venv/bin/activate && ./run.sh` in this environment. `/api/health` returned `healthy` during handoff.
+- `http://127.0.0.1:5004` is the verified preview for this change. Main port `4004` is held by Python PID 33390 with this repository as its working directory, but it has no launcher-owned PID record and was left untouched.
 - Create/activate `.venv`, then run `pip install -r requirements.txt`.
 - Main: `./run.sh` → `http://127.0.0.1:4004`; test and preview ports are 5004 and 6004.
-- Next: build the reviewed gold benchmark and validation-only prompt/model selection before reporting quality gains.
+- This change's checks: `./.venv/bin/python -m unittest discover -s tests -v` (51 passed), `node --test tests/ui_background_jobs.test.cjs` (8 passed), Python/JavaScript/launcher syntax checks, `git diff --check`, and Edge/inspector review at desktop and 390px mobile widths. No real reviewed corpus, local training run, model inference, or quantization experiment was performed. The saved selection/report JSON remains local; the Fine-tune UI does not restore a previous result after a page reload.
+- Next: provide the authorized reviewed corpus, train a schema-v3 adapter, inspect its frozen benchmark, then plan the quantized-inference comparison. Quantization remains unimplemented.

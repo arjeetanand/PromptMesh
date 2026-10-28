@@ -8,14 +8,13 @@ import uuid
 from datetime import datetime, timezone
 
 from training.datasets import (
-    DATASET_DIR,
     format_sft_rows,
-    load_dataset,
+    load_dataset_snapshot,
     split_counts,
     split_dataset,
 )
 from training.metrics import score_predictions
-from training.registry import RUNS_DIR
+from training.registry import RUNS_DIR, artifact_tree_sha256
 
 
 BASE_MODEL_ID = "Qwen/Qwen3-0.6B"
@@ -85,15 +84,13 @@ def run_lora_training(job_id, request, jobs):
 
         from prompts.registry import PROMPT_BASE_PATH, PromptRegistry
 
-        rows = load_dataset(request.dataset_id)
+        rows, dataset_hash = load_dataset_snapshot(request.dataset_id)
         splits = split_dataset(rows)
         counts = split_counts(splits)
         prompt_version = "v1"
         prompt = PromptRegistry().load_with_metadata("extraction", prompt_version)["template"]
         prompt_path = PROMPT_BASE_PATH / "extraction" / f"{prompt_version}.yaml"
         prompt_hash = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
-        dataset_path = DATASET_DIR / f"{request.dataset_id}.jsonl"
-        dataset_hash = hashlib.sha256(dataset_path.read_bytes()).hexdigest()
         run_id = uuid.uuid4().hex
         run_dir = RUNS_DIR / run_id
         run_dir.mkdir(parents=True, exist_ok=False)
@@ -166,6 +163,7 @@ def run_lora_training(job_id, request, jobs):
         )
         trainer.train()
         trainer.save_model(str(adapter_dir))
+        adapter_hash = artifact_tree_sha256(adapter_dir)
 
         jobs.update(job_id, {"progress": 85, "stage": "evaluating_adapter"})
         adapter_metrics = _score_validation(trainer.model, tokenizer, prompt, splits)
@@ -175,7 +173,7 @@ def run_lora_training(job_id, request, jobs):
         completed_at = datetime.now(timezone.utc).isoformat()
         metrics = {"base": base_metrics, "adapter": adapter_metrics}
         manifest = {
-            "schema_version": 2,
+            "schema_version": 3,
             "status": "completed",
             "run_id": run_id,
             "base_model": BASE_MODEL_ID,
@@ -183,6 +181,7 @@ def run_lora_training(job_id, request, jobs):
             "tokenizer_revision": base_revision,
             "dataset_id": request.dataset_id,
             "dataset_sha256": dataset_hash,
+            "adapter_sha256": adapter_hash,
             "task": "entity_extraction",
             "prompt_version": f"extraction/{prompt_version}",
             "prompt_sha256": prompt_hash,

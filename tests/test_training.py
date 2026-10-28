@@ -1,19 +1,148 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from models.cohere_model import CohereModel
-from training.datasets import dataset_path, dataset_sha256, list_datasets, load_dataset, split_counts, split_dataset
+from training.datasets import (
+    benchmark_card_status,
+    dataset_path,
+    dataset_sha256,
+    list_datasets,
+    load_benchmark_card,
+    load_dataset,
+    load_dataset_snapshot,
+    split_counts,
+    split_dataset,
+)
 from training.metrics import score_predictions
-from training.registry import get_adapter_path, list_adapters
+from training.registry import artifact_tree_sha256, get_adapter_path, get_benchmark_adapter, list_adapters
 
 
 class TrainingDatasetTests(unittest.TestCase):
+    def _write_reviewed_dataset(self, directory, count=12):
+        rows = [
+            {"group_id": f"source-{index}", "input": f"Source fact {index}.",
+             "output": {"organization": f"Org {index}", "year": 2024, "claim": f"claim {index}"}}
+            for index in range(count)
+        ]
+        dataset_path = Path(directory) / "reviewed.jsonl"
+        dataset_bytes = "".join(json.dumps(row) + "\n" for row in rows).encode("utf-8")
+        dataset_path.write_bytes(dataset_bytes)
+        card = {
+            "schema_version": 1,
+            "dataset_id": "reviewed",
+            "dataset_sha256": hashlib.sha256(dataset_bytes).hexdigest(),
+            "task": "entity_extraction",
+            "source": {"description": "Public reports", "authorization_or_license": "CC BY 4.0"},
+            "grouping": {"unit": "source document", "policy": "One source per group"},
+            "annotation": {
+                "guidelines_version": "v1",
+                "review_status": "human_reviewed",
+                "all_labels_human_reviewed": True,
+                "total_examples": len(rows),
+                "reviewed_examples": len(rows),
+                "total_source_groups": len(rows),
+                "reviewed_source_groups": len(rows),
+                "reviewed_at_utc": "2026-10-28T12:00:00Z",
+                "reviewer_role": "domain reviewer",
+            },
+            "limitations": ["Small coverage of organization types"],
+        }
+        (Path(directory) / "reviewed.card.json").write_text(json.dumps(card), encoding="utf-8")
+        return rows
+
     def test_dataset_ids_cannot_escape_the_local_dataset_directory(self):
         with self.assertRaises(ValueError):
             dataset_path("../outside")
+
+    def test_dataset_snapshot_hashes_the_exact_bytes_that_were_parsed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self._write_reviewed_dataset(temp_dir)
+            with patch("training.datasets.DATASET_DIR", Path(temp_dir)):
+                rows, digest = load_dataset_snapshot("reviewed")
+                self.assertEqual(rows, load_dataset("reviewed"))
+                self.assertEqual(digest, dataset_sha256("reviewed"))
+
+    def test_human_review_card_must_match_dataset_examples_and_source_groups(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rows = self._write_reviewed_dataset(temp_dir)
+            with patch("training.datasets.DATASET_DIR", Path(temp_dir)):
+                card = load_benchmark_card("reviewed", rows)
+                status = benchmark_card_status("reviewed", rows)
+
+        self.assertEqual(card["annotation"]["review_status"], "human_reviewed")
+        self.assertTrue(status["card_ready"])
+        self.assertFalse(status["final_test_ready"])
+        self.assertEqual(status["reviewed_examples"], len(rows))
+        self.assertEqual(status["reviewed_source_groups"], len(rows))
+        self.assertEqual(len(status["card_sha256"]), 64)
+
+    def test_final_test_readiness_requires_minimum_examples_and_source_groups(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rows = self._write_reviewed_dataset(temp_dir, count=200)
+            with patch("training.datasets.DATASET_DIR", Path(temp_dir)):
+                status = benchmark_card_status("reviewed", rows)
+
+        self.assertTrue(status["card_ready"])
+        self.assertTrue(status["validation_ready"])
+        self.assertTrue(status["final_test_ready"])
+        self.assertGreaterEqual(status["final_test_examples"], status["minimum_final_test_examples"])
+        self.assertGreaterEqual(status["final_test_source_groups"], status["minimum_final_test_groups"])
+
+    def test_missing_dataset_is_not_reported_as_a_missing_card(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("training.datasets.DATASET_DIR", Path(temp_dir)):
+                status = benchmark_card_status("missing")
+
+        self.assertEqual(status["status"], "missing_dataset")
+
+    def test_benchmark_card_rejects_unreviewed_or_incomplete_labels(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rows = self._write_reviewed_dataset(temp_dir)
+            card_path = Path(temp_dir) / "reviewed.card.json"
+            card = json.loads(card_path.read_text(encoding="utf-8"))
+            card["annotation"]["review_status"] = "unreviewed"
+            card["annotation"]["reviewed_examples"] -= 1
+            card_path.write_text(json.dumps(card), encoding="utf-8")
+            with patch("training.datasets.DATASET_DIR", Path(temp_dir)):
+                status = benchmark_card_status("reviewed", rows)
+                with self.assertRaisesRegex(ValueError, "human-reviewed"):
+                    load_benchmark_card("reviewed", rows)
+
+        self.assertFalse(status["card_ready"])
+        self.assertEqual(status["status"], "invalid_card")
+
+    def test_benchmark_card_rejects_a_stale_dataset_fingerprint(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rows = self._write_reviewed_dataset(temp_dir)
+            with (Path(temp_dir) / "reviewed.jsonl").open("ab") as dataset_file:
+                dataset_file.write(b"\n")
+            with patch("training.datasets.DATASET_DIR", Path(temp_dir)):
+                status = benchmark_card_status("reviewed", rows)
+
+        self.assertFalse(status["card_ready"])
+        self.assertEqual(status["status"], "invalid_card")
+        self.assertIn("does not match", status["reason"])
+
+    def test_benchmark_card_path_rejects_a_symlink_outside_dataset_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir, tempfile.TemporaryDirectory() as outside_dir:
+            rows = self._write_reviewed_dataset(temp_dir)
+            outside = Path(outside_dir) / "outside.json"
+            outside.write_text("{}", encoding="utf-8")
+            (Path(temp_dir) / "reviewed.card.json").unlink()
+            (Path(temp_dir) / "reviewed.card.json").symlink_to(outside)
+            with patch("training.datasets.DATASET_DIR", Path(temp_dir)):
+                with self.assertRaisesRegex(ValueError, "card path"):
+                    load_benchmark_card("reviewed", rows)
+
+    def test_synthetic_demo_is_never_marked_final_benchmark_ready(self):
+        dataset = next(item for item in list_datasets() if item["id"] == "entity_extraction_demo")
+
+        self.assertFalse(dataset["benchmark"]["card_ready"])
+        self.assertEqual(dataset["benchmark"]["status"], "synthetic_only")
 
     def test_dataset_listing_exposes_its_content_fingerprint(self):
         dataset = next(item for item in list_datasets() if item["id"] == "entity_extraction_demo")
@@ -59,6 +188,54 @@ class AdapterRegistryTests(unittest.TestCase):
                 self.assertEqual(manifest["status"], "completed")
                 with self.assertRaises(ValueError):
                     get_adapter_path("../outside")
+
+    def test_frozen_benchmark_requires_matching_validation_adapter_and_artifact_hash(self):
+        run_id = "d" * 32
+        dataset_digest = "e" * 64
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / run_id
+            adapter_dir = run_dir / "adapter"
+            adapter_dir.mkdir(parents=True)
+            config_path = adapter_dir / "adapter_config.json"
+            config_path.write_text("{}", encoding="utf-8")
+            manifest = {
+                "schema_version": 3,
+                "status": "completed",
+                "run_id": run_id,
+                "base_model": "Qwen/Qwen3-0.6B",
+                "base_revision": "base-revision",
+                "tokenizer_revision": "base-revision",
+                "dataset_id": "reviewed",
+                "dataset_sha256": dataset_digest,
+                "adapter_sha256": artifact_tree_sha256(adapter_dir),
+                "metrics_split": "validation",
+                "test_split_used": False,
+            }
+            (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            with patch("training.registry.RUNS_DIR", Path(temp_dir)):
+                self.assertEqual(
+                    get_benchmark_adapter(run_id, "reviewed", dataset_digest)[1]["adapter_sha256"],
+                    manifest["adapter_sha256"],
+                )
+                config_path.write_text("changed", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "artifact fingerprint"):
+                    get_benchmark_adapter(run_id, "reviewed", dataset_digest)
+
+    def test_frozen_benchmark_rejects_legacy_adapter_manifests(self):
+        run_id = "f" * 32
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / run_id
+            adapter_dir = run_dir / "adapter"
+            adapter_dir.mkdir(parents=True)
+            (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+            (run_dir / "manifest.json").write_text(json.dumps({
+                "status": "completed",
+                "run_id": run_id,
+                "metrics_split": "legacy_test",
+            }), encoding="utf-8")
+            with patch("training.registry.RUNS_DIR", Path(temp_dir)):
+                with self.assertRaisesRegex(ValueError, "lacks the frozen-benchmark provenance"):
+                    get_benchmark_adapter(run_id, "reviewed", "a" * 64)
 
     def test_adapters_without_a_metrics_split_are_marked_as_legacy_test_results(self):
         run_id = "b" * 32

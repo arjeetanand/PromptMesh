@@ -243,7 +243,10 @@ compares the prompted Qwen3-0.6B base model and LoRA adapter on the same
 deterministic, source-grouped validation examples using JSON validity, record
 exact match, and field accuracy. These selection metrics are deterministic and
 do not use PromptMesh's configured LLM judge. Training jobs leave the final-test
-split unscored; a separate frozen benchmark runner is not implemented yet.
+split unscored. The Fine-tune page can compare a candidate prompt on labeled
+validation rows, then run a separate, single frozen test report for the base
+model with the original prompt, the base model with the selected prompt, and
+the matching LoRA adapter with that same selected prompt.
 
 ### Local LoRA/SFT workflow
 
@@ -265,7 +268,34 @@ learning rate. The first run downloads the Qwen3-0.6B checkpoint from Hugging
 Face (about 1.5 GB); model training and validation scoring then run locally. The
 synthetic `entity_extraction_demo` set checks the workflow only; it is not a
 benchmark or résumé evidence. Use a reviewed, representative dataset and a
-fresh final-test set before reporting any model improvement.
+fresh final-test set before reporting any model improvement. Training is still
+allowed for experimentation without a review card, but prompt selection and
+final benchmarking require a matching card marked reviewer-attested. PromptMesh
+checks the card fields and exact data fingerprint; this local self-attestation
+cannot independently prove that a human reviewed the labels. The UI states this
+limit beside readiness and selection controls.
+
+After reviewing labels, fill `training/datasets/<dataset_id>.card.json` from
+the template. Validation and held-out test splits must each contain at least 30
+examples across 10 source groups. Select a validation-scored adapter and paste a candidate prompt
+that includes `{{text}}`; PromptMesh compares it with `extraction/v1` using
+record exact match, then field accuracy, then JSON-valid rate. Ties keep the
+earlier prompt. This step only scores validation rows. The frozen action then
+compares all three model/prompt arms on the same reserved test rows and saves a
+report under ignored `training/benchmarks/<dataset_id>/<dataset_sha256>/`.
+Reports include dataset/card/prompt/adapter fingerprints, pinned model and
+tokenizer revisions, split and inference settings, hardware, aggregate task
+metrics, and a deterministic source-group bootstrap interval. The same report
+is returned on repeat requests; a private reservation prevents another test
+inference for that dataset version, including after an interrupted run. A failed
+run may have consumed the holdout, so create a new dataset version before
+another final run.
+
+Both local benchmark endpoints use `local_files_only` with the adapter's pinned
+checkpoint revision; they do not download weights or send dataset rows to a
+provider. The pinned model must already be cached. Prompt evolution remains a
+separate LLM-judge heuristic workflow; copy a candidate from it into the
+validation-selection form to score it against gold labels.
 
 Every workspace page includes a Back to overview control. While local LoRA
 training or prompt evolution runs, choose **Run in background** to close the
@@ -295,13 +325,13 @@ Fine-tune, Test cases, and Run history pair the companion with a small
 task-specific SVG scene.
 
 The API provides `GET /api/training/datasets`, `GET /api/training/adapters`,
-and `POST /api/training/jobs`. The POST accepts only a dataset ID stored under
-`training/datasets/`, with bounded epochs, learning rate, and LoRA rank; it does
-not accept arbitrary file paths or upload dataset contents. The local runner
-saves adapter files under ignored `training/runs/` and registers them as
-`trained:<run-id>` models. PromptMesh's general evaluation page uses the
-configured judge model, which may be remote; use it only with data that may be
-sent to that provider.
+`POST /api/training/jobs`, `POST /api/training/prompt-selections`, and
+`POST /api/training/benchmarks`. These accept dataset, adapter, and prompt IDs
+or text, not arbitrary file paths or uploaded corpus contents. Adapter files,
+prompt-selection records, and frozen reports are stored locally under ignored
+`training/runs/`, `training/selections/`, and `training/benchmarks/` paths.
+PromptMesh's general Evaluate page uses the configured judge model, which may
+be remote; use it only with data that may be sent to that provider.
 
 ---
 

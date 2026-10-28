@@ -7,6 +7,15 @@ USER_ID="$(id -u)"
 STATE_DIR="${TMPDIR:-/tmp}/promptmesh-${USER_ID}"
 PID_FILE="${STATE_DIR}/promptmesh-${PORT}.pid"
 LOG_FILE="${STATE_DIR}/promptmesh-${PORT}.log"
+PYTHON_EXECUTABLE="${APP_ROOT}/.venv/bin/python"
+
+if [[ ! -x "$PYTHON_EXECUTABLE" ]]; then
+  PYTHON_EXECUTABLE="$(command -v python3 || true)"
+fi
+if [[ -z "$PYTHON_EXECUTABLE" ]]; then
+  echo "Python 3 is required to run PromptMesh." >&2
+  exit 1
+fi
 
 case "$PORT" in
   4004|5004|6004) ;;
@@ -52,7 +61,7 @@ if [[ -n "$LISTENERS" ]]; then
   exit 1
 fi
 
-nohup python3 -m uvicorn app:app --host 127.0.0.1 --port "$PORT" --no-access-log \
+nohup "$PYTHON_EXECUTABLE" -m uvicorn app:app --host 127.0.0.1 --port "$PORT" --no-access-log \
   >> "$LOG_FILE" 2>&1 < /dev/null &
 SERVER_PID=$!
 printf '%s\n' "$SERVER_PID" > "$PID_FILE"
