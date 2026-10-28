@@ -28,6 +28,15 @@
 - Preview: `http://127.0.0.1:6004` remains available from this worktree. Restarting through `run.sh` reported an existing listener and stopped nothing; PID 39677 was verified with this worktree as its working directory.
 - Branch: `codex/promptmesh-section-illustrations`, based on `107a847`; implementation commit: `2723a66`. This follow-up has not been pushed or merged.
 
+## Navigation and background-job follow-up
+
+- Added a visible Back to overview button on each non-overview workspace page. At narrow widths it becomes an arrow-only button next to the active page title.
+- Added **Run in background** to the local LoRA and prompt evolution progress dialog. Closing the dialog leaves the existing poll active in the open browser tab. A top-bar status button shows progress, paused, complete, or failed state. Selecting it reopens progress, retries paused polling, or opens completed results; completion does not switch pages until selected.
+- The browser tab must remain open for progress updates. No LoRA training or evolution job was started during this change.
+- Focused UI verification: visited Evaluate, Compare, Prompt evolution, Fine-tune, Test cases, and Run history, confirmed Back to overview on each, and returned to Overview. At 390px mobile width, the document width remained 390px with no horizontal overflow. `node --test tests/ui_background_jobs.test.cjs` passed four checks covering dialog dismissal/reopening with polling active, the paused-job run lock, and LoRA/evolution completion status/results navigation. Source syntax, test syntax, launcher syntax, and `git diff --check` passed.
+- Preview: `http://127.0.0.1:6004` is already serving this worktree. `run.sh` safely declined to restart the existing listener (PID 39677) because the launcher had no matching PID file; no process was stopped.
+- Branch: `codex/promptmesh-navigation-dismissible-jobs`, based on `310d008`; implementation and regression-test commit: `99a4dae`. This follow-up has not been pushed or merged.
+
 ## Concepts and interview framing
 
 - **Prompt evolution** edits instructions while keeping model weights unchanged.

@@ -29,3 +29,12 @@
 - [x] Add a compact companion vignette to every non-overview workspace page, with a motif specific to that page.
 - [x] Verify all six sections at desktop and 390px mobile widths with no horizontal overflow.
 - [x] Commit this follow-up locally on `codex/promptmesh-section-illustrations`; do not push or merge without approval.
+
+## Navigation and background-job follow-up
+
+- [x] Add a Back to overview control to every non-overview page.
+- [x] Allow local LoRA training and prompt evolution progress dialogs to close while polling continues in the open tab.
+- [x] Show running, paused, completed, and failed status in the top bar; link completion to its results without changing the current page.
+- [x] Add four Node regression checks for LoRA/evolution progress dismissal, reopening, completion status, and results navigation.
+- [x] Verify tab navigation and responsive header behavior in the browser.
+- [x] Commit the follow-up as `99a4dae` on `codex/promptmesh-navigation-dismissible-jobs`; do not push or merge without approval.

@@ -234,6 +234,14 @@ synthetic `entity_extraction_demo` set checks the workflow only; it is not a
 benchmark or résumé evidence. Use a reviewed, representative dataset and a
 fresh held-out set before reporting any model improvement.
 
+Every workspace page includes a Back to overview control. While local LoRA
+training or prompt evolution runs, choose **Run in background** to close the
+progress dialog and keep working in PromptMesh. The top bar shows progress and
+status; select it to reopen progress or view completed results. Keep the
+browser tab open while the job runs. Run
+`node --test tests/ui_background_jobs.test.cjs` for the background-progress
+regression checks.
+
 The Fine-tune page shows schema readiness, example and source-group counts,
 train/validation/test sizes, and a short SHA-256 dataset fingerprint. Completed
 runs keep that fingerprint with the adapter and show aggregate plus per-field
