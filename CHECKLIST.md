@@ -137,6 +137,13 @@
 - [x] Exercise the synchronized timer on local MPS with the cached validation-only adapter and one fictional prompt across full precision, NF4, and INT8.
 - [ ] Run this timing method on the human-reviewed benchmark corpus; no real quality or throughput result exists yet.
 
+## Review queue accessibility — 2026-10-29
+
+- [x] Announce the selected source title, date, and review guidance when the user changes source groups.
+- [x] Add a regression check for the polite, atomic live region; all 15 UI tests pass.
+- [x] Restart the app on port 4004 and confirm the Fine-tune page reports API connected.
+- [ ] Verify the announcement with a screen reader and run axe; neither was run in this browser check.
+
 ## Navigation and background-job follow-up
 
 - [x] Add a Back to overview control to every non-overview page.

@@ -176,7 +176,9 @@ the 30-example / 10-source-group floor. Export does not train a model or score
 the test set; human label and rights review remain local self-attestations. The
 queue summarizes draft year and source-host coverage to make packet imbalance
 visible; those counts describe the candidate packet, not the final reviewed
-dataset. `organization` means the named actor performing the claim.
+dataset. `organization` means the named actor performing the claim. Changing
+source groups announces the selected source title and review guidance politely
+to assistive technology.
 
 ## Quantization, calibration, and QLoRA
 

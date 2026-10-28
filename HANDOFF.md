@@ -330,3 +330,10 @@
 - One cold pass per arm: full-precision LoRA generated 24 token IDs in 0.4963 s (48.356 tok/s; valid JSON); NF4 generated 29 in 1.2044 s (24.079 tok/s; invalid JSON); INT8 generated 25 in 6.1787 s (4.046 tok/s; valid JSON).
 - These are a hardware-path and timer check only. A single example with different output lengths cannot establish a reliable speed ranking or model quality; the NF4 invalid-JSON result is a synthetic smoke observation, not a benchmark estimate.
 - The local app remains on port 4004. The existing data gate remains unchanged: all 351 candidate rows across 117 groups require human label/source review and reuse-rights evidence before any gold benchmark or calibration study.
+
+## Review queue accessibility — 2026-10-29
+
+- The source title, source date, and review guidance change when a reviewer selects another group. The source summary container is now an atomic polite live region so those updates can be announced without moving focus away from the group selector or navigation button.
+- Added a Node regression for the live-region attributes. Verification: 15 UI tests passed; JavaScript syntax, `bash -n run.sh`, and `git diff --check` passed. Commit `80f10aa` (`Announce review source changes accessibly`) is on `codex/promptmesh-validation-selection`.
+- Restarted the app on `http://127.0.0.1:4004/#finetune`; the rendered page showed API connected. Chrome DevTools MCP is not configured, so this pass used the in-app browser accessibility tree and source checks. A VoiceOver/screen-reader announcement and an axe scan remain unverified.
+- The live review queue still has 351 draft rows / 117 groups / zero reviewed rows / zero eligible groups. No source decisions were saved. The human-reviewed benchmark and its quality claims remain pending.
