@@ -57,6 +57,38 @@ test("candidate source changes are announced to assistive technology", () => {
   assert.match(sourceRegion, /aria-atomic="true"/);
 });
 
+test("review source terms link stays informational and does not confirm permission", () => {
+  const { context, elements } = loadApp();
+  const group = {
+    group_id: "apple-m1-announcement-2020",
+    source_title: "Apple unleashes M1",
+    source_url: "https://www.apple.com/newsroom/2020/11/apple-unleashes-m1/",
+    source_date: "2020-11-10",
+    reuse_terms_url: "https://www.apple.com/legal/internet-services/terms/site.html",
+    reuse_status: "permission_unconfirmed",
+    reuse_evidence: "",
+    review_focus: "Check the proposed labels.",
+    reviewed_rows: 0,
+    excluded_rows: 0,
+    rows: []
+  };
+  context.groupJSON = JSON.stringify(group);
+  vm.runInContext("state.reviewPacket = { export_preview: { ready: false } }; renderReviewGroup(JSON.parse(groupJSON))", context);
+
+  const sourceChildren = elements.get("reviewPacketSource").children;
+  const termsLink = sourceChildren.find((child) => child.textContent === "Review source reuse terms");
+  assert.equal(termsLink.href, group.reuse_terms_url);
+  assert.equal(termsLink.target, "_blank");
+  assert.equal(termsLink.rel, "noopener noreferrer");
+  assert.match(sourceChildren.find((child) => child.textContent?.includes("does not confirm permission")).textContent, /Reference only/);
+  assert.equal(elements.get("reviewSourceReuseStatus").value, "permission_unconfirmed");
+
+  group.reuse_terms_url = "http://www.apple.com/legal/internet-services/terms/site.html";
+  context.groupJSON = JSON.stringify(group);
+  vm.runInContext("renderReviewGroup(JSON.parse(groupJSON))", context);
+  assert.equal(elements.get("reviewPacketSource").children.some((child) => child.textContent === "Review source reuse terms"), false);
+});
+
 test("review year filter and navigation share the interleaved queue order", () => {
   const { context, elements } = loadApp();
   const groupSpecs = [

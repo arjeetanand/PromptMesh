@@ -221,6 +221,8 @@ reviewed variants to an ignored JSONL and creates a matching, self-attested
 benchmark card with source references. Both validation and final test must meet
 the 30-example / 10-source-group floor. Export does not train a model or score
 the test set; human label and rights review remain local self-attestations. The
+review card may link to source-specific reuse terms for inspection; seeing that
+link does not establish permission to reuse the source. The
 queue summarizes draft year and source-host coverage to make packet imbalance
 visible; those counts describe the candidate packet, not the final reviewed
 dataset. The queue filters by proposed event year, and Previous/Next follow the
@@ -417,6 +419,8 @@ For isolated instances, `PROMPTMESH_PORT=5004 ./run.sh` starts a test instance;
 `PROMPTMESH_PORT=6004 ./run.sh` starts a preview instance. The root endpoint
 serves the UI and its API from the same process. `python app.py` remains
 available on Windows and for the legacy port `8000` workflow.
+The launcher stores its PID and log files under `/tmp/promptmesh-<uid>` so a
+shell's changing `TMPDIR` does not hide the managed instance.
 
 The local workspace UI has been manually checked across its pages at widths
 from 320px to 1440px. Keyboard users can skip the navigation and move focus to

@@ -115,6 +115,9 @@ at least 30 examples across 10 source groups in both validation and final test;
 it does not train a model or score the test set. Review and reuse decisions in
 the card are local self-attestations, not independent proof of label quality
 or reuse rights.
+The review queue may display an HTTPS source-terms link as a reference for the
+reviewer. Opening or displaying that page does not confirm reuse permission;
+record the permission evidence only after checking the terms.
 Prompt selection compares the built-in `extraction/v1` template with your
 candidate using validation labels only. After selection, the frozen runner
 compares the prompted base and the matching LoRA adapter on the same reserved

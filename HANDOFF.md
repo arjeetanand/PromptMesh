@@ -601,3 +601,13 @@
 - No model checkpoint was loaded; no dataset, review decision, export, training, or benchmark artifact changed.
 - Delivery: docs update is on `codex/promptmesh-validation-selection` for existing PR #2 targeting `main`; the branch was at `e46cfee` before this follow-up. No merge.
 - Next: human-review source labels, variants, and reuse rights before any real-data training, benchmark, or quantization claim. Full screen-reader and axe checks also remain open.
+
+## Source reuse terms context — 2026-10-29
+
+- Added optional HTTPS `reuse_terms_url` handling to the local review packet API and exposed the link on a source card with an explicit note that it does not confirm permission. Old packets without the column remain compatible; invalid or non-HTTPS values are rejected.
+- Added the official Apple Website Terms link to the three Apple M1 candidate variants in the ignored CSV. All rows remain `NEEDS_HUMAN_REVIEW`; label fields and reuse decisions were not changed. The packet remains 423 rows / 141 groups / 0 reviewed / 0 eligible.
+- Updated the dataset guide and README to describe terms links as reviewer context only. Updated `run.sh` to keep PID/log state in `/tmp/promptmesh-<uid>` because this machine's `TMPDIR` differed between shell contexts.
+- Verification: 108 Python tests and 22 Node UI tests passed; JavaScript and `run.sh` syntax checks passed; `git diff --check` passed. The live Fine-tune page at `http://127.0.0.1:4004/#finetune` shows the Apple terms link, the reuse decision still says “Not confirmed,” and the export button remains disabled at 0 eligible groups. No review was saved.
+- The app is running on the main local port 4004. Run it with `./run.sh`; the launcher uses `/tmp/promptmesh-<uid>` for managed PID/log state. No action touched the occupied 5004/6004 instances.
+- No human review, permission decision, dataset export, training, prompt selection, frozen benchmark, quantized comparison, screen-reader session, or axe scan was performed. The terms page is reference material only; human label and rights review remain required.
+- Branch: `codex/promptmesh-validation-selection`. Delivery is intended for existing PR #2 targeting `main`; no merge.

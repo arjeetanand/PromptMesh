@@ -21,6 +21,17 @@ REQUIRED_COLUMNS = (
 _WRITE_LOCK = threading.Lock()
 
 
+def _validate_reuse_terms_url(value):
+    if not value:
+        return
+    from training.datasets import source_host_from_url
+
+    try:
+        source_host_from_url(value)
+    except ValueError as exc:
+        raise ValueError("A source reuse terms link must be a valid HTTPS URL") from exc
+
+
 def _read_rows():
     if REVIEW_PACKET_DIR.is_symlink() or REVIEW_PACKET_PATH.is_symlink():
         raise ValueError("The local review packet cannot be a symlink")
@@ -35,13 +46,15 @@ def _read_rows():
             ):
                 raise ValueError("The local review packet has an unsupported CSV header")
             fieldnames = list(reader.fieldnames)
-            if "reuse_evidence" not in fieldnames:
-                fieldnames.append("reuse_evidence")
+            for optional_column in ("reuse_terms_url", "reuse_evidence"):
+                if optional_column not in fieldnames:
+                    fieldnames.append(optional_column)
             rows = []
             for index, row in enumerate(reader):
                 if None in row or not row.get("group_id"):
                     raise ValueError("The local review packet contains a malformed row")
                 normalized = {column: row.get(column, "") or "" for column in fieldnames}
+                _validate_reuse_terms_url(normalized["reuse_terms_url"])
                 normalized["row_index"] = index
                 rows.append(normalized)
     except csv.Error as exc:
@@ -57,6 +70,7 @@ def _packet(rows):
             "source_title": row["source_title"],
             "source_url": row["source_url"],
             "source_date": row["source_date"],
+            "reuse_terms_url": row["reuse_terms_url"],
             "review_focus": row["review_focus"],
             "reuse_status": row["reuse_status"],
             "reuse_evidence": row["reuse_evidence"],
@@ -76,7 +90,7 @@ def _packet(rows):
         group = groups[row["group_id"]]
         if any(
             group[key] != row[key]
-            for key in ("source_title", "source_url", "source_date")
+            for key in ("source_title", "source_url", "source_date", "reuse_terms_url")
         ):
             raise ValueError("Source metadata differs within a source group")
     for group in group_rows:

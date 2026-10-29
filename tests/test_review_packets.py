@@ -137,6 +137,37 @@ class ReviewPacketTests(unittest.TestCase):
         self.assertFalse(result["export_preview"]["ready"])
         self.assertIn("Only 0 export-eligible groups", result["export_preview"]["reason"])
 
+    def test_optional_reuse_terms_url_is_https_metadata_not_permission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            packet = self._write_packet(directory)
+            with packet.open("r", encoding="utf-8", newline="") as source:
+                rows = list(csv.DictReader(source))
+            fields = [*review_packets.REQUIRED_COLUMNS, "reuse_terms_url"]
+            for row in rows:
+                row["reuse_terms_url"] = "https://example.org/terms"
+            with packet.open("w", encoding="utf-8", newline="") as destination:
+                writer = csv.DictWriter(destination, fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(rows)
+            with patch.object(review_packets, "REVIEW_PACKET_DIR", Path(directory)), \
+                 patch.object(review_packets, "REVIEW_PACKET_PATH", packet):
+                result = review_packets.load_review_packet()
+
+            self.assertEqual(result["groups"][0]["reuse_terms_url"], "https://example.org/terms")
+            self.assertEqual(result["groups"][0]["reviewed_rows"], 0)
+            self.assertFalse(result["groups"][0]["eligible"])
+
+            for row in rows:
+                row["reuse_terms_url"] = "http://example.org/terms"
+            with packet.open("w", encoding="utf-8", newline="") as destination:
+                writer = csv.DictWriter(destination, fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(rows)
+            with patch.object(review_packets, "REVIEW_PACKET_DIR", Path(directory)), \
+                 patch.object(review_packets, "REVIEW_PACKET_PATH", packet), \
+                 self.assertRaisesRegex(ValueError, "valid HTTPS URL"):
+                review_packets.load_review_packet()
+
     def test_export_uses_only_reviewed_variants_with_group_rights_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

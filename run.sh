@@ -4,7 +4,7 @@ set -euo pipefail
 APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${PROMPTMESH_PORT:-4004}"
 USER_ID="$(id -u)"
-STATE_DIR="${TMPDIR:-/tmp}/promptmesh-${USER_ID}"
+STATE_DIR="/tmp/promptmesh-${USER_ID}"
 PID_FILE="${STATE_DIR}/promptmesh-${PORT}.pid"
 LOG_FILE="${STATE_DIR}/promptmesh-${PORT}.log"
 PYTHON_EXECUTABLE="${APP_ROOT}/.venv/bin/python"

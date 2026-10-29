@@ -570,6 +570,17 @@ function renderReviewGroup(group) {
   } else {
     source.append(title, meta, focus);
   }
+  const reuseTermsUrl = safeHttpUrl(group.reuse_terms_url);
+  if (reuseTermsUrl.startsWith("https://")) {
+    const note = document.createElement("p");
+    note.textContent = "Reference only; this page does not confirm permission to reuse the source.";
+    const termsLink = document.createElement("a");
+    termsLink.href = reuseTermsUrl;
+    termsLink.target = "_blank";
+    termsLink.rel = "noopener noreferrer";
+    termsLink.textContent = "Review source reuse terms";
+    source.append(note, termsLink);
+  }
 
   const rows = $("reviewPacketRows");
   rows.replaceChildren(...group.rows.map((row, index) => renderReviewRow(row, index + 1, group.rows.length)));
@@ -665,7 +676,7 @@ function updateReviewEvidenceField() {
   const field = $("reviewSourceEvidence");
   const isRequired = status !== "permission_unconfirmed";
   label.textContent = status === "excluded" ? "Reason for excluding this source" : "Permission or license evidence";
-  field.placeholder = status === "excluded" ? "Why this source cannot be reused" : "e.g. license name and source terms";
+  field.placeholder = status === "excluded" ? "Why this source cannot be reused" : "e.g. license, terms URL, and relevant section";
   field.required = isRequired;
 }
 

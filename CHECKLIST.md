@@ -305,3 +305,13 @@
 - [x] Verify the live training result and saved-adapter row expose the effective trainer, LoRA, and model-loading settings.
 - [x] Confirm the review packet remains at 423 candidates, 0 reviewed labels, and 0 eligible groups.
 - [ ] Run a schema-v5 fine-tune on a human-reviewed, rights-cleared dataset after review is complete.
+
+## Source reuse terms context — 2026-10-29
+
+- [x] Add an optional HTTPS source-terms URL to the reviewer card, with copy that states the link does not grant or confirm reuse permission.
+- [x] Keep legacy packets compatible and reject invalid/non-HTTPS terms URLs.
+- [x] Add the Apple Website Terms link to the three Apple M1 variants in the ignored review packet; leave every label and reuse decision pending.
+- [x] Verify 108 Python tests, 22 Node UI tests, JavaScript syntax, launcher syntax, and `git diff --check`.
+- [x] Verify the live Apple card at `http://127.0.0.1:4004/#finetune`: terms link is visible, reuse status remains “Not confirmed,” and the queue remains 423 rows / 141 groups / 0 reviewed / 0 eligible.
+- [x] Keep launcher state under a stable `/tmp/promptmesh-<uid>` path so changing `TMPDIR` does not lose process ownership; keep the app available on port 4004.
+- [ ] Human-review source labels and source-specific terms; no reuse permission or benchmark quality result is confirmed.
