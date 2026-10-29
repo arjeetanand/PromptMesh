@@ -19,6 +19,55 @@ class JobRecorder:
         self.updates.append((job_id, changes))
 
 
+class FailureAnalysisTests(unittest.TestCase):
+    def test_failure_counts_are_aggregate_by_gold_year_and_omit_text(self):
+        gold = {"organization": "Northstar", "year": 2024, "claim": "opened a lab"}
+        rows = [
+            {"group_id": "private-group-a", "input": "private source A", "output": gold},
+            {"group_id": "private-group-b", "input": "private source B", "output": gold},
+            {
+                "group_id": "private-group-c",
+                "input": "private source C",
+                "output": {"organization": "Northstar", "year": 2025, "claim": "opened a lab"},
+            },
+            {
+                "group_id": "private-group-d",
+                "input": "private source D",
+                "output": {"organization": "Northstar", "year": None, "claim": "opened a lab"},
+            },
+        ]
+        predictions = [
+            "not json",
+            json.dumps({**gold, "claim": "wrong claim"}),
+            json.dumps({"organization": "Northstar", "year": 2025, "claim": "opened a lab", "extra": True}),
+            json.dumps(rows[3]["output"]),
+        ]
+
+        result = benchmark.failure_analysis(rows, predictions)
+
+        self.assertEqual(result["method"], "json-schema-and-field-mismatch-counts-v1")
+        self.assertFalse(result["raw_examples_saved"])
+        self.assertEqual((result["examples"], result["source_groups"]), (4, 4))
+        self.assertEqual((result["failed_examples"], result["failed_source_groups"]), (3, 3))
+        self.assertEqual((result["invalid_json_examples"], result["invalid_schema_examples"]), (1, 1))
+        self.assertEqual(result["field_mismatch_examples"], {"organization": 2, "year": 2, "claim": 3})
+        self.assertEqual(result["by_gold_year"]["2024"]["field_mismatch_examples"], {
+            "organization": 1, "year": 1, "claim": 2,
+        })
+        self.assertEqual(result["by_gold_year"]["2025"]["invalid_schema_examples"], 1)
+        self.assertEqual(result["by_gold_year"]["undated"]["failed_examples"], 0)
+        serialized = json.dumps(result)
+        for private_value in ("private source", "private-group", "wrong claim", "not json"):
+            self.assertNotIn(private_value, serialized)
+
+    def test_failure_analysis_requires_matching_non_empty_predictions(self):
+        row = {"group_id": "group-a", "output": {"organization": None, "year": None, "claim": None}}
+        with self.assertRaisesRegex(ValueError, "match a non-empty held-out split"):
+            benchmark.failure_analysis([row], [])
+        with self.assertRaisesRegex(ValueError, "match a non-empty held-out split"):
+            benchmark.failure_analysis([], [])
+
+
 class FakeTokenizer:
     def encode(self, text, add_special_tokens=False):
         return text.split()
@@ -330,13 +379,17 @@ class FrozenBenchmarkTests(unittest.TestCase):
             benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
-            self.assertEqual(report["schema_version"], 8)
+            self.assertEqual(report["schema_version"], 9)
             self.assertEqual(report["metrics_split"], "test")
             self.assertEqual(report["split_strategy"], "group-year-stratified-v1")
             self.assertFalse(report["test_split_used_for_selection"])
             self.assertEqual(report["metrics"]["base_initial_prompt"]["record_exact_match"], 0.0)
             self.assertEqual(report["metrics"]["base_validation_selected_prompt"]["record_exact_match"], 1.0)
             self.assertEqual(report["metrics"]["lora_validation_selected_prompt"]["record_exact_match"], 1.0)
+            self.assertEqual(report["metrics"]["base_initial_prompt"]["failure_analysis"]["failed_examples"], 30)
+            self.assertEqual(report["metrics"]["base_initial_prompt"]["failure_analysis"]["invalid_json_examples"], 30)
+            self.assertEqual(report["metrics"]["base_validation_selected_prompt"]["failure_analysis"]["failed_examples"], 0)
+            self.assertFalse(report["metrics"]["base_initial_prompt"]["failure_analysis"]["raw_examples_saved"])
             self.assertEqual(report["performance"]["lora_full_precision"]["generated_tokens"], 60)
             self.assertEqual(report["performance"]["lora_full_precision"]["warm_request_count"], 30)
             self.assertIsNotNone(report["performance"]["lora_full_precision"]["cold_first_request_seconds"])
@@ -467,6 +520,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertEqual(report["quantized_inference"]["calibration"]["source_groups"], 16)
         calibration_fingerprint = report["quantized_inference"]["calibration"]["input_sha256"]
         expected_configuration = {
+            "report_schema_version": benchmark.FROZEN_REPORT_SCHEMA_VERSION,
             "selection_sha256": report["selection_sha256"],
             "adapter_run_id": self.adapter_run_id,
             "adapter_sha256": report["adapter_sha256"],
@@ -494,6 +548,8 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertIsNotNone(variant["cold_first_request_seconds"])
         self.assertEqual(variant["metrics"]["record_exact_match"], 1.0)
         self.assertEqual(variant["metrics"]["by_gold_year"]["2024"]["source_groups"], 30)
+        self.assertEqual(variant["metrics"]["failure_analysis"]["failed_examples"], 0)
+        self.assertFalse(variant["metrics"]["failure_analysis"]["raw_examples_saved"])
         quantized_delta = variant["metrics"]["paired_record_exact_match_delta_95ci"]
         self.assertEqual(quantized_delta["estimate"], 0.0)
         self.assertEqual(quantized_delta["reference"], "Full-precision LoRA control")

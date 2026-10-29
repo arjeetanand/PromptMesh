@@ -376,6 +376,19 @@ for (const [type, label] of [
 
 test("quantized benchmark cards show task metrics, cold/warm latency, and the calibration caveat", () => {
   const { context, elements } = loadApp();
+  const failureAnalysis = {
+    method: "json-schema-and-field-mismatch-counts-v1", raw_examples_saved: false,
+    examples: 30, source_groups: 10, failed_examples: 4, failed_source_groups: 2,
+    invalid_json_examples: 1, invalid_schema_examples: 1,
+    field_mismatch_examples: { organization: 2, year: 3, claim: 2 },
+    by_gold_year: {
+      "2024": {
+        examples: 12, source_groups: 4, failed_examples: 2, failed_source_groups: 1,
+        invalid_json_examples: 1, invalid_schema_examples: 0,
+        field_mismatch_examples: { organization: 1, year: 1, claim: 1 }
+      }
+    }
+  };
   const report = {
     dataset_sha256: "a".repeat(64),
     test_examples: 30,
@@ -386,7 +399,7 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
     adapter_environment: { device: "cpu", python_version: "3.11.9", packages: { torch: "2.0.0" } },
     prompt_selection_environment: { device: "cuda", python_version: "3.12.0", packages: { torch: "2.1.0" } },
     metrics: {
-      base_initial_prompt: { record_exact_match: 0.1, field_accuracy: 0.2, json_valid_rate: 0.5 },
+      base_initial_prompt: { record_exact_match: 0.1, field_accuracy: 0.2, json_valid_rate: 0.5, failure_analysis: failureAnalysis },
       base_validation_selected_prompt: {
         record_exact_match: 0.2, field_accuracy: 0.3, json_valid_rate: 0.6,
         paired_record_exact_match_delta_95ci: {
@@ -396,6 +409,7 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
       lora_validation_selected_prompt: {
         record_exact_match: 0.5, field_accuracy: 0.7, json_valid_rate: 0.9,
         record_exact_match_95ci: { lower: 0.3, upper: 0.7 },
+        failure_analysis: failureAnalysis,
         by_gold_year: {
           "2024": {
             examples: 12, source_groups: 4, record_exact_match: 0.5,
@@ -433,6 +447,7 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
         id: "bnb_nf4", label: "bitsandbytes NF4", weight_bits: 4, compute_dtype: "float16",
         metrics: {
           record_exact_match: 0.4, field_accuracy: 0.6, json_valid_rate: 0.8,
+          failure_analysis: failureAnalysis,
           by_gold_year: {
             "2024": { examples: 6, source_groups: 2, record_exact_match: 0.4, field_accuracy: 0.6, json_valid_rate: 0.8, field_exact_match: { organization: 0.3, year: 1, claim: 0.3 }, record_exact_match_95ci: { lower: 0.1, upper: 0.7 } }
           },
@@ -458,6 +473,12 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
   assert.match(html, /not QLoRA training/);
   assert.match(html, /Timing: Synchronized wall-clock generation on MPS\/CUDA/);
   assert.match(html, /Matched test quality with cold first-request and warm latency measurements/);
+  assert.match(html, /Failure analysis · 4 of 30 examples with at least one error/);
+  assert.match(html, /Aggregate failure counts by gold year and total/);
+  assert.match(html, /Groups with failures/);
+  assert.match(html, /Invalid schema/);
+  assert.match(html, /Claim mismatches/);
+  assert.match(html, /Only aggregate counts are saved/);
   assert.match(html, /Cold first request/);
   assert.match(html, /Warm request p50/);
   assert.match(html, /Warm request p90/);
@@ -507,6 +528,7 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
   assert.match(calibratedHtml, /Quanto INT8 weights \+ INT8 activations · 8-bit · 8-bit activations · train-split calibration/);
   assert.match(calibratedHtml, /Calibration: 16 input-only examples from 16 training groups/);
   assert.match(calibratedHtml, /Calibration<\/small><strong>1\.25 s/);
+  assert.match(calibratedHtml, /Calibration and quantization durations are included in Load time/);
   assert.match(calibratedHtml, /optimum-quanto 0\.2\.7/);
   assert.match(calibratedHtml, /MPS driver allocation snapshots could not be read after inference/);
   delete report.performance.timing_method;

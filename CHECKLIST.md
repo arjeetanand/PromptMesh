@@ -63,7 +63,7 @@
 
 - [x] Validate the reviewer card against the exact JSONL fingerprint, review/count metadata, and source-group split; keep synthetic data ineligible.
 - [x] Mark readiness as a self-attested review card, not independently verified human review; require at least 30 validation and test examples across 10 source groups each.
-- [x] Compare extraction/v1 and a candidate prompt on gold validation data only, and save a hash-checked selection record tied to a validation-only schema-v3 LoRA adapter.
+- [x] Compare extraction/v1 and a candidate prompt on gold validation data only, and save a hash-checked selection record tied to a validation-only schema-v4 LoRA adapter.
 - [x] Reserve the frozen test set before inference, then compare base+initial prompt, base+selected prompt, and LoRA+selected prompt on identical test rows; include aggregate metrics and source-group bootstrap intervals.
 - [x] Add paired source-group bootstrap intervals for exact-match differences across prompt, LoRA, and quantized-inference arms; surface the comparison direction and percentage-point delta in Fine-tune results.
 - [x] Add gold-year test metrics and source-group counts for every frozen benchmark arm; show grouped confidence intervals when each year slice has at least two groups.
@@ -256,5 +256,19 @@
 - [x] Regenerate the ignored JSONL mirror; verify 423 rows / 141 groups, three variants per group, consistent labels, visible proposed actor/year in every input, exact CSV/JSONL mirror order, and application parser acceptance.
 - [x] Recompute the seed-42 split with PromptMesh: 297/63/63 rows across 99/21/21 groups; update the dataset guide and review handoff with proposed-year counts and review caveats.
 - [x] Spot-check the 14 focal claims against their official primary pages and record actor/date ambiguities for human review.
-- [ ] Reload the Fine-tune review queue in a browser after the Mac is unlocked; current CUA reports the Mac is locked and its tab-control API is unavailable.
+- [x] Confirm the project-owned 4004 listener matches this checkout and `/api/health` returns HTTP 200 with `status: healthy`; the default command sandbox cannot reach loopback.
+- [x] Inspect the rendered Fine-tune review queue in Edge at 1185px: API connected, 423 rows / 141 groups / 0 reviewed / 0 excluded / 0 export-eligible; no horizontal overflow or console errors, and no review was saved.
+- [ ] Check the new failure-analysis details/table in a real browser at a 390px viewport; Edge's advertised viewport control did not change the actual 1185px viewport during this run.
+- [ ] Render failure analysis from an actual human-reviewed benchmark; no real benchmark report exists yet.
 - [ ] Human-review every source, label, and wording variant; confirm source-specific reuse rights before creating a benchmark dataset/card.
+
+## Frozen benchmark failure analysis — 2026-10-29
+
+- [x] Add per-arm aggregate counts for invalid JSON, invalid schema, failed examples/groups, and field mismatches overall and by gold year; reports do not retain source text, group IDs, or generated answers.
+- [x] Bump frozen report schema to v9 and bind that schema version into the configuration fingerprint.
+- [x] Render the breakdown in a semantic, horizontally scrollable table with overlap and privacy notes; clarify that Quanto calibration/quantization times are included in load time.
+- [x] Verify with 99 Python tests, 20 Node UI tests, Python compilation, JavaScript syntax, launcher syntax, and `git diff --check`.
+- [x] Restart PromptMesh in a persistent foreground session on port 4004; API health is HTTP 200 and the app reports MPS with bitsandbytes 0.50.0.
+- [x] Serve-check the updated UI script and inspect the live Fine-tune queue in Edge; no review decisions were saved.
+- [ ] Inspect the failure-analysis report at desktop and mobile sizes once a real reviewed benchmark is available; complete the full screen-reader/axe audit.
+- [ ] Add the remaining effective trainer/LoRA settings to saved training manifests for more self-contained reproduction.

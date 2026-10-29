@@ -1500,7 +1500,7 @@ function displayFrozenBenchmark(report, created = true) {
     const exact = formatPercent(metrics?.record_exact_match);
     const interval = metrics?.record_exact_match_95ci;
     const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
-    return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span><div><small>Record exact match</small><strong>" + exact + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics?.field_accuracy) + "</strong></div><div><small>Valid JSON</small><strong>" + formatPercent(metrics?.json_valid_rate) + "</strong></div><b>95% grouped CI " + escapeHTML(ciText) + "</b>" + pairedDeltaMarkup(metrics) + goldYearSlicesMarkup(metrics?.by_gold_year) + "</article>";
+    return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span><div><small>Record exact match</small><strong>" + exact + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics?.field_accuracy) + "</strong></div><div><small>Valid JSON</small><strong>" + formatPercent(metrics?.json_valid_rate) + "</strong></div><b>95% grouped CI " + escapeHTML(ciText) + "</b>" + pairedDeltaMarkup(metrics) + goldYearSlicesMarkup(metrics?.by_gold_year) + failureAnalysisMarkup(metrics?.failure_analysis) + "</article>";
   }).join("");
   const timingMethod = report.performance?.timing_method || "Timing method not recorded in this report.";
   const timingNote = "<p class=\"benchmark-timing-note\">Timing: " + escapeHTML(timingMethod) + "</p>";
@@ -1593,6 +1593,36 @@ function goldYearSlicesMarkup(slices) {
   return "<details class=\"gold-year-slices\"><summary>Test results by gold year</summary><div class=\"gold-year-slice-list\"><p class=\"gold-year-slice-note\">Group counts are per year slice; a source with multiple event years may appear more than once.</p>" + rows + "</div></details>";
 }
 
+function failureAnalysisMarkup(analysis) {
+  if (!analysis || !Number.isInteger(analysis.examples) || !Number.isInteger(analysis.failed_examples)) return "";
+  const count = (value) => Number.isInteger(value) && value >= 0 ? String(value) : "—";
+  const entries = Object.entries(analysis.by_gold_year || {}).sort(([left], [right]) => {
+    if (left === "undated") return 1;
+    if (right === "undated") return -1;
+    return Number(left) - Number(right);
+  });
+  const rows = [["All years", analysis], ...entries];
+  const tableRows = rows.map(([slice, values]) => {
+    const fields = values.field_mismatch_examples || {};
+    const label = slice === "All years" ? slice : "Gold year " + slice;
+    return "<tr><th scope=\"row\">" + escapeHTML(label) + "</th><td>" + count(values.examples)
+      + "</td><td>" + count(values.source_groups) + "</td><td>" + count(values.failed_examples)
+      + "</td><td>" + count(values.failed_source_groups) + "</td><td>" + count(values.invalid_json_examples)
+      + "</td><td>" + count(values.invalid_schema_examples) + "</td><td>" + count(fields.organization)
+      + "</td><td>" + count(fields.year) + "</td><td>" + count(fields.claim) + "</td></tr>";
+  }).join("");
+  return "<details class=\"failure-analysis\"><summary>Failure analysis · " + count(analysis.failed_examples)
+    + " of " + count(analysis.examples) + " examples with at least one error</summary>"
+    + "<p class=\"failure-analysis-note\">Counts can overlap; invalid JSON or schema outputs count as mismatches for every field. Only aggregate counts are saved—source text and generated answers are not retained.</p>"
+    + "<div class=\"failure-analysis-table-wrap\" role=\"region\" aria-label=\"Aggregate failure counts by gold year\" tabindex=\"0\">"
+    + "<table class=\"failure-analysis-table\"><caption>Aggregate failure counts by gold year and total</caption>"
+    + "<thead><tr><th scope=\"col\">Slice</th><th scope=\"col\">Examples</th><th scope=\"col\">Source groups</th>"
+    + "<th scope=\"col\">Failed</th><th scope=\"col\">Groups with failures</th><th scope=\"col\">Invalid JSON</th>"
+    + "<th scope=\"col\">Invalid schema</th><th scope=\"col\">Org mismatches</th>"
+    + "<th scope=\"col\">Year mismatches</th><th scope=\"col\">Claim mismatches</th></tr></thead><tbody>"
+    + tableRows + "</tbody></table></div></details>";
+}
+
 function quantizationMetricCard(label, metrics = {}, performance = {}) {
   const interval = metrics.record_exact_match_95ci;
   const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
@@ -1619,6 +1649,9 @@ function quantizationMetricCard(label, metrics = {}, performance = {}) {
   const quantization = Number.isFinite(performance.quantization_seconds)
     ? "<div><small>Quantize + freeze</small><strong>" + seconds(performance.quantization_seconds) + "</strong></div>"
     : "";
+  const quantizationTimingNote = quantization
+    ? "<p class=\"quantization-timing-note\">Calibration and quantization durations are included in Load time; do not add them again.</p>"
+    : "";
   return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span>"
     + "<div><small>Record exact match</small><strong>" + formatPercent(metrics.record_exact_match) + "</strong></div>"
     + "<div><small>Field accuracy</small><strong>" + formatPercent(metrics.field_accuracy) + "</strong></div>"
@@ -1637,6 +1670,8 @@ function quantizationMetricCard(label, metrics = {}, performance = {}) {
     + "<div><small>Generation</small><strong>" + rate + "</strong></div>"
     + "<div><small>Model footprint</small><strong>" + footprint + "</strong></div>"
     + goldYearSlicesMarkup(metrics.by_gold_year)
+    + failureAnalysisMarkup(metrics.failure_analysis)
+    + quantizationTimingNote
     + "</article>";
 }
 

@@ -23,7 +23,7 @@ from training.holdout_registry import (
     reject_used_holdout,
     reserve_holdout,
 )
-from training.metrics import score_predictions
+from training.metrics import failure_analysis, score_predictions
 from training.quantization import (
     CALIBRATION_GROUP_LIMIT,
     CALIBRATION_MOMENTUM,
@@ -43,6 +43,7 @@ SELECTIONS_DIR = Path(__file__).parent / "selections"
 BENCHMARKS_DIR = DEFAULT_BENCHMARKS_DIR
 MAX_PROMPT_CANDIDATES = 3
 SELECTION_ID_RE = re.compile(r"^[a-f0-9]{32}$")
+FROZEN_REPORT_SCHEMA_VERSION = 9
 BENCHMARK_TIMING_PROTOCOL = {
     "version": "cold-first-request-warm-scored-pass-v1",
     "cold_first_request": "Fresh model load: one request on the first frozen test input before its scored pass; output is discarded. Reused model arms do not repeat this measurement.",
@@ -689,6 +690,7 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "prompt_sha256": _prompt_sha256(selected_prompt),
             }
         configuration = {
+            "report_schema_version": FROZEN_REPORT_SCHEMA_VERSION,
             "selection_sha256": selection["selection_sha256"],
             "adapter_run_id": request.adapter_run_id,
             "adapter_sha256": adapter["adapter_sha256"],
@@ -780,6 +782,7 @@ def run_frozen_benchmark(job_id, request, jobs):
         }
         baseline_metrics = score_predictions(test_rows, baseline_predictions)
         baseline_metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, baseline_predictions)
+        baseline_metrics["failure_analysis"] = failure_analysis(test_rows, baseline_predictions)
         if selection["selected_prompt_sha256"] == _prompt_sha256(baseline_prompt):
             selected_predictions = baseline_predictions
             selected_metrics = baseline_metrics
@@ -796,6 +799,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             }
             selected_metrics = score_predictions(test_rows, selected_predictions)
             selected_metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, selected_predictions)
+            selected_metrics["failure_analysis"] = failure_analysis(test_rows, selected_predictions)
         baseline_ci = _record_accuracy_ci(test_rows, baseline_predictions)
         selected_ci = baseline_ci if selected_predictions is baseline_predictions else _record_accuracy_ci(test_rows, selected_predictions)
         del base_model
@@ -812,6 +816,7 @@ def run_frozen_benchmark(job_id, request, jobs):
         )
         adapter_metrics = score_predictions(test_rows, adapter_predictions)
         adapter_metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, adapter_predictions)
+        adapter_metrics["failure_analysis"] = failure_analysis(test_rows, adapter_predictions)
         adapter_ci = _record_accuracy_ci(test_rows, adapter_predictions)
         selected_prompt_delta_ci = _record_accuracy_difference_ci(
             test_rows,
@@ -858,6 +863,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             )
             metrics = score_predictions(test_rows, predictions)
             metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, predictions)
+            metrics["failure_analysis"] = failure_analysis(test_rows, predictions)
             metrics["record_exact_match_95ci"] = _record_accuracy_ci(test_rows, predictions)
             metrics["paired_record_exact_match_delta_95ci"] = _record_accuracy_difference_ci(
                 test_rows,
@@ -901,7 +907,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             _clear_device_cache(quantized_torch, quantized_device)
 
         report = {
-            "schema_version": 8,
+            "schema_version": FROZEN_REPORT_SCHEMA_VERSION,
             "status": "completed",
             "dataset_id": selection["dataset_id"],
             "dataset_sha256": dataset_digest,

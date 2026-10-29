@@ -396,6 +396,17 @@ input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent);
 .gold-year-slice { display: grid; gap: 3px; padding: 8px 10px; border-left: 2px solid var(--rule); background: var(--sheet); }
 .gold-year-slice strong { font-size: 11px; font-weight: 600; }
 .gold-year-slice span { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.failure-analysis { grid-column: 1 / -1; min-width: 0; }
+.failure-analysis summary { color: var(--accent-strong); cursor: pointer; font-size: 11px; }
+.failure-analysis-note { margin: 7px 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.failure-analysis-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; border: 1px solid var(--rule); border-radius: 5px; }
+.failure-analysis-table { width: 100%; min-width: 850px; border-collapse: collapse; font-size: 10px; }
+.failure-analysis-table caption { padding: 7px 8px; color: var(--muted); text-align: left; }
+.failure-analysis-table th,
+.failure-analysis-table td { padding: 6px 8px; border-top: 1px solid var(--rule); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.failure-analysis-table thead th { color: var(--muted); font-weight: 500; }
+.failure-analysis-table th[scope="row"] { color: var(--text); text-align: left; font-weight: 500; }
+.quantization-timing-note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .training-loss-panel { display: grid; grid-template-columns: 180px minmax(0,1fr); align-items: center; gap: 20px; padding: 17px 20px; border-top: 1px solid var(--rule); }
 .training-loss-panel h3 { margin: 0; font-size: 12px; font-weight: 600; }
 .training-loss-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }

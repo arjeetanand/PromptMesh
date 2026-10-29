@@ -161,17 +161,24 @@ and source-group confidence intervals when a slice has at least two groups.
 Single-group slices display their metrics without an interval. Group counts
 are per slice, so a source with claims from multiple event years can appear in
 more than one year.
+Reports also include per-arm aggregate failure counts for invalid JSON, invalid
+schema, and field mismatches, overall and by gold year. Invalid outputs count as
+mismatches for every field, so counts can overlap. Reports retain these counts,
+not source text or generated answers. Quanto calibration and quantization times
+are components of its displayed load time and should not be added to it again.
 
-A local, git-ignored public-source review packet has 381 unreviewed draft rows
-in 127 source groups. Each group contains three phrasings of one source claim,
-not three independent facts. It covers 2020–2025 with one undated group; 65
-groups are dated 2024, 13 are dated 2021, and 12 each are dated 2020, 2022,
-2023, and 2025.
+A local, git-ignored public-source review packet has 423 unreviewed draft rows
+in 141 source groups. Each group contains three phrasings of one source claim,
+not three independent facts. Proposed years are 2020=14 groups, 2021=16,
+2022=15, 2023=15, 2024=65, 2025=15, and one undated.
 This is still not a representative benchmark. Every candidate label and reuse
 decision remains pending human review, and the packet does not establish
-model-quality gains. The current draft split projects 57 rows across 19 groups
-to each held-out split, with 2 of 19 groups from 2021 and 9 of 19 from 2024;
-these unreviewed years must not be presented as benchmark composition.
+model-quality gains. The current seed-42 draft split projects 297 training rows
+across 99 groups and 63 rows across 21 groups in each held-out split. Each
+held-out split has proposed-year counts of 2 groups from 2020, 3 from 2021, 2
+from 2022, 2 from 2023, 10 from 2024, and 2 from 2025. These unreviewed years
+must not be presented as benchmark composition; 2024 accounts for 10 of 21
+groups in each held-out projection.
 
 The export form now offers an explicit year-balanced pilot of 12 eligible
 groups in each reviewed year from 2020–2025. It selects deterministically from

@@ -10,7 +10,7 @@ Build PromptMesh into a reproducible structured-extraction study that can suppor
 - Use validation data for prompt and adapter selection. Keep the reserved test split out of training and prompt selection; reserve it before inference and do not retry after a possible test access.
 - Use deterministic gold-label metrics as primary evidence. Keep the configured LLM judge as an optional heuristic diagnostic.
 - Store dataset hash, prompt/version hash, base model and tokenizer revisions, adapter identity, seed, split counts, hardware, and inference settings with every benchmark report.
-- Do not install a quantization backend or download additional model weights until a compatible path is selected and authorized.
+- Install only a hardware-compatible quantization backend after the path is selected and authorized. bitsandbytes 0.50.0 is installed in the project `.venv` with prior approval; do not download additional model weights without approval.
 
 ## Task list
 
@@ -41,11 +41,12 @@ Tasks and checkpoints are tracked in the repository's existing `CHECKLIST.md`.
 - [ ] A user supplies an authorized, representative corpus and performs human label review; the local card remains a self-attestation.
 - [x] Prompt-only and LoRA report arms use identical untouched examples after validation-based selection.
 - [x] Reports carry data/card/model/tokenizer/prompt/adapter hashes and revisions, exact split counts, hardware, decoding settings, and grouped uncertainty intervals.
-- [ ] Add per-slice failure analysis and inspect real model outputs on the supplied corpus.
+- [x] Add aggregate per-arm failure counts for invalid JSON/schema and field mismatches, overall and by gold year; retain no source text or generated answers in the report.
+- [ ] Inspect real model outputs and failure patterns on the supplied, human-reviewed corpus.
 
 ### Phase 3: Quantized inference study
 
-7. **Backend decision:** choose an installed, hardware-compatible quantization backend; ask before installing packages or downloading new weights.
+7. **Backend decision:** bitsandbytes 0.50.0 is installed in the project `.venv`; the host-context runtime reports MPS, and the synthetic INT8/NF4 workflow smoke is complete. Quanto remains uninstalled. Ask before installing further packages or downloading new weights.
 8. **Matched inference report:** run unquantized and quantized variants on the same frozen benchmark and hardware; record quality, warm/cold latency, peak memory, precision, and serving settings. The runner now fingerprints cold/warm latency and memory protocols; CUDA reports allocator peaks and MPS reports non-peak driver snapshots. A human-reviewed run and backend-appropriate memory results are still pending.
 9. **UI disclosure:** show backend/hardware and keep quantization claims absent until the measured comparison completes.
 
@@ -57,11 +58,12 @@ Tasks and checkpoints are tracked in the repository's existing `CHECKLIST.md`.
 
 ## Current verified gaps
 
-- `training/runner.py` trains LoRA and scores the base/adapter on validation only; schema-v3 manifests fingerprint the adapter artifact and record validation provenance. Prompt selection and the frozen matched benchmark are implemented in `training/benchmark.py` and exposed in the Fine-tune UI.
+- `training/runner.py` trains LoRA on train rows and scores the base/adapter on validation only; schema-v4 manifests fingerprint the adapter artifact and record validation provenance. Prompt selection and the frozen matched benchmark are implemented in `training/benchmark.py` and exposed in the Fine-tune UI. Frozen report schema v9 adds aggregate failure counts without storing text or generations.
 - `optimization/evolver.py` still scores revisions on user-supplied optimization inputs with an LLM judge. It is not directly wired to the gold validation selector; users paste a candidate into the Fine-tune flow to score it.
 - The repository contains only the synthetic demo dataset. The tracked card template remains `unreviewed`; no user-authorized human-reviewed corpus or real model benchmark exists. The card is checked as a self-attestation and is not an independent review audit.
-- Local final evaluation uses only already-cached pinned weights; the training flow can download Qwen weights when explicitly run on an uncached machine. No training, model download, provider request, or final test evaluation occurred in this implementation turn.
-- The live PromptMesh API reports MPS and its server process has loaded the Apple Metal driver, while a fresh CLI probe reports MPS unavailable. Reconcile this before quantization measurements. `mlx`, `mlx_lm`, `llama_cpp`, and `bitsandbytes` are not installed.
+- Training and final evaluation require the pinned Qwen snapshot in the local cache and load it with `local_files_only=True`; these paths do not fetch model weights.
+- The host-context `.venv` probe and live API both report MPS; the default command sandbox reports MPS unavailable because it lacks host device access. bitsandbytes 0.50.0 is available and was exercised with synthetic smoke inputs; Quanto is not installed. No real-data quantized comparison exists.
+- The schema-v4 LoRA manifest still omits some effective trainer settings (including LoRA alpha/dropout/targets, batch sizes, sequence length, optimizer, and gradient accumulation); add these before claiming fully self-contained training reproducibility.
 
 ## Risks and open questions
 
@@ -69,5 +71,6 @@ Tasks and checkpoints are tracked in the repository's existing `CHECKLIST.md`.
 |---|---|---|
 | No human-reviewed dataset is available in the repository | Cannot substantiate quality claims | Use an authorized redacted dataset supplied by the user; keep it gitignored |
 | Prompt evolution still selects revisions on its supplied inputs | Judge scores can overfit the optimization set | Treat evolution as heuristic generation; use the gold validation selector before any final report |
-| No compatible quantization runtime is installed; the app/CLI MPS reports differ | No valid quantized measurement yet | Reconcile the live runtime and choose a supported backend before requesting installation |
+| No human-reviewed, rights-cleared benchmark is available | Cannot support real-data quality or quantization claims | Wait for human source/label/reuse review; keep synthetic smoke results labeled as workflow evidence |
+| Quanto is not installed | No W8A8 calibration comparison is available | Install only after selecting this backend and receiving authorization; INT8/NF4 bitsandbytes remain available |
 | Hosted judge/model calls may send example text externally and incur cost | Privacy and cost exposure | Keep hosted calls out of benchmark runs unless specifically authorized |
