@@ -424,9 +424,14 @@ shell's changing `TMPDIR` does not hide the managed instance.
 
 The local workspace UI has been manually checked across its pages at widths
 from 320px to 1440px. Keyboard users can skip the navigation and move focus to
-the workspace while keeping the selected page. This covers navigation and
-responsive layout, not a provider-backed end-to-end evaluation or a full
-screen-reader/automated accessibility audit; see `HANDOFF.md` for the latest
+the workspace while keeping the selected page. On narrow screens, navigation
+opens as a modal drawer: the page becomes inert, focus stays in the drawer, and
+its Close button, Escape, or the backdrop return focus to the menu button.
+Crossing the mobile breakpoint moves focus away from controls that become
+hidden. Focus indicators use solid colors, and source-group changes announce a
+short status instead of the whole source card. These changes have UI regression
+coverage, but not a full screen-reader/automated accessibility audit or
+provider-backed end-to-end evaluation; see `HANDOFF.md` for the latest
 verification scope.
 
 The redesigned UI provides model evaluation, prompt comparison and evolution,

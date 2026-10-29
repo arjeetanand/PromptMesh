@@ -281,24 +281,85 @@ function activateTab(tab, updateHash, moveFocus = false) {
 
 function setupMobileNavigation() {
   const frame = $("appFrame");
+  const sidebar = $("sidebar");
+  const workspace = $("workspace");
   const toggle = $("menuToggle");
+  const closeToggle = $("mobileMenuClose");
   const scrim = $("mobileScrim");
-  toggle.addEventListener("click", () => {
-    const open = !frame.classList.contains("nav-open");
-    frame.classList.toggle("nav-open", open);
+  const mobile = window.matchMedia("(max-width: 820px)");
+  const sync = () => {
+    if (!mobile.matches) frame.classList.remove("nav-open");
+    const open = mobile.matches && frame.classList.contains("nav-open");
+    sidebar.inert = mobile.matches && !open;
+    workspace.inert = open;
+    $("skipLink").inert = open;
+    $("toastContainer").inert = open;
+    closeToggle.hidden = !open;
+    if (open) {
+      sidebar.setAttribute("role", "dialog");
+      sidebar.setAttribute("aria-modal", "true");
+    } else {
+      sidebar.removeAttribute("role");
+      sidebar.removeAttribute("aria-modal");
+    }
     toggle.setAttribute("aria-expanded", String(open));
     toggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
     scrim.hidden = !open;
+  };
+  toggle.addEventListener("click", () => {
+    const open = mobile.matches && !frame.classList.contains("nav-open");
+    frame.classList.toggle("nav-open", open);
+    sync();
+    if (open) sidebar.querySelector('.nav-btn[aria-current="page"]')?.focus();
+    else toggle.focus();
   });
-  scrim.addEventListener("click", closeMobileNavigation);
-  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMobileNavigation(); });
+  closeToggle.addEventListener("click", () => closeMobileNavigation(true));
+  scrim.addEventListener("click", () => closeMobileNavigation(true));
+  document.addEventListener("keydown", (event) => {
+    const open = frame.classList.contains("nav-open");
+    if (event.key === "Escape" && open) {
+      closeMobileNavigation(true);
+      return;
+    }
+    if (event.key !== "Tab" || !open) return;
+    const focusable = [...sidebar.querySelectorAll('a[href], button:not([disabled]):not([hidden])')];
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (!first || !last) return;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  mobile.addEventListener("change", (event) => {
+    const moveFocusToToggle = event.matches && sidebar.contains(document.activeElement);
+    const moveFocusToNavigation = !event.matches && (document.activeElement === toggle || document.activeElement === closeToggle);
+    sync();
+    if (moveFocusToToggle) toggle.focus();
+    if (moveFocusToNavigation) {
+      (sidebar.querySelector('.nav-btn[aria-current="page"]') || sidebar.querySelector(".nav-btn"))?.focus();
+    }
+  });
+  sync();
 }
 
-function closeMobileNavigation() {
+function closeMobileNavigation(restoreFocus = false) {
+  const mobile = window.matchMedia("(max-width: 820px)").matches;
   $("appFrame").classList.remove("nav-open");
+  $("sidebar").inert = mobile;
+  $("workspace").inert = false;
+  $("skipLink").inert = false;
+  $("toastContainer").inert = false;
+  $("mobileMenuClose").hidden = true;
+  $("sidebar").removeAttribute("role");
+  $("sidebar").removeAttribute("aria-modal");
   $("menuToggle").setAttribute("aria-expanded", "false");
   $("menuToggle").setAttribute("aria-label", "Open navigation");
   $("mobileScrim").hidden = true;
+  if (restoreFocus) $("menuToggle").focus();
 }
 
 function setupPromptModes() {
@@ -551,6 +612,7 @@ function candidateReviewCoverage(groups) {
 
 function renderReviewGroup(group) {
   const source = $("reviewPacketSource");
+  $("reviewPacketAnnouncement").textContent = `Showing source group ${group.source_title || group.group_id}.`;
   source.replaceChildren();
   const title = document.createElement("h3");
   title.textContent = group.source_title || group.group_id;

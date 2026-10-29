@@ -20,6 +20,7 @@ function loadApp() {
       replaceChildren(...children) { this.children = children; this.options = []; },
       setAttribute(name, value) { this.attributes[name] = value; },
       getAttribute(name) { return this.attributes[name] ?? null; },
+      removeAttribute(name) { delete this.attributes[name]; },
       focus() { this.focused = true; },
       showModal() { this.open = true; }, close() { this.open = false; }, scrollIntoView() { this.scrolled = true; },
       querySelector() { return element(id + "Submit"); },
@@ -31,6 +32,7 @@ function loadApp() {
     location: { origin: "http://localhost", hash: "#overview" },
     history: { replaceState(_state, _title, hash) { window.location.hash = hash; } },
     confirm() { return true; },
+    matchMedia() { return { matches: false, addEventListener() {} }; },
     addEventListener() {},
     setInterval(callback) { const id = ++nextTimer; timers.set(id, callback); return id; },
     clearInterval(id) { timers.delete(id); }
@@ -49,12 +51,128 @@ function loadApp() {
   return { context, elements, timers, setJobResponse(response) { jobResponse = response; } };
 }
 
-test("candidate source changes are announced to assistive technology", () => {
+test("candidate source changes use a concise announcement instead of a live source block", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "static", "index.html"), "utf8");
   const sourceRegion = html.match(/<div\b[^>]*id="reviewPacketSource"[^>]*>/)?.[0] || "";
+  const announcement = html.match(/<p\b[^>]*id="reviewPacketAnnouncement"[^>]*>/)?.[0] || "";
 
-  assert.match(sourceRegion, /aria-live="polite"/);
-  assert.match(sourceRegion, /aria-atomic="true"/);
+  assert.doesNotMatch(sourceRegion, /aria-live|aria-atomic/);
+  assert.match(announcement, /role="status"/);
+  assert.match(announcement, /aria-live="polite"/);
+  assert.match(announcement, /aria-atomic="true"/);
+});
+
+test("mobile navigation hides the closed drawer and restores focus on dismissal", () => {
+  const { context } = loadApp();
+  const frame = context.document.getElementById("appFrame");
+  const sidebar = context.document.getElementById("sidebar");
+  const workspace = context.document.getElementById("workspace");
+  const skipLink = context.document.getElementById("skipLink");
+  const toastContainer = context.document.getElementById("toastContainer");
+  const toggle = context.document.getElementById("menuToggle");
+  const closeToggle = context.document.getElementById("mobileMenuClose");
+  const scrim = context.document.getElementById("mobileScrim");
+  const classes = new Set();
+  frame.classList = {
+    add(name) { classes.add(name); },
+    remove(name) { classes.delete(name); },
+    toggle(name, force) { if (force) classes.add(name); else classes.delete(name); },
+    contains(name) { return classes.has(name); },
+  };
+  const focusable = () => ({ focused: false, focus() { this.focused = true; context.document.activeElement = this; } });
+  const firstNav = focusable();
+  const activeNav = focusable();
+  const lastNav = focusable();
+  closeToggle.focus = () => { closeToggle.focused = true; context.document.activeElement = closeToggle; };
+  sidebar.querySelector = () => activeNav;
+  sidebar.querySelectorAll = () => [closeToggle, firstNav, activeNav, lastNav];
+  sidebar.contains = (target) => [closeToggle, firstNav, activeNav, lastNav].includes(target);
+  toggle.focus = () => { toggle.focused = true; context.document.activeElement = toggle; };
+  let onKeydown;
+  context.document.addEventListener = (event, handler) => { if (event === "keydown") onKeydown = handler; };
+  const media = { matches: true, addEventListener(event, handler) { this.listener = handler; } };
+  context.window.matchMedia = () => media;
+
+  vm.runInContext("setupMobileNavigation()", context);
+  assert.equal(sidebar.inert, true);
+  assert.equal(workspace.inert, false);
+  assert.equal(skipLink.inert, false);
+  assert.equal(toastContainer.inert, false);
+  assert.equal(closeToggle.hidden, true);
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+
+  toggle.listeners.click();
+  assert.equal(sidebar.inert, false);
+  assert.equal(workspace.inert, true);
+  assert.equal(skipLink.inert, true);
+  assert.equal(toastContainer.inert, true);
+  assert.equal(sidebar.getAttribute("role"), "dialog");
+  assert.equal(sidebar.getAttribute("aria-modal"), "true");
+  assert.equal(closeToggle.hidden, false);
+  assert.equal(frame.classList.contains("nav-open"), true);
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  assert.equal(toggle.getAttribute("aria-label"), "Close navigation");
+  assert.equal(activeNav.focused, true);
+
+  const pressTab = (shiftKey = false) => {
+    let prevented = false;
+    onKeydown({ key: "Tab", shiftKey, preventDefault() { prevented = true; } });
+    return prevented;
+  };
+  context.document.activeElement = lastNav;
+  assert.equal(pressTab(), true);
+  assert.equal(context.document.activeElement, closeToggle);
+  assert.equal(pressTab(true), true);
+  assert.equal(context.document.activeElement, lastNav);
+
+  onKeydown({ key: "Escape" });
+  assert.equal(sidebar.inert, true);
+  assert.equal(workspace.inert, false);
+  assert.equal(skipLink.inert, false);
+  assert.equal(toastContainer.inert, false);
+  assert.equal(sidebar.getAttribute("role"), null);
+  assert.equal(sidebar.getAttribute("aria-modal"), null);
+  assert.equal(closeToggle.hidden, true);
+  assert.equal(scrim.hidden, true);
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+  assert.equal(context.document.activeElement, toggle);
+
+  toggle.listeners.click();
+  closeToggle.listeners.click();
+  assert.equal(workspace.inert, false);
+  assert.equal(context.document.activeElement, toggle);
+  toggle.listeners.click();
+  scrim.listeners.click();
+  assert.equal(sidebar.inert, true);
+  assert.equal(context.document.activeElement, toggle);
+
+  toggle.listeners.click();
+  vm.runInContext("activateTab('finetune', false, true)", context);
+  assert.equal(sidebar.inert, true);
+  assert.equal(context.document.getElementById("fineTuneTitle").focused, true);
+
+  media.matches = false;
+  toggle.focus();
+  media.listener({ matches: false });
+  assert.equal(sidebar.inert, false);
+  assert.equal(frame.classList.contains("nav-open"), false);
+  assert.equal(context.document.activeElement, activeNav);
+  assert.equal(sidebar.getAttribute("role"), null);
+  context.document.activeElement = activeNav;
+  media.matches = true;
+  media.listener({ matches: true });
+  assert.equal(sidebar.inert, true);
+  assert.equal(workspace.inert, false);
+  assert.equal(context.document.activeElement, toggle);
+
+  toggle.listeners.click();
+  closeToggle.focus();
+  media.matches = false;
+  media.listener({ matches: false });
+  assert.equal(sidebar.inert, false);
+  assert.equal(workspace.inert, false);
+  assert.equal(closeToggle.hidden, true);
+  assert.equal(context.document.activeElement, activeNav);
 });
 
 test("review source terms link stays informational and does not confirm permission", () => {
@@ -81,6 +199,7 @@ test("review source terms link stays informational and does not confirm permissi
   assert.equal(termsLink.target, "_blank");
   assert.equal(termsLink.rel, "noopener noreferrer");
   assert.match(sourceChildren.find((child) => child.textContent?.includes("does not confirm permission")).textContent, /Reference only/);
+  assert.equal(elements.get("reviewPacketAnnouncement").textContent, "Showing source group Apple unleashes M1.");
   assert.equal(elements.get("reviewSourceReuseStatus").value, "permission_unconfirmed");
 
   group.reuse_terms_url = "http://www.apple.com/legal/internet-services/terms/site.html";
@@ -160,7 +279,7 @@ test("review year filter and navigation share the interleaved queue order", () =
 
 test("skip link reaches the workspace without redirecting the active app tab", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "static", "index.html"), "utf8");
-  assert.match(html, /<a class="skip-link" href="#workspace">Skip to main content<\/a>/);
+  assert.match(html, /<a class="skip-link" id="skipLink" href="#workspace">Skip to main content<\/a>/);
   assert.match(html, /<main class="workspace" id="workspace" tabindex="-1">/);
 
   const { context } = loadApp();

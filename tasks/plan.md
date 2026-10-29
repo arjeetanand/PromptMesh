@@ -66,6 +66,7 @@ Tasks and checkpoints are tracked in the repository's existing `CHECKLIST.md`.
 - The host-context `.venv` probe and live API both report MPS; the default command sandbox reports MPS unavailable because it lacks host device access. bitsandbytes 0.50.0 is available and was exercised with synthetic smoke inputs; Quanto is not installed. No real-data quantized comparison exists.
 - The successful LoRA runner path now has an offline mocked regression for train/validation dataset wiring, local-only model/tokenizer loads, adapter saving, and the validation-only schema-v5 manifest digest. This checks runner orchestration and artifact provenance, not training quality.
 - Run manifests now capture the effective trainer and LoRA settings and the Fine-tune UI surfaces them. A disposable Python 3.12/macOS ARM64 environment installed the app requirements and 47-pin training lock; all pins matched, `pip check` passed, required imports succeeded, and 109 Python tests pass. General app requirements remain unpinned.
+- The mobile navigation uses a modal drawer: closed drawer and background content are inert as appropriate, focus stays within the open drawer, and close actions and 820px breakpoint changes move focus to visible controls. Focus indicators are opaque high-contrast colors; source-group changes announce a concise status. UI regressions and a live narrow-browser check cover these paths; a screen-reader session and axe audit remain open.
 
 ## Risks and open questions
 

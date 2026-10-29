@@ -12,9 +12,10 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <a class="skip-link" href="#workspace">Skip to main content</a>
+  <a class="skip-link" id="skipLink" href="#workspace">Skip to main content</a>
   <div class="app-frame" id="appFrame">
     <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+      <button class="mobile-menu mobile-menu-close" id="mobileMenuClose" type="button" aria-label="Close navigation" aria-controls="sidebar" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
       <a class="brand" href="#overview" data-tab="overview" aria-label="PromptMesh home">
         <svg class="brand-mark" viewBox="0 0 34 34" aria-hidden="true">
           <path d="M8 10.5 17 6l9 4.5v11L17 26l-9-4.5v-11Z" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -72,7 +73,7 @@
     <div class="mobile-scrim" id="mobileScrim" hidden></div>
     <main class="workspace" id="workspace" tabindex="-1">
       <header class="topbar">
-        <button class="mobile-menu" id="menuToggle" type="button" aria-label="Open navigation" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
+        <button class="mobile-menu" id="menuToggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
         <div class="topbar-context">
           <button class="topbar-back" id="backToOverview" type="button" data-go="overview" aria-label="Back to overview" title="Back to overview" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 10h-13m0 0L9 4.5M3.5 10 9 15.5"/></svg><span>Back</span></button>
           <div class="breadcrumb"><span>Personal workspace</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg><strong id="breadcrumbTitle">Overview</strong></div>
@@ -131,7 +132,8 @@
                 <div class="field"><label for="reviewPacketGroup">Source group</label><select id="reviewPacketGroup"></select></div>
                 <div class="review-navigation"><button id="reviewPacketPrevious" class="button button-secondary" type="button">Previous</button><button id="reviewPacketNext" class="button button-secondary" type="button">Next needing review</button></div>
               </div>
-              <div id="reviewPacketSource" class="review-source" aria-live="polite" aria-atomic="true"></div>
+              <div id="reviewPacketSource" class="review-source"></div>
+              <p id="reviewPacketAnnouncement" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
               <form id="reviewPacketForm">
                 <p class="review-guidance">Review all variants in this group. <strong>Organization means the named claim actor</strong>; do not substitute a recipient or beneficiary. These phrasings share one source fact, so they count as one group. After review, export can include all eligible groups or a deterministic pilot of 12 groups per reviewed year (2020–2025). The pilot prioritizes distinct normalized source hosts, but host diversity does not balance source owners, topics, organizations, or writing styles and is not a representativeness claim.</p>
                 <div id="reviewPacketRows" class="review-rows"></div>

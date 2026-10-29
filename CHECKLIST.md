@@ -338,3 +338,13 @@
 - [x] Confirm the review queue still has 423 candidates / 141 source groups / 0 reviewed labels / 0 eligible groups; no review decision was saved.
 - [x] Confirm the browser console has no errors or warnings.
 - [ ] Complete a screen-reader and automated axe audit; visual/DOM checks do not replace either.
+
+## Keyboard accessibility follow-up — 2026-10-29
+
+- [x] Make the closed mobile drawer inert; expose the open drawer as a modal dialog and make the workspace, skip link, and toast region inert; keep Tab focus within the drawer; restore focus on Close/Escape/backdrop dismissal; move focus to the selected page heading after navigation; move focus away from controls hidden by breakpoint changes.
+- [x] Replace translucent keyboard focus rings with solid focus colors; contrast is 6.84:1 on white and 19.66:1 on the dark sidebar.
+- [x] Replace the full live source card with a concise source-group status announcement.
+- [x] Run UI regressions: all 23 tests pass, including modal state and breakpoint focus; JavaScript syntax and `git diff --check` pass.
+- [x] Verify the live Fine-tune page and source-group announcement in the browser; the queue remains 423 candidates / 141 groups / 0 reviewed / 0 eligible, and no review was saved.
+- [x] Verify the open drawer in the narrow in-app browser: background and skip link disappear from the accessibility tree, Tab wraps to Close, and Escape restores focus to the menu button.
+- [ ] Run a screen-reader session and automated axe audit.

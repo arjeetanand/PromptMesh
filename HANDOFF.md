@@ -639,3 +639,11 @@
 - The full Python suite passed: 109 tests. Existing `datetime.utcnow()` deprecation warnings remain at `app.py:916` and `core/security.py:121`; imports also emit PyTorch's macOS distributed-redirect note.
 - No model weights were downloaded, and the project `.venv`, source packet, review decisions, datasets, training artifacts, and benchmark reports were not changed.
 - Remaining: `requirements.txt` is unpinned, so future general-app dependency resolution may differ; no human-reviewed benchmark or model-quality result is established.
+
+## Keyboard accessibility follow-up — 2026-10-29
+
+- The closed mobile drawer is inert. When open, it is exposed as a modal dialog, and the workspace, skip link, and toast region are inert. Tab/Shift+Tab cycle between drawer controls. The active navigation item receives focus on open; Close/Escape/backdrop returns focus to the menu button, and route changes move focus to the selected page heading. Breakpoint changes keep inert state synchronized and move focus away from controls that become hidden.
+- Focus indicators now use opaque colors: blue on light surfaces (6.84:1 against white) and white in the dark navigation (19.66:1 against the dark ground). The source card is no longer a live region; a separate status announces only the selected source-group title.
+- Verification: all 23 Node UI tests passed, including modal state, focus cycling, close actions, and breakpoint focus transfer; app/test JavaScript syntax and `git diff --check` passed. The live Fine-tune page at `http://127.0.0.1:4004/#finetune` showed API connected; the browser accessibility tree confirmed the concise announcement after switching from Apple to Google LaMDA and back. The queue remains 423 candidates / 141 groups / 0 reviewed / 0 eligible; no review was saved.
+- The in-app browser rendered the narrow mobile layout at about 399 px wide. With the drawer open, the accessibility tree contained the drawer but omitted the skip link and workspace; repeated Tab reached the internal Close control, and Escape returned focus to the menu button. The live page still showed 423 candidates / 141 groups / 0 reviewed / 0 eligible, with no review saved.
+- Remaining: no actual screen-reader session or axe scan was run. Human label and reuse review remains necessary before any real benchmark, LoRA comparison, or quantized quality claim.
