@@ -5,6 +5,14 @@ const state = {
   models: {},
   trainingDatasets: [],
   trainingRuntime: null,
+  quantizationRuntime: null,
+  reviewPacket: null,
+  reviewPacketError: null,
+  reviewPacketCurrentGroupId: null,
+  reviewPacketYear: "all",
+  reviewPacketDirty: false,
+  reviewPacketSaving: false,
+  reviewPacketExporting: false,
   trainedAdapters: [],
   activeAdapterModel: null,
   activeTab: "overview",
@@ -15,7 +23,9 @@ const state = {
   jobHistory: [],
   lastEvaluationResults: null,
   lastComparisonResults: null,
-  lastEvolutionResults: null
+  lastEvolutionResults: null,
+  lastPromptSelection: null,
+  lastBenchmarkReport: null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -97,22 +107,33 @@ function setEmptySelectors(message) {
 }
 
 async function loadInitialData() {
-  const [tasksResult, modelsResult, trainingResult] = await Promise.allSettled([
-    apiCall("tasks"), apiCall("models"), apiCall("training/datasets")
+  const [tasksResult, modelsResult, trainingResult, reviewPacketResult] = await Promise.allSettled([
+    apiCall("tasks"), apiCall("models"), apiCall("training/datasets"), apiCall("training/review-packet")
   ]);
   if (tasksResult.status === "fulfilled") state.tasks = tasksResult.value.tasks || [];
   if (modelsResult.status === "fulfilled") state.models = modelsResult.value || {};
   if (trainingResult.status === "fulfilled") {
     state.trainingDatasets = trainingResult.value.datasets || [];
     state.trainingRuntime = trainingResult.value.runtime || null;
+    state.quantizationRuntime = trainingResult.value.quantization || null;
   } else {
     state.trainingDatasets = [];
     state.trainingRuntime = null;
+    state.quantizationRuntime = null;
+  }
+  if (reviewPacketResult.status === "fulfilled") {
+    state.reviewPacket = reviewPacketResult.value;
+    state.reviewPacketError = null;
+  } else {
+    state.reviewPacket = null;
+    state.reviewPacketError = reviewPacketResult.reason?.message || "The local review packet could not be loaded.";
   }
   populateTaskDropdowns();
   populateModelSelectors();
   populateTrainingDatasets();
+  renderCandidateReviewPacket();
   await loadSavedAdapters();
+  populateModelSelectors();
   $("overviewTaskCount").textContent = String(state.tasks.length);
   $("overviewModelCount").textContent = String((state.models.all || []).length);
   const unavailable = [tasksResult, modelsResult].some((result) => result.status === "rejected");
@@ -133,6 +154,9 @@ function populateTaskDropdowns() {
 }
 
 function populateModelSelectors() {
+  const modelLabel = (model) => state.trainedAdapters.some((adapter) =>
+    adapter.id === model && adapter.dataset_id === "entity_extraction_demo"
+  ) ? model + " · synthetic demo · workflow only" : model;
   ["evalModels", "compareModels"].forEach((id) => {
     const container = $(id);
     const prior = new Set(Array.from(container.querySelectorAll("input:checked"), (input) => input.value));
@@ -153,7 +177,7 @@ function populateModelSelectors() {
       input.checked = prior.has(model) || (id === "evalModels" && !prior.size && (state.models.fast || []).includes(model));
       const name = document.createElement("span");
       name.className = "model-name";
-      name.textContent = model;
+      name.textContent = modelLabel(model);
       label.append(input, name);
       container.append(label);
     });
@@ -161,7 +185,7 @@ function populateModelSelectors() {
   const select = $("evolveModel");
   const prior = select.value;
   select.replaceChildren(new Option("Select a model", ""));
-  (state.models.all || []).forEach((model) => select.add(new Option(model, model)));
+  (state.models.all || []).forEach((model) => select.add(new Option(modelLabel(model), model)));
   if ((state.models.all || []).includes(prior)) select.value = prior;
 }
 
@@ -218,23 +242,23 @@ async function loadVersionsForTask(task, targetId) {
 
 function setupNavigation() {
   document.querySelectorAll(".nav-btn[data-tab]").forEach((button) => {
-    button.addEventListener("click", () => activateTab(button.dataset.tab, true));
+    button.addEventListener("click", () => activateTab(button.dataset.tab, true, true));
   });
   document.querySelectorAll("[data-go]").forEach((button) => {
-    button.addEventListener("click", () => activateTab(button.dataset.go, true));
+    button.addEventListener("click", () => activateTab(button.dataset.go, true, true));
   });
   window.addEventListener("hashchange", () => {
     const tab = window.location.hash.slice(1);
-    activateTab(validTab(tab) ? tab : "overview", false);
+    if (tab !== "workspace") activateTab(validTab(tab) ? tab : "overview", false, true);
   });
   const initial = window.location.hash.slice(1);
   activateTab(validTab(initial) ? initial : "overview", false);
 }
 
 function validTab(tab) { return ["overview", "evaluate", "compare", "evolve", "finetune", "testcases", "history"].includes(tab); }
-function canRunInBackground(type) { return type === "training" || type === "evolution"; }
+function canRunInBackground(type) { return ["training", "evolution", "promptSelection", "frozenBenchmark"].includes(type); }
 
-function activateTab(tab, updateHash) {
+function activateTab(tab, updateHash, moveFocus = false) {
   if (!validTab(tab)) tab = "overview";
   state.activeTab = tab;
   $("backToOverview").hidden = tab === "overview";
@@ -250,29 +274,92 @@ function activateTab(tab, updateHash) {
   const activeButton = document.querySelector('.nav-btn[data-tab="' + tab + '"]');
   $("breadcrumbTitle").textContent = activeButton ? activeButton.textContent.trim() : "Overview";
   closeMobileNavigation();
+  const titleId = tab === "finetune" ? "fineTuneTitle" : tab + "Title";
+  if (moveFocus) $(titleId).focus();
   if (updateHash && window.location.hash !== "#" + tab) window.history.replaceState(null, "", "#" + tab);
 }
 
 function setupMobileNavigation() {
   const frame = $("appFrame");
+  const sidebar = $("sidebar");
+  const workspace = $("workspace");
   const toggle = $("menuToggle");
+  const closeToggle = $("mobileMenuClose");
   const scrim = $("mobileScrim");
-  toggle.addEventListener("click", () => {
-    const open = !frame.classList.contains("nav-open");
-    frame.classList.toggle("nav-open", open);
+  const mobile = window.matchMedia("(max-width: 820px)");
+  const sync = () => {
+    if (!mobile.matches) frame.classList.remove("nav-open");
+    const open = mobile.matches && frame.classList.contains("nav-open");
+    sidebar.inert = mobile.matches && !open;
+    workspace.inert = open;
+    $("skipLink").inert = open;
+    $("toastContainer").inert = open;
+    closeToggle.hidden = !open;
+    if (open) {
+      sidebar.setAttribute("role", "dialog");
+      sidebar.setAttribute("aria-modal", "true");
+    } else {
+      sidebar.removeAttribute("role");
+      sidebar.removeAttribute("aria-modal");
+    }
     toggle.setAttribute("aria-expanded", String(open));
     toggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
     scrim.hidden = !open;
+  };
+  toggle.addEventListener("click", () => {
+    const open = mobile.matches && !frame.classList.contains("nav-open");
+    frame.classList.toggle("nav-open", open);
+    sync();
+    if (open) sidebar.querySelector('.nav-btn[aria-current="page"]')?.focus();
+    else toggle.focus();
   });
-  scrim.addEventListener("click", closeMobileNavigation);
-  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMobileNavigation(); });
+  closeToggle.addEventListener("click", () => closeMobileNavigation(true));
+  scrim.addEventListener("click", () => closeMobileNavigation(true));
+  document.addEventListener("keydown", (event) => {
+    const open = frame.classList.contains("nav-open");
+    if (event.key === "Escape" && open) {
+      closeMobileNavigation(true);
+      return;
+    }
+    if (event.key !== "Tab" || !open) return;
+    const focusable = [...sidebar.querySelectorAll('a[href], button:not([disabled]):not([hidden])')];
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (!first || !last) return;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  mobile.addEventListener("change", (event) => {
+    const moveFocusToToggle = event.matches && sidebar.contains(document.activeElement);
+    const moveFocusToNavigation = !event.matches && (document.activeElement === toggle || document.activeElement === closeToggle);
+    sync();
+    if (moveFocusToToggle) toggle.focus();
+    if (moveFocusToNavigation) {
+      (sidebar.querySelector('.nav-btn[aria-current="page"]') || sidebar.querySelector(".nav-btn"))?.focus();
+    }
+  });
+  sync();
 }
 
-function closeMobileNavigation() {
+function closeMobileNavigation(restoreFocus = false) {
+  const mobile = window.matchMedia("(max-width: 820px)").matches;
   $("appFrame").classList.remove("nav-open");
+  $("sidebar").inert = mobile;
+  $("workspace").inert = false;
+  $("skipLink").inert = false;
+  $("toastContainer").inert = false;
+  $("mobileMenuClose").hidden = true;
+  $("sidebar").removeAttribute("role");
+  $("sidebar").removeAttribute("aria-modal");
   $("menuToggle").setAttribute("aria-expanded", "false");
   $("menuToggle").setAttribute("aria-label", "Open navigation");
   $("mobileScrim").hidden = true;
+  if (restoreFocus) $("menuToggle").focus();
 }
 
 function setupPromptModes() {
@@ -310,6 +397,28 @@ function setupForms() {
   $("testcasesForm").addEventListener("submit", handleTestcase);
   $("fineTuneForm").addEventListener("submit", handleFineTune);
   $("fineTuneDataset").addEventListener("change", updateFineTuneDatasetNote);
+  $("reviewPacketForm").addEventListener("submit", handleSaveCandidateReview);
+  $("reviewPacketYear").addEventListener("change", handleReviewYearChange);
+  $("reviewPacketGroup").addEventListener("change", handleReviewGroupChange);
+  $("reviewPacketPrevious").addEventListener("click", () => moveReviewGroup(-1));
+  $("reviewPacketNext").addEventListener("click", moveToNextUnreviewedGroup);
+  $("reviewPacketForm").addEventListener("input", () => {
+    state.reviewPacketDirty = true;
+    updateReviewExportControls();
+  });
+  $("reviewPacketForm").addEventListener("change", () => {
+    state.reviewPacketDirty = true;
+    updateReviewEvidenceField();
+    updateReviewExportControls();
+  });
+  $("reviewExportButton").addEventListener("click", handleExportReviewedDataset);
+  $("reviewExportDatasetId").addEventListener("input", () => updateReviewExportControls());
+  $("reviewExportReviewerRole").addEventListener("input", () => updateReviewExportControls());
+  $("reviewExportCohort").addEventListener("change", () => updateReviewExportControls());
+  $("promptSelectionForm").addEventListener("submit", handlePromptSelection);
+  $("benchmarkAdapter").addEventListener("change", updateBenchmarkControls);
+  $("benchmarkCandidatePrompt").addEventListener("input", updateBenchmarkControls);
+  $("runFrozenBenchmarkBtn").addEventListener("click", handleFrozenBenchmark);
   $("evaluateAdapterBtn").addEventListener("click", () => useAdapterInEvaluation(state.activeAdapterModel));
   $("savedAdapterList").addEventListener("click", (event) => {
     const button = event.target.closest("[data-model]");
@@ -354,6 +463,447 @@ function populateTrainingDatasets() {
   updateFineTuneSubmit();
 }
 
+function renderCandidateReviewPacket() {
+  const summary = $("candidateReviewSummary");
+  const coverage = $("candidateReviewCoverage");
+  const workspace = $("candidateReviewWorkspace");
+  const message = $("candidateReviewMessage");
+  const packet = state.reviewPacket;
+  updateReviewExportControls(packet);
+  if (!packet) {
+    summary.textContent = "Local review unavailable";
+    coverage.textContent = "";
+    workspace.hidden = true;
+    message.hidden = false;
+    message.textContent = state.reviewPacketError === "The API request failed (404)."
+      ? "The running API does not include the review endpoint yet. Restart PromptMesh on this machine and refresh."
+      : state.reviewPacketError || "The private candidate review packet is unavailable.";
+    return;
+  }
+
+  summary.textContent = `${packet.total_rows} rows · ${packet.total_groups} source groups · ${packet.reviewed_rows} labels reviewed · ${packet.excluded_rows || 0} variants excluded · ${packet.eligible_groups} export-eligible groups`;
+  if (!packet.groups.length) {
+    coverage.textContent = "";
+    workspace.hidden = true;
+    message.hidden = false;
+    message.textContent = "The local review packet has no source groups.";
+    return;
+  }
+  workspace.hidden = false;
+  message.hidden = true;
+  const selector = $("reviewPacketGroup");
+  const yearFilter = $("reviewPacketYear");
+  const prior = state.reviewPacketCurrentGroupId;
+  const allGroups = interleaveCandidateReviewGroups(packet.groups);
+  const years = [...new Set(allGroups.map(candidateReviewGroupYear))].sort((left, right) => {
+    const leftYear = Number(left);
+    const rightYear = Number(right);
+    if (Number.isFinite(leftYear) && Number.isFinite(rightYear)) return leftYear - rightYear;
+    if (Number.isFinite(leftYear)) return -1;
+    if (Number.isFinite(rightYear)) return 1;
+    return left.localeCompare(right);
+  });
+  const requestedYear = yearFilter.value || state.reviewPacketYear || "all";
+  const selectedYear = requestedYear === "all" || years.includes(requestedYear) ? requestedYear : "all";
+  yearFilter.replaceChildren();
+  yearFilter.add(new Option("All years", "all"));
+  years.forEach((year) => {
+    const label = year === "undated" ? "Undated" : year === "mixed" ? "Mixed years" : year;
+    yearFilter.add(new Option(label, year));
+  });
+  yearFilter.value = selectedYear;
+  state.reviewPacketYear = selectedYear;
+  const groups = selectedYear === "all"
+    ? allGroups
+    : allGroups.filter((group) => candidateReviewGroupYear(group) === selectedYear);
+  coverage.textContent = candidateReviewCoverage(allGroups);
+  const current = groups.find((group) => group.group_id === prior)
+    || groups.find((group) => group.rows.some((row) => row.review_status !== "REVIEWED" && row.review_status !== "EXCLUDED"))
+    || groups[0];
+  state.reviewPacketCurrentGroupId = current.group_id;
+  selector.replaceChildren(...groups.map((group) => {
+    const label = `${group.source_title || group.group_id} · ${candidateReviewGroupYear(group)} · ${group.reviewed_rows} reviewed · ${group.excluded_rows || 0} excluded`;
+    return new Option(label, group.group_id);
+  }));
+  selector.value = current.group_id;
+  renderReviewGroup(current);
+  state.reviewPacketDirty = false;
+}
+
+function updateReviewExportControls(packet = state.reviewPacket) {
+  const button = $("reviewExportButton");
+  const readiness = $("reviewExportReadiness");
+  const cohortMode = $("reviewExportCohort").value || "all_eligible";
+  const preview = cohortMode === "balanced_year_12"
+    ? packet?.balanced_export_preview
+    : packet?.export_preview;
+  const datasetId = $("reviewExportDatasetId").value.trim();
+  const reviewerRole = $("reviewExportReviewerRole").value.trim();
+  const validDatasetId = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(datasetId);
+  button.disabled = !preview?.ready || !validDatasetId || !reviewerRole || state.reviewPacketDirty || state.reviewPacketSaving || state.reviewPacketExporting;
+  if (!packet) {
+    readiness.textContent = "The local review packet is unavailable.";
+  } else if (preview?.ready) {
+    const cohortLabel = cohortMode === "balanced_year_12"
+      ? ` Host-diverse pilot: ${preview.groups_per_year} reviewed groups per year (2020–2025), seed 42; distinct normalized hosts selected by year: ${Object.entries(preview.selected_source_hosts_by_year || {}).map(([year, count]) => `${year} ${count}`).join(", ")}.`
+      : " All eligible groups are included.";
+    readiness.textContent = `${preview.examples} reviewed examples across ${preview.source_groups} groups.${cohortLabel} Validation: ${preview.validation_examples} examples / ${preview.validation_source_groups} groups. Final test: ${preview.final_test_examples} examples / ${preview.final_test_source_groups} groups.`;
+  } else {
+    readiness.textContent = preview?.reason || "Review labels and reuse evidence before exporting.";
+  }
+}
+
+function candidateReviewGroupYear(group) {
+  const years = [...new Set(group.rows.map((row) => String(row.proposed_year || "undated")))];
+  return years.length === 1 ? years[0] : "mixed";
+}
+
+function interleaveCandidateReviewGroups(groups) {
+  const buckets = new Map();
+  for (const group of groups) {
+    const year = candidateReviewGroupYear(group);
+    if (!buckets.has(year)) buckets.set(year, []);
+    buckets.get(year).push(group);
+  }
+  const years = [...buckets.keys()].sort((left, right) => {
+    const leftYear = Number(left);
+    const rightYear = Number(right);
+    if (Number.isFinite(leftYear) && Number.isFinite(rightYear)) return leftYear - rightYear;
+    if (Number.isFinite(leftYear)) return -1;
+    if (Number.isFinite(rightYear)) return 1;
+    return left.localeCompare(right);
+  });
+  const ordered = [];
+  const longestBucket = Math.max(...[...buckets.values()].map((bucket) => bucket.length));
+  for (let index = 0; index < longestBucket; index++) {
+    for (const year of years) {
+      if (buckets.get(year)[index]) ordered.push(buckets.get(year)[index]);
+    }
+  }
+  return ordered;
+}
+
+function candidateReviewGroupsForYear(groups, year = "all") {
+  const ordered = interleaveCandidateReviewGroups(groups);
+  return year === "all" ? ordered : ordered.filter((group) => candidateReviewGroupYear(group) === year);
+}
+
+function candidateReviewCoverage(groups) {
+  const years = new Map();
+  const hosts = new Map();
+  for (const group of groups) {
+    const year = candidateReviewGroupYear(group);
+    years.set(year, (years.get(year) || 0) + 1);
+    const sourceUrl = safeHttpUrl(group.source_url);
+    const host = sourceUrl ? new URL(sourceUrl).hostname.replace(/^www\./i, "") : "unknown host";
+    hosts.set(host, (hosts.get(host) || 0) + 1);
+  }
+  const yearText = [...years.entries()]
+    .sort(([left], [right]) => left === "undated" ? 1 : right === "undated" ? -1 : left.localeCompare(right, undefined, { numeric: true }))
+    .map(([year, count]) => `${year} ${count}`)
+    .join(" · ");
+  const topHosts = [...hosts.entries()]
+    .sort(([leftHost, leftCount], [rightHost, rightCount]) => rightCount - leftCount || leftHost.localeCompare(rightHost))
+    .slice(0, 3)
+    .map(([host, count]) => `${host} ${count}`)
+    .join(", ");
+  return `Draft coverage by proposed year (source groups): ${yearText}. ${hosts.size} source hosts; most common: ${topHosts}. This is not reviewed benchmark composition.`;
+}
+
+function renderReviewGroup(group) {
+  const source = $("reviewPacketSource");
+  $("reviewPacketAnnouncement").textContent = `Showing source group ${group.source_title || group.group_id}.`;
+  source.replaceChildren();
+  const title = document.createElement("h3");
+  title.textContent = group.source_title || group.group_id;
+  const meta = document.createElement("p");
+  meta.textContent = `${group.group_id} · Source date ${group.source_date || "not listed"}`;
+  const focus = document.createElement("p");
+  focus.className = "review-source-focus";
+  focus.textContent = group.review_focus || "Check the proposed labels against the linked source.";
+  const url = safeHttpUrl(group.source_url);
+  if (url) {
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Open source page";
+    source.append(title, meta, focus, link);
+  } else {
+    source.append(title, meta, focus);
+  }
+  const reuseTermsUrl = safeHttpUrl(group.reuse_terms_url);
+  if (reuseTermsUrl.startsWith("https://")) {
+    const note = document.createElement("p");
+    note.textContent = "Reference only; this page does not confirm permission to reuse the source.";
+    const termsLink = document.createElement("a");
+    termsLink.href = reuseTermsUrl;
+    termsLink.target = "_blank";
+    termsLink.rel = "noopener noreferrer";
+    termsLink.textContent = "Review source reuse terms";
+    source.append(note, termsLink);
+  } else {
+    const note = document.createElement("p");
+    note.textContent = "No usable HTTPS source-terms link is recorded. Check the publisher's current terms or license before confirming reuse.";
+    source.append(note);
+  }
+
+  const rows = $("reviewPacketRows");
+  rows.replaceChildren(...group.rows.map((row, index) => renderReviewRow(row, index + 1, group.rows.length)));
+  $("reviewSourceReuseStatus").value = reviewReuseStatus(group.reuse_status);
+  $("reviewSourceEvidence").value = group.reuse_evidence || "";
+  updateReviewEvidenceField();
+  $("reviewPacketSaveStatus").textContent = `${group.reviewed_rows} reviewed · ${group.excluded_rows || 0} excluded of ${group.rows.length}. Saving never adds rows to training.`;
+  updateReviewExportControls();
+}
+
+function renderReviewRow(row, ordinal, total) {
+  const card = document.createElement("article");
+  card.className = "review-row";
+  card.dataset.rowIndex = String(row.row_index);
+  const heading = document.createElement("div");
+  heading.className = "review-row-heading";
+  const title = document.createElement("h3");
+  title.textContent = `Candidate ${ordinal} of ${total}`;
+  const status = document.createElement("span");
+  status.className = "review-row-status" + (row.review_status === "REVIEWED" ? " is-reviewed" : row.review_status === "EXCLUDED" ? " is-excluded" : " is-pending");
+  status.textContent = row.review_status === "REVIEWED" ? "Reviewed" : row.review_status === "EXCLUDED" ? "Excluded" : "Needs review";
+  heading.append(title, status);
+
+  const input = document.createElement("blockquote");
+  input.className = "review-candidate-text";
+  input.textContent = row.input;
+  const draft = document.createElement("p");
+  draft.className = "review-draft-labels";
+  draft.textContent = `Draft: ${row.proposed_organization || "—"} · ${row.proposed_year || "—"} · ${row.proposed_claim || "—"}`;
+
+  const fields = document.createElement("div");
+  fields.className = "review-fields";
+  fields.append(
+    reviewField("Organization (claim actor)", "text", row.reviewed_organization || row.proposed_organization || "", "organization", row.row_index),
+    reviewField("Event year", "number", row.reviewed_year || row.proposed_year || "", "year", row.row_index),
+    reviewField("Claim", "textarea", row.reviewed_claim || row.proposed_claim || "", "claim", row.row_index),
+    reviewField("Review note or exclusion reason", "textarea", row.review_notes || "", "notes", row.row_index),
+  );
+  const decision = document.createElement("div");
+  decision.className = "field review-decision";
+  const label = document.createElement("label");
+  const selectId = `reviewDecision-${row.row_index}`;
+  label.htmlFor = selectId;
+  label.textContent = "Label decision";
+  const select = document.createElement("select");
+  select.id = selectId;
+  select.className = "review-status-select";
+  select.dataset.rowField = "review_status";
+  select.innerHTML = '<option value="NEEDS_HUMAN_REVIEW">Needs review</option><option value="REVIEWED">Labels checked against source</option><option value="EXCLUDED">Exclude this variant</option>';
+  select.value = row.review_status || "NEEDS_HUMAN_REVIEW";
+  decision.append(label, select);
+  fields.append(decision);
+  card.append(heading, input, draft, fields);
+  return card;
+}
+
+function reviewField(labelText, type, value, field, rowIndex) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "field" + ((field === "claim" || field === "notes") ? " review-field-wide" : "");
+  const controlId = `review-${field}-${rowIndex}`;
+  const label = document.createElement("label");
+  label.htmlFor = controlId;
+  label.textContent = labelText;
+  const control = type === "textarea" ? document.createElement("textarea") : document.createElement("input");
+  control.id = controlId;
+  control.dataset.rowField = field;
+  if (type !== "textarea") control.type = type;
+  control.value = value;
+  if (field === "year") {
+    control.min = "1000";
+    control.max = "9999";
+    control.step = "1";
+    control.placeholder = "Blank if unstated";
+  } else if (field === "claim") {
+    control.rows = 2;
+  } else if (field === "notes") {
+    control.rows = 2;
+    control.placeholder = "Required when excluding a variant";
+  }
+  wrapper.append(label, control);
+  return wrapper;
+}
+
+function reviewReuseStatus(value) {
+  if (value === "permission_confirmed") return "permission_confirmed";
+  if (value === "excluded") return "excluded";
+  return "permission_unconfirmed";
+}
+
+function updateReviewEvidenceField() {
+  const status = $("reviewSourceReuseStatus").value;
+  const label = $("reviewSourceEvidenceLabel");
+  const field = $("reviewSourceEvidence");
+  const isRequired = status !== "permission_unconfirmed";
+  label.textContent = status === "excluded" ? "Reason for excluding this source" : "Permission or license evidence";
+  field.placeholder = status === "excluded" ? "Why this source cannot be reused" : "e.g. license, terms URL, and relevant section";
+  field.required = isRequired;
+}
+
+function safeHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch { return ""; }
+}
+
+function handleReviewGroupChange(event) {
+  if (state.reviewPacketDirty && !window.confirm("Discard unsaved changes for this source group?")) {
+    event.target.value = state.reviewPacketCurrentGroupId;
+    return;
+  }
+  state.reviewPacketCurrentGroupId = event.target.value;
+  state.reviewPacketDirty = false;
+  const group = state.reviewPacket.groups.find((item) => item.group_id === event.target.value);
+  if (group) renderReviewGroup(group);
+}
+
+function handleReviewYearChange(event) {
+  if (state.reviewPacketDirty && !window.confirm("Discard unsaved changes for this source group?")) {
+    event.target.value = state.reviewPacketYear;
+    return;
+  }
+  state.reviewPacketYear = event.target.value || "all";
+  state.reviewPacketDirty = false;
+  renderCandidateReviewPacket();
+}
+
+function moveReviewGroup(offset) {
+  if (state.reviewPacketDirty && !window.confirm("Discard unsaved changes for this source group?")) return;
+  const groups = candidateReviewGroupsForYear(state.reviewPacket?.groups || [], state.reviewPacketYear);
+  const index = groups.findIndex((group) => group.group_id === state.reviewPacketCurrentGroupId);
+  const start = index < 0 ? 0 : index;
+  const next = groups[(start + offset + groups.length) % groups.length];
+  if (next) {
+    state.reviewPacketCurrentGroupId = next.group_id;
+    $("reviewPacketGroup").value = next.group_id;
+    state.reviewPacketDirty = false;
+    renderReviewGroup(next);
+  }
+}
+
+function moveToNextUnreviewedGroup() {
+  if (state.reviewPacketDirty && !window.confirm("Discard unsaved changes for this source group?")) return;
+  const groups = candidateReviewGroupsForYear(state.reviewPacket?.groups || [], state.reviewPacketYear);
+  if (!groups.length) return;
+  const currentIndex = groups.findIndex((group) => group.group_id === state.reviewPacketCurrentGroupId);
+  const ordered = currentIndex < 0
+    ? groups
+    : groups.slice(currentIndex + 1).concat(groups.slice(0, currentIndex + 1));
+  const next = ordered.find((group) => group.rows.some((row) => row.review_status !== "REVIEWED" && row.review_status !== "EXCLUDED"));
+  if (!next) {
+    const scope = state.reviewPacketYear === "all" ? "Every candidate row" : "Every candidate row for " + state.reviewPacketYear;
+    return showToast(scope + " has a label decision.", "info");
+  }
+  state.reviewPacketCurrentGroupId = next.group_id;
+  $("reviewPacketGroup").value = next.group_id;
+  state.reviewPacketDirty = false;
+  renderReviewGroup(next);
+}
+
+async function handleSaveCandidateReview(event) {
+  event.preventDefault();
+  if (state.reviewPacketSaving) return;
+  const group = state.reviewPacket?.groups.find((item) => item.group_id === state.reviewPacketCurrentGroupId);
+  if (!group) return;
+  const reuseStatus = $("reviewSourceReuseStatus").value;
+  const reuseEvidence = $("reviewSourceEvidence").value.trim();
+  if (reuseStatus !== "permission_unconfirmed" && !reuseEvidence) {
+    $("reviewSourceEvidence").focus();
+    return showToast("Add permission evidence or an exclusion reason.", "error");
+  }
+  const rows = [...$("reviewPacketRows").querySelectorAll(".review-row")].map((card) => {
+    const field = (name) => card.querySelector(`[data-row-field="${name}"]`);
+    const yearValue = field("year").value.trim();
+    return {
+      row_index: Number(card.dataset.rowIndex),
+      review_status: field("review_status").value,
+      reviewed_organization: field("organization").value.trim() || null,
+      reviewed_year: yearValue ? Number(yearValue) : null,
+      reviewed_claim: field("claim").value.trim() || null,
+      review_notes: field("notes").value.trim(),
+    };
+  });
+  if (rows.some((row) => row.review_status === "EXCLUDED" && !row.review_notes)) {
+    return showToast("Add a reason before excluding a candidate variant.", "error");
+  }
+
+  state.reviewPacketSaving = true;
+  $("reviewPacketSave").disabled = true;
+  updateReviewExportControls();
+  $("reviewPacketSaveStatus").textContent = "Saving review to this machine…";
+  try {
+    state.reviewPacket = await apiCall("training/review-packet", {
+      method: "POST",
+      body: JSON.stringify({
+        group_id: group.group_id,
+        rows,
+        reuse_status: reuseStatus,
+        reuse_evidence: reuseEvidence,
+      }),
+    });
+    state.reviewPacketDirty = false;
+    renderCandidateReviewPacket();
+    showToast("Review saved to the local candidate packet.", "success");
+  } catch (error) {
+    $("reviewPacketSaveStatus").textContent = "Could not save: " + error.message;
+    showToast("Could not save this source group: " + error.message, "error");
+  } finally {
+    state.reviewPacketSaving = false;
+    $("reviewPacketSave").disabled = false;
+    updateReviewExportControls();
+  }
+}
+
+async function handleExportReviewedDataset() {
+  if (state.reviewPacketDirty || state.reviewPacketSaving || state.reviewPacketExporting) {
+    return showToast("Save the current source-group review before exporting.", "error");
+  }
+  const datasetId = $("reviewExportDatasetId").value.trim();
+  const reviewerRole = $("reviewExportReviewerRole").value.trim();
+  const cohortMode = $("reviewExportCohort").value || "all_eligible";
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(datasetId)) {
+    $("reviewExportDatasetId").focus();
+    return showToast("Use a valid dataset ID.", "error");
+  }
+  if (!reviewerRole || reviewerRole.length > 128) {
+    $("reviewExportReviewerRole").focus();
+    return showToast("Enter the reviewer role, not a personal name.", "error");
+  }
+
+  state.reviewPacketExporting = true;
+  $("reviewExportResult").textContent = "Checking reviewed rows, source permissions, and held-out split sizes…";
+  updateReviewExportControls();
+  try {
+    const result = await apiCall("training/review-packet/export", {
+      method: "POST",
+      body: JSON.stringify({ dataset_id: datasetId, reviewer_role: reviewerRole, cohort_mode: cohortMode }),
+    });
+    await loadInitialData();
+    $("fineTuneDataset").value = result.dataset_id;
+    updateFineTuneDatasetNote();
+    const validation = result.splits.validation;
+    const finalTest = result.splits.test;
+    const cohortSummary = result.cohort?.mode === "balanced_year_12"
+      ? ` Year-balanced, host-diverse pilot selected ${Object.entries(result.cohort.selected_groups_by_year).map(([year, count]) => `${year}: ${count}`).join(", ")} source groups (seed ${result.cohort.selection_seed}). Distinct normalized source hosts by year: ${Object.entries(result.cohort.selected_source_hosts_by_year || {}).map(([year, count]) => `${year}: ${count}`).join(", ")}.`
+      : " All eligible groups were included.";
+    $("reviewExportResult").textContent = `Created private dataset ${result.dataset_id}: ${result.examples} examples / ${result.source_groups} groups.${cohortSummary} Validation ${validation.examples}/${validation.source_groups} groups; final test ${finalTest.examples}/${finalTest.source_groups} groups. The self-attested card is ready; no model was trained and the test set was not scored.`;
+    showToast("Reviewed dataset and benchmark card created locally.", "success");
+  } catch (error) {
+    $("reviewExportResult").textContent = "Export not created: " + error.message;
+    showToast("Could not export reviewed data: " + error.message, "error");
+  } finally {
+    state.reviewPacketExporting = false;
+    updateReviewExportControls();
+  }
+}
+
 function updateFineTuneDatasetNote() {
   const dataset = state.trainingDatasets.find((item) => item.id === $("fineTuneDataset").value);
   const note = $("fineTuneDatasetNote");
@@ -381,8 +931,9 @@ function renderFineTuneDatasetReadiness(dataset) {
   const title = document.createElement("strong");
   title.textContent = "Dataset readiness";
   const status = document.createElement("span");
-  status.className = "dataset-quality-status" + (dataset.error ? " is-warning" : " is-ready");
-  status.textContent = dataset.error ? "Needs repair" : "Ready";
+  const benchmarkReady = Boolean(dataset.benchmark?.validation_ready && dataset.benchmark?.final_test_ready);
+  status.className = "dataset-quality-status" + (dataset.error || !benchmarkReady ? " is-warning" : " is-ready");
+  status.textContent = dataset.error ? "Needs repair" : benchmarkReady ? "Review card complete" : dataset.synthetic ? "Demo only" : dataset.benchmark?.card_ready ? "Split too small" : "Training ready";
   heading.append(title, status);
   container.append(heading);
 
@@ -410,16 +961,21 @@ function renderFineTuneDatasetReadiness(dataset) {
 
   const validation = document.createElement("p");
   validation.className = "dataset-validation-note";
-  validation.textContent = "Schema validated · source groups stay together across splits";
+  const splitMethod = dataset.split_strategy === "group-year-stratified-v1"
+    ? "event-year stratified by source group"
+    : "deterministic source-group split";
+  validation.textContent = `Schema validated · ${splitMethod} · seed ${dataset.split_seed ?? 42}; source variants stay together`;
   container.append(validation);
 
   const benchmark = dataset.benchmark || {};
   const benchmarkNote = document.createElement("p");
   benchmarkNote.className = "dataset-validation-note";
-  if (benchmark.ready) {
-    benchmarkNote.textContent = `Final benchmark card: reviewer-attested · ${benchmark.reviewed_examples} examples · ${benchmark.reviewed_source_groups} source groups · dataset hash matched`;
+  if (benchmark.card_ready && benchmark.validation_ready && benchmark.final_test_ready) {
+    benchmarkNote.textContent = `Review metadata matches this dataset hash. Review is self-attested; PromptMesh cannot verify label quality. Validation: ${benchmark.validation_examples} examples / ${benchmark.validation_source_groups} groups. Final test: ${benchmark.final_test_examples} examples / ${benchmark.final_test_source_groups} groups.`;
+  } else if (benchmark.card_ready) {
+    benchmarkNote.textContent = `Review metadata matches this dataset hash, but selection and final scoring require at least ${benchmark.minimum_final_test_examples || 30} examples across ${benchmark.minimum_final_test_groups || 10} source groups in both validation and final test. Review is self-attested.`;
   } else {
-    benchmarkNote.textContent = "Final benchmark unavailable · " + (benchmark.reason || "Add a reviewer-attested benchmark card.");
+    benchmarkNote.textContent = "Final benchmark unavailable · " + (benchmark.reason || "Add a matching review card; review status is self-attested.");
   }
   container.append(benchmarkNote);
 
@@ -446,11 +1002,13 @@ function renderFineTuneDatasetReadiness(dataset) {
   digest.title = dataset.sha256 || "Dataset fingerprint unavailable";
   fingerprint.append(label, digest);
   container.append(fingerprint);
+  updateBenchmarkControls();
 }
 
 function updateFineTuneSubmit() {
   const dataset = state.trainingDatasets.find((item) => item.id === $("fineTuneDataset").value);
   $("fineTuneSubmit").disabled = state.jobBusy || !state.trainingRuntime?.available || !dataset || Boolean(dataset.error);
+  updateBenchmarkControls();
 }
 
 async function loadSavedAdapters() {
@@ -461,6 +1019,7 @@ async function loadSavedAdapters() {
   } catch {
     state.trainedAdapters = [];
     $("savedAdapters").hidden = true;
+    updateBenchmarkControls();
   }
 }
 
@@ -475,7 +1034,16 @@ function renderSavedAdapters() {
     const copy = document.createElement("div");
     const fingerprint = adapter.dataset_sha256 ? " · data " + adapter.dataset_sha256.slice(0, 12) : "";
     const metricLabel = adapter.metrics_split === "validation" ? "validation exact match " : "legacy test metric (previously exposed) ";
-    copy.innerHTML = "<strong>" + escapeHTML(adapter.dataset_id) + "</strong><span>" + escapeHTML(adapter.id + fingerprint) + " · " + metricLabel + formatPercent(adapter.metrics?.record_exact_match) + "</span>";
+    const provenance = adapter.dataset_id === "entity_extraction_demo" ? " · synthetic demo · workflow only" : "";
+    copy.innerHTML = "<strong>" + escapeHTML(adapter.dataset_id) + "</strong><span>" + escapeHTML(adapter.id + fingerprint) + " · " + metricLabel + formatPercent(adapter.metrics?.record_exact_match) + escapeHTML(provenance) + "</span>";
+    const runtime = document.createElement("span");
+    runtime.textContent = runtimeSummary(adapter.environment) || "Runtime versions not recorded (legacy run)";
+    runtime.title = runtimeDetails(adapter.environment);
+    copy.append(runtime);
+    const configuration = document.createElement("div");
+    configuration.innerHTML = trainingConfigurationMarkup(adapter.training_configuration)
+      || '<p class="training-configuration-missing">Full trainer settings were not recorded for this run.</p>';
+    copy.append(configuration);
     const button = document.createElement("button");
     button.className = "button button-secondary";
     button.type = "button";
@@ -484,6 +1052,65 @@ function renderSavedAdapters() {
     row.append(copy, button);
     list.append(row);
   });
+  updateBenchmarkControls();
+}
+
+function updateBenchmarkControls() {
+  const select = $("benchmarkAdapter");
+  if (!select) return;
+  const dataset = state.trainingDatasets.find((item) => item.id === $("fineTuneDataset").value);
+  const previous = select.value;
+  select.replaceChildren(new Option("Select a validation adapter", ""));
+  const compatible = state.trainedAdapters.filter((adapter) =>
+    dataset && adapter.dataset_id === dataset.id && adapter.dataset_sha256 === dataset.sha256 && adapter.metrics_split === "validation" && adapter.benchmark_manifest_ready
+  );
+  compatible.forEach((adapter) => {
+    const provenance = adapter.dataset_id === "entity_extraction_demo" ? " · synthetic demo · workflow only" : "";
+    select.add(new Option(adapter.run_id + " · validation exact match " + formatPercent(adapter.metrics?.record_exact_match) + provenance, adapter.run_id));
+  });
+  if (compatible.some((adapter) => adapter.run_id === previous)) select.value = previous;
+  else if (compatible.length === 1) select.value = compatible[0].run_id;
+  select.disabled = !compatible.length || state.jobBusy;
+  $("benchmarkCandidatePrompt").disabled = state.jobBusy;
+
+  const note = $("benchmarkWorkflowNote");
+  const candidate = $("benchmarkCandidatePrompt").value.trim();
+  const cardReady = Boolean(dataset?.benchmark?.card_ready);
+  const validationReady = Boolean(dataset?.benchmark?.validation_ready);
+  const testReady = Boolean(dataset?.benchmark?.final_test_ready);
+  const selectionMatches = Boolean(
+    state.lastPromptSelection && dataset &&
+    state.lastPromptSelection.dataset_id === dataset.id &&
+    state.lastPromptSelection.dataset_sha256 === dataset.sha256 &&
+    state.lastPromptSelection.adapter_run_id === select.value
+  );
+  if (!dataset) note.textContent = "Choose a local dataset to check benchmark readiness.";
+  else if (dataset.synthetic) note.textContent = "Synthetic demo data cannot be used for prompt selection or a final benchmark.";
+  else if (!cardReady) note.textContent = dataset.benchmark?.reason || "A matching review card is required; review status is self-attested.";
+  else if (!validationReady || !testReady) note.textContent = "Validation selection and final scoring each require at least 30 examples across 10 source groups.";
+  else if (!compatible.length) note.textContent = "Train a validation-scored LoRA adapter on this exact dataset fingerprint first.";
+  else if (selectionMatches && state.lastBenchmarkReport?.dataset_sha256 === dataset.sha256) note.textContent = "A frozen report already exists for this dataset version; another test sweep is blocked.";
+  else if (selectionMatches) note.textContent = "Prompt selected on validation. Run the frozen comparison once to score the reserved test set. Review metadata is self-attested.";
+  else note.textContent = "Selection uses validation labels only; final-test results stay hidden until the frozen comparison. Review metadata is self-attested.";
+
+  const promptValid = /\{\{\s*text\s*\}\}/.test(candidate);
+  const finalAlreadyRun = state.lastBenchmarkReport?.dataset_sha256 === dataset?.sha256;
+  const quantization = state.quantizationRuntime || {};
+  const supportedMethods = new Set((quantization.methods || []).map((method) => method.id));
+  document.querySelectorAll('input[name="quantizationMethods"]').forEach((input) => {
+    input.disabled = state.jobBusy || finalAlreadyRun || !quantization.available || !supportedMethods.has(input.value);
+  });
+  const quantizationNote = $("quantizationRuntimeNote");
+  if (!quantization.available) {
+    quantizationNote.textContent = quantization.reason || "Optional local quantization backends are unavailable in this environment.";
+  } else {
+    const backends = Object.entries(quantization.backends || {})
+      .map(([name, version]) => name + " " + version)
+      .join(" · ") || ((quantization.backend || "Quantization backend") + " " + (quantization.version || ""));
+    quantizationNote.textContent = backends + " · " + quantization.device + ". Select methods before the final test run.";
+  }
+  $("promptSelectionSubmit").disabled = state.jobBusy || !state.trainingRuntime?.available || !cardReady || !validationReady || !testReady || !compatible.length || !promptValid || finalAlreadyRun;
+  $("runFrozenBenchmarkBtn").disabled = state.jobBusy || !state.trainingRuntime?.available || !selectionMatches || !validationReady || !testReady || finalAlreadyRun;
 }
 
 async function connectAPI() {
@@ -601,6 +1228,53 @@ async function handleFineTune(event) {
   }
 }
 
+async function handlePromptSelection(event) {
+  event.preventDefault();
+  if (state.jobBusy) return showToast("Wait for the current local model run to finish.", "warning");
+  const dataset = $("fineTuneDataset").value;
+  const adapterRunId = $("benchmarkAdapter").value;
+  const candidate = $("benchmarkCandidatePrompt").value.trim();
+  if (!dataset || !adapterRunId) return showToast("Choose a reviewed dataset and matching validation adapter.", "error");
+  if (!/\{\{\s*text\s*\}\}/.test(candidate)) return showToast("The candidate prompt must include {{text}}.", "error");
+  state.jobBusy = true;
+  setExperimentButtonsDisabled(true);
+  try {
+    const result = await apiCall("training/prompt-selections", {
+      method: "POST",
+      body: JSON.stringify({ dataset_id: dataset, adapter_run_id: adapterRunId, candidate_prompts: [candidate] })
+    });
+    if (!result.job_id) throw new Error("The API did not return a prompt-selection job ID.");
+    startPolling(result.job_id, "promptSelection");
+  } catch (error) {
+    state.jobBusy = false;
+    setExperimentButtonsDisabled(false);
+    showToast("Could not start validation prompt selection: " + error.message, "error");
+  }
+}
+
+async function handleFrozenBenchmark() {
+  if (state.jobBusy) return showToast("Wait for the current local model run to finish.", "warning");
+  if (!state.lastPromptSelection?.selection_id) return showToast("Select a prompt on validation first.", "error");
+  state.jobBusy = true;
+  setExperimentButtonsDisabled(true);
+  try {
+    const result = await apiCall("training/benchmarks", {
+      method: "POST",
+      body: JSON.stringify({
+        selection_id: state.lastPromptSelection.selection_id,
+        adapter_run_id: state.lastPromptSelection.adapter_run_id,
+        quantization_methods: Array.from(document.querySelectorAll('input[name="quantizationMethods"]:checked'), (input) => input.value)
+      })
+    });
+    if (!result.job_id) throw new Error("The API did not return a frozen benchmark job ID.");
+    startPolling(result.job_id, "frozenBenchmark");
+  } catch (error) {
+    state.jobBusy = false;
+    setExperimentButtonsDisabled(false);
+    showToast("Could not start the frozen benchmark: " + error.message, "error");
+  }
+}
+
 async function submitJob(endpoint, payload, type) {
   if (state.jobBusy) return showToast("Wait for the current model run to finish.", "warning");
   state.jobBusy = true;
@@ -628,7 +1302,7 @@ function updateBackgroundJobStatus() {
   const job = state.backgroundJob;
   const button = $("backgroundJobStatus");
   if (!job || !canRunInBackground(job.type)) { button.hidden = true; return; }
-  const label = job.type === "training" ? "LoRA" : "Evolution";
+  const label = ({ training: "LoRA", evolution: "Evolution", promptSelection: "Prompt selection", frozenBenchmark: "Benchmark" })[job.type] || "Model job";
   const descriptions = {
     running: [label + " " + Math.round(job.progress || 0) + "%", "in progress. Select to view progress."],
     paused: [label + " status paused", "updates paused. Select to retry."],
@@ -638,7 +1312,7 @@ function updateBackgroundJobStatus() {
   const [text, detail] = descriptions[job.status] || descriptions.running;
   $("backgroundJobStatusText").textContent = text;
   button.dataset.status = job.status;
-  button.setAttribute("aria-label", (job.type === "training" ? "Local LoRA training " : "Prompt evolution ") + detail);
+  button.setAttribute("aria-label", label + " " + detail);
   button.title = button.getAttribute("aria-label");
   button.hidden = false;
 }
@@ -661,11 +1335,12 @@ function openBackgroundJob() {
     showToast(job.message || "The background job failed.", "error");
     return;
   }
-  const tab = job.type === "training" ? "finetune" : "evolve";
+  const tab = ["training", "promptSelection", "frozenBenchmark"].includes(job.type) ? "finetune" : "evolve";
   state.backgroundJob = null;
   updateBackgroundJobStatus();
   activateTab(tab, true);
-  $(tab === "finetune" ? "fineTuneResults" : "evolveResults").scrollIntoView({ behavior: "smooth", block: "start" });
+  const target = job.type === "promptSelection" ? "promptSelectionResults" : job.type === "frozenBenchmark" ? "frozenBenchmarkResults" : tab === "finetune" ? "fineTuneResults" : "evolveResults";
+  $(target).scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function startPolling(jobId, type) {
@@ -679,7 +1354,7 @@ function startPolling(jobId, type) {
   }
   showProgressModal(type);
   let polls = 0;
-  const maxPolls = type === "training" ? 1800 : 150;
+  const maxPolls = ["training", "promptSelection", "frozenBenchmark"].includes(type) ? 1800 : 150;
   state.pollingTimer = window.setInterval(async () => {
     polls += 1;
     if (polls > maxPolls) {
@@ -703,6 +1378,28 @@ function startPolling(jobId, type) {
           setBackgroundJobStatus(type, "completed", "Local adapter training completed.");
           await loadInitialData();
           showToast("Local LoRA training completed. Results are ready in Fine-tune.", "success");
+          return;
+        }
+        if (type === "promptSelection") {
+          if (!job.result?.selection_id) {
+            setBackgroundJobStatus(type, "failed", "Prompt selection completed without a saved result.");
+            showToast("Prompt selection completed without a saved result.", "warning");
+            return;
+          }
+          displayPromptSelection(job.result);
+          setBackgroundJobStatus(type, "completed", "Validation prompt selection completed.");
+          showToast("Prompt selected using validation labels. The final test remains untouched.", "success");
+          return;
+        }
+        if (type === "frozenBenchmark") {
+          if (!job.result?.report) {
+            setBackgroundJobStatus(type, "failed", "Benchmark completed without a report.");
+            showToast("Benchmark completed without a report.", "warning");
+            return;
+          }
+          displayFrozenBenchmark(job.result.report, job.result.created);
+          setBackgroundJobStatus(type, "completed", "Frozen benchmark report saved.");
+          showToast("Frozen benchmark report is ready in Fine-tune.", "success");
           return;
         }
         const hasResults = Array.isArray(job.results)
@@ -741,10 +1438,10 @@ function stopPolling() {
 }
 
 function showProgressModal(type) {
-  const labels = { evaluation: "Running model evaluation", comparison: "Comparing prompt versions", evolution: "Evolving the prompt", training: "Training a local LoRA adapter" };
+  const labels = { evaluation: "Running model evaluation", comparison: "Comparing prompt versions", evolution: "Evolving the prompt", training: "Training a local LoRA adapter", promptSelection: "Selecting a prompt on validation", frozenBenchmark: "Running the frozen benchmark" };
   $("progressTitle").textContent = labels[type] || "Running your job";
   const backgroundJob = state.backgroundJob?.type === type && state.backgroundJob.status === "running" ? state.backgroundJob : null;
-  $("progressText").textContent = backgroundJob?.message || (type === "training" ? "Loading the local base model and preparing validation metrics." : "The API is waiting for model responses.");
+  $("progressText").textContent = backgroundJob?.message || (type === "training" ? "Loading the local base model and preparing validation metrics." : type === "promptSelection" ? "Comparing prompt candidates with gold labels on validation data." : type === "frozenBenchmark" ? "Scoring the untouched test split with the frozen configuration." : "The API is waiting for model responses.");
   $("progressFootnote").textContent = canRunInBackground(type) ? "You can navigate elsewhere in PromptMesh. Keep this browser tab open for progress updates." : "You can keep this tab open while the models respond.";
   $("progressFill").style.width = (backgroundJob?.progress || 0) + "%";
   $("progressBackgroundBtn").hidden = !canRunInBackground(type);
@@ -760,6 +1457,11 @@ function updateProgress(percent, status, stage) {
     evaluating_base: "Scoring the base model on validation examples.",
     training: "Training LoRA weights and measuring validation loss.",
     evaluating_adapter: "Scoring the adapter on the same validation examples.",
+    loading_local_model: "Loading the cached local checkpoint; network downloads are disabled.",
+    scoring_validation_prompt: "Scoring candidate prompts on validation labels only.",
+    loading_local_base_model: "Loading the pinned local base checkpoint.",
+    scoring_frozen_test: "Scoring the reserved test split with the frozen prompt.",
+    scoring_frozen_adapter: "Scoring the same reserved examples with the selected LoRA adapter.",
     completed: "Training is complete; final-test examples remain reserved."
   };
   const message = labels[stage] || (status === "running" ? "Models are processing the selected inputs." : (status || "Working…"));
@@ -819,14 +1521,16 @@ function displayFineTuneRun(result) {
   const base = result.metrics?.base || {};
   const adapter = result.metrics?.adapter || {};
   const fingerprint = result.dataset_sha256 ? " · data " + result.dataset_sha256.slice(0, 12) : "";
+  const provenance = result.dataset_id === "entity_extraction_demo" ? " · synthetic demo · workflow evidence only, not model-quality evidence" : "";
   $("fineTuneResults").hidden = false;
-  $("fineTuneSummary").textContent = result.dataset_id + fingerprint + " · " + (splits.validation || 0) + " validation examples scored · final test reserved · " + (result.elapsed_seconds || 0) + " seconds";
+  $("fineTuneSummary").textContent = result.dataset_id + fingerprint + provenance + " · " + (splits.validation || 0) + " validation examples scored · final test reserved · " + (result.elapsed_seconds || 0) + " seconds";
   $("fineTuneStats").innerHTML = statMarkup("Base checkpoint", result.base_model)
     + statMarkup("Adapter", result.model_id)
     + statMarkup("Training examples", splits.train || 0)
     + statMarkup("Validation examples", splits.validation || 0)
     + statMarkup("Reserved final-test examples", splits.test || 0)
     + statMarkup("Device", result.device || "—");
+  $("fineTuneConfiguration").innerHTML = trainingConfigurationMarkup(result.training_configuration);
   $("fineTuneMetrics").innerHTML = [
     trainingMetricMarkup("Record exact match", base.record_exact_match, adapter.record_exact_match),
     trainingMetricMarkup("Field accuracy", base.field_accuracy, adapter.field_accuracy),
@@ -834,6 +1538,246 @@ function displayFineTuneRun(result) {
     ...["organization", "year", "claim"].map((field) => trainingMetricMarkup(field + " exact", base.field_exact_match?.[field], adapter.field_exact_match?.[field]))
   ].join("");
   renderLossChart(result.training_loss || [], result.validation_loss || []);
+}
+
+function trainingConfigurationMarkup(configuration) {
+  if (!configuration || configuration.schema_version !== 1
+    || !configuration.trainer || !configuration.lora || !configuration.model_load) return "";
+  const renderSection = (title, values) => {
+    const rows = Object.entries(values).map(([key, value]) => {
+      const label = key.replace(/_/g, " ").replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+      const formatted = value === null ? "null"
+        : (typeof value === "object" ? JSON.stringify(value) : String(value));
+      return "<div><dt>" + escapeHTML(label) + "</dt><dd>" + escapeHTML(formatted) + "</dd></div>";
+    }).join("");
+    return "<section><h4>" + escapeHTML(title) + "</h4><dl>" + rows + "</dl></section>";
+  };
+  const loraRank = escapeHTML(configuration.lora.r ?? "—");
+  const loraAlpha = escapeHTML(configuration.lora.lora_alpha ?? "—");
+  return "<details class=\"training-configuration\"><summary>Reproducibility settings · LoRA rank "
+    + loraRank + " · alpha " + loraAlpha + "</summary><div class=\"training-configuration-sections\">"
+    + renderSection("Trainer", configuration.trainer)
+    + renderSection("LoRA adapter", configuration.lora)
+    + renderSection("Model loading", configuration.model_load)
+    + "</div></details>";
+}
+
+function displayPromptSelection(result) {
+  state.lastPromptSelection = result;
+  $("promptSelectionResults").hidden = false;
+  $("promptSelectionSummary").textContent = result.validation_examples + " validation examples · selected " + result.selected_prompt_id + " · final test not accessed";
+  const runtime = $("promptSelectionEnvironment");
+  runtime.textContent = "Validation selection: " + (runtimeSummary(result.environment) || "runtime versions not recorded.");
+  runtime.title = runtimeDetails(result.environment);
+  $("promptSelectionMetrics").innerHTML = (result.candidates || []).map((candidate) => {
+    const metrics = candidate.metrics || {};
+    return "<article class=\"training-metric\"><span>" + escapeHTML(candidate.id) + "</span><div><small>Record exact match</small><strong>" + formatPercent(metrics.record_exact_match) + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics.field_accuracy) + "</strong></div><b>" + formatPercent(metrics.json_valid_rate) + " valid JSON</b></article>";
+  }).join("");
+  updateBenchmarkControls();
+}
+
+function displayFrozenBenchmark(report, created = true) {
+  state.lastBenchmarkReport = report;
+  const fingerprint = report.dataset_sha256 ? report.dataset_sha256.slice(0, 12) : "—";
+  $("frozenBenchmarkResults").hidden = false;
+  $("frozenBenchmarkSummary").textContent = (created ? "Saved once" : "Loaded existing frozen report") + " · dataset " + fingerprint + " · selection and adapter were fixed before test scoring.";
+  $("frozenBenchmarkStats").innerHTML = statMarkup("Test examples", report.test_examples)
+    + statMarkup("Source groups", report.test_source_groups)
+    + statMarkup("Pinned base revision", report.base_revision)
+    + statMarkup("Device", report.hardware?.device)
+    + statMarkup("LoRA adapter", report.adapter_run_id)
+    + statMarkup("Dataset SHA-256", fingerprint);
+  const runtime = $("frozenBenchmarkEnvironment");
+  const environments = [
+    ["Training adapter", report.adapter_environment],
+    ["Validation selection", report.prompt_selection_environment],
+    ["Frozen benchmark", report.environment]
+  ];
+  runtime.textContent = environments.map(([stage, environment]) => stage + ": " + (runtimeSummary(environment) || "runtime versions not recorded")).join(" · ");
+  runtime.title = environments.map(([stage, environment]) => stage + ": " + (runtimeDetails(environment) || "runtime versions not recorded")).join("\n");
+  $("frozenBenchmarkConfiguration").innerHTML = trainingConfigurationMarkup(report.adapter_training_configuration);
+  const labels = [
+    ["Base · extraction/v1", report.metrics?.base_initial_prompt],
+    ["Base · validation-selected prompt", report.metrics?.base_validation_selected_prompt],
+    ["LoRA · validation-selected prompt", report.metrics?.lora_validation_selected_prompt]
+  ];
+  const metricCards = labels.map(([label, metrics]) => {
+    const exact = formatPercent(metrics?.record_exact_match);
+    const interval = metrics?.record_exact_match_95ci;
+    const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
+    return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span><div><small>Record exact match</small><strong>" + exact + "</strong></div><div><small>Field accuracy</small><strong>" + formatPercent(metrics?.field_accuracy) + "</strong></div><div><small>Valid JSON</small><strong>" + formatPercent(metrics?.json_valid_rate) + "</strong></div><b>95% grouped CI " + escapeHTML(ciText) + "</b>" + pairedDeltaMarkup(metrics) + goldYearSlicesMarkup(metrics?.by_gold_year) + failureAnalysisMarkup(metrics?.failure_analysis) + "</article>";
+  }).join("");
+  const timingMethod = report.performance?.timing_method || "Timing method not recorded in this report.";
+  const timingNote = "<p class=\"benchmark-timing-note\">Timing: " + escapeHTML(timingMethod) + "</p>";
+  const quantized = report.quantized_inference;
+  if (quantized?.variants?.length) {
+    const controlMetrics = report.metrics?.lora_validation_selected_prompt;
+    const controlPerformance = report.performance?.lora_full_precision || {};
+    const control = quantizationMetricCard("Full-precision LoRA control", controlMetrics, controlPerformance);
+    const variants = quantized.variants.map((variant) => {
+      const quantDetails = variant.id === "quanto_int8_w8a8"
+        ? "8-bit activations · train-split calibration"
+        : variant.id === "bnb_nf4" ? "double quantization" : "outlier threshold " + variant.llm_int8_threshold;
+      return quantizationMetricCard(
+      variant.label + " · " + variant.weight_bits + "-bit · " + quantDetails + " · " + variant.compute_dtype,
+      variant.metrics,
+      variant
+      );
+    }).join("");
+    const calibration = quantized.calibration;
+    const calibrationNote = calibration
+      ? "Calibration: " + calibration.examples + " input-only examples from " + calibration.source_groups + " training groups; no labels, validation rows, or test rows were used."
+      : "Calibration: not required for bitsandbytes INT8/NF4.";
+    const backendVersions = Object.entries(quantized.backend_versions || {})
+      .map(([name, version]) => name + " " + version)
+      .join(" · ") || (quantized.backend + " " + (quantized.backend_version || ""));
+    const memoryNote = report.performance?.memory_note || "Model footprint does not record runtime peak device memory.";
+    const note = calibrationNote + " Adapter training: " + quantized.adapter_training_method + " Backends: " + backendVersions + ". " + memoryNote;
+    $("frozenBenchmarkMetrics").innerHTML = metricCards
+      + timingNote
+      + "<div class=\"quantization-report-heading\"><h4>Quantized adapter inference</h4><p>Matched test quality with cold first-request and warm latency measurements. " + escapeHTML(note) + "</p></div>"
+      + control + variants;
+  } else {
+    $("frozenBenchmarkMetrics").innerHTML = timingNote + metricCards;
+  }
+  updateBenchmarkControls();
+}
+
+function runtimeSummary(environment) {
+  if (!environment) return "";
+  const packages = environment.packages || {};
+  const source = typeof environment.source_revision === "string" && environment.source_revision && "code " + environment.source_revision.slice(0, 8)
+    + (typeof environment.source_dirty === "boolean" ? (environment.source_dirty ? " (dirty)" : " (clean)") : "");
+  return [
+    environment.device,
+    environment.python_version && "Python " + environment.python_version,
+    packages.torch && "torch " + packages.torch,
+    packages.transformers && "transformers " + packages.transformers,
+    packages.bitsandbytes && "bitsandbytes " + packages.bitsandbytes,
+    source
+  ].filter(Boolean).join(" · ");
+}
+
+function runtimeDetails(environment) {
+  if (!environment) return "";
+  const packages = Object.entries(environment.packages || {}).map(([name, version]) => name + " " + (version || "not installed"));
+  const source = typeof environment.source_revision === "string" && environment.source_revision
+    ? ["source revision " + environment.source_revision, typeof environment.source_dirty === "boolean" && "source tree " + (environment.source_dirty ? "dirty" : "clean")]
+    : [];
+  return [environment.platform, environment.machine, ...source, ...packages].filter(Boolean).join(" · ");
+}
+
+function formatDeltaPoints(value) {
+  const points = Number(value) * 100;
+  return Number.isFinite(points) ? (points > 0 ? "+" : "") + points.toFixed(1) + " pp" : "—";
+}
+
+function pairedDeltaMarkup(metrics) {
+  const delta = metrics?.paired_record_exact_match_delta_95ci;
+  if (!delta) return "";
+  const interval = formatDeltaPoints(delta.lower) + " to " + formatDeltaPoints(delta.upper);
+  return "<div><small>Paired source-group exact-match Δ vs " + escapeHTML(delta.reference || "reference") + " · 95% CI</small><strong>"
+    + escapeHTML(formatDeltaPoints(delta.estimate)) + " (" + escapeHTML(interval) + ")</strong></div>";
+}
+
+function goldYearSlicesMarkup(slices) {
+  const entries = Object.entries(slices || {}).sort(([left], [right]) => {
+    if (left === "undated") return 1;
+    if (right === "undated") return -1;
+    return Number(left) - Number(right);
+  });
+  if (!entries.length) return "";
+  const rows = entries.map(([year, metrics]) => {
+    const interval = metrics.record_exact_match_95ci;
+    const ciText = interval
+      ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper)
+      : "unavailable (<2 groups)";
+    const fields = metrics.field_exact_match || {};
+    return "<div class=\"gold-year-slice\"><strong>" + escapeHTML(year) + "</strong><span>" + escapeHTML(metrics.source_groups) + " source groups · " + escapeHTML(metrics.examples) + " examples</span><span>Exact match " + formatPercent(metrics.record_exact_match) + " · 95% group CI " + escapeHTML(ciText) + "</span><span>Organization " + formatPercent(fields.organization) + " · Year " + formatPercent(fields.year) + " · Claim " + formatPercent(fields.claim) + "</span><span>Field accuracy " + formatPercent(metrics.field_accuracy) + " · Valid JSON " + formatPercent(metrics.json_valid_rate) + "</span></div>";
+  }).join("");
+  return "<details class=\"gold-year-slices\"><summary>Test results by gold year</summary><div class=\"gold-year-slice-list\"><p class=\"gold-year-slice-note\">Group counts are per year slice; a source with multiple event years may appear more than once.</p>" + rows + "</div></details>";
+}
+
+function failureAnalysisMarkup(analysis) {
+  if (!analysis || !Number.isInteger(analysis.examples) || !Number.isInteger(analysis.failed_examples)) return "";
+  const count = (value) => Number.isInteger(value) && value >= 0 ? String(value) : "—";
+  const entries = Object.entries(analysis.by_gold_year || {}).sort(([left], [right]) => {
+    if (left === "undated") return 1;
+    if (right === "undated") return -1;
+    return Number(left) - Number(right);
+  });
+  const rows = [["All years", analysis], ...entries];
+  const tableRows = rows.map(([slice, values]) => {
+    const fields = values.field_mismatch_examples || {};
+    const label = slice === "All years" ? slice : "Gold year " + slice;
+    return "<tr><th scope=\"row\">" + escapeHTML(label) + "</th><td>" + count(values.examples)
+      + "</td><td>" + count(values.source_groups) + "</td><td>" + count(values.failed_examples)
+      + "</td><td>" + count(values.failed_source_groups) + "</td><td>" + count(values.invalid_json_examples)
+      + "</td><td>" + count(values.invalid_schema_examples) + "</td><td>" + count(fields.organization)
+      + "</td><td>" + count(fields.year) + "</td><td>" + count(fields.claim) + "</td></tr>";
+  }).join("");
+  return "<details class=\"failure-analysis\"><summary>Failure analysis · " + count(analysis.failed_examples)
+    + " of " + count(analysis.examples) + " examples with at least one error</summary>"
+    + "<p class=\"failure-analysis-note\">Counts can overlap; invalid JSON or schema outputs count as mismatches for every field. Only aggregate counts are saved—source text and generated answers are not retained.</p>"
+    + "<div class=\"failure-analysis-table-wrap\" role=\"region\" aria-label=\"Aggregate failure counts by gold year\" tabindex=\"0\">"
+    + "<table class=\"failure-analysis-table\"><caption>Aggregate failure counts by gold year and total</caption>"
+    + "<thead><tr><th scope=\"col\">Slice</th><th scope=\"col\">Examples</th><th scope=\"col\">Source groups</th>"
+    + "<th scope=\"col\">Failed</th><th scope=\"col\">Groups with failures</th><th scope=\"col\">Invalid JSON</th>"
+    + "<th scope=\"col\">Invalid schema</th><th scope=\"col\">Org mismatches</th>"
+    + "<th scope=\"col\">Year mismatches</th><th scope=\"col\">Claim mismatches</th></tr></thead><tbody>"
+    + tableRows + "</tbody></table></div></details>";
+}
+
+function quantizationMetricCard(label, metrics = {}, performance = {}) {
+  const interval = metrics.record_exact_match_95ci;
+  const ciText = interval ? formatPercent(interval.lower) + "–" + formatPercent(interval.upper) : "—";
+  const footprint = Number.isFinite(Number(performance.model_footprint_bytes))
+    ? (Number(performance.model_footprint_bytes) / (1024 ** 3)).toFixed(2) + " GiB"
+    : "—";
+  const seconds = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) + " s" : "—";
+  const gibibytes = (value) => value != null && Number.isFinite(Number(value))
+    ? (Number(value) / (1024 ** 3)).toFixed(2) + " GiB" : "—";
+  const rate = Number.isFinite(Number(performance.tokens_per_second)) ? Number(performance.tokens_per_second).toFixed(2) + " tok/s" : "—";
+  const latency = (label, value) => "<div><small>" + label + "</small><strong>"
+    + (value != null && Number.isFinite(Number(value)) ? seconds(value) : "—") + "</strong></div>";
+  const deviceMemory = performance.device_memory_status === "cuda_allocator_peak"
+    ? "<div><small>CUDA peak allocated</small><strong>" + gibibytes(performance.peak_device_memory_allocated_bytes) + "</strong></div>"
+      + "<div><small>CUDA peak reserved</small><strong>" + gibibytes(performance.peak_device_memory_reserved_bytes) + "</strong></div>"
+    : performance.device_memory_status === "mps_driver_snapshot"
+      ? "<div><small>MPS driver before</small><strong>" + gibibytes(performance.mps_driver_memory_before_bytes) + "</strong></div>"
+        + "<div><small>MPS driver after</small><strong>" + gibibytes(performance.mps_driver_memory_after_bytes) + "</strong></div>"
+      : "<div><small>Device memory</small><strong>" + (performance.device_memory_status ? "Unavailable" : "Not recorded") + "</strong>"
+        + (performance.device_memory_note ? "<small>" + escapeHTML(performance.device_memory_note) + "</small>" : "") + "</div>";
+  const calibration = Number.isFinite(performance.calibration_seconds)
+    ? "<div><small>Calibration</small><strong>" + seconds(performance.calibration_seconds) + "</strong></div>"
+    : "";
+  const quantization = Number.isFinite(performance.quantization_seconds)
+    ? "<div><small>Quantize + freeze</small><strong>" + seconds(performance.quantization_seconds) + "</strong></div>"
+    : "";
+  const quantizationTimingNote = quantization
+    ? "<p class=\"quantization-timing-note\">Calibration and quantization durations are included in Load time; do not add them again.</p>"
+    : "";
+  return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span>"
+    + "<div><small>Record exact match</small><strong>" + formatPercent(metrics.record_exact_match) + "</strong></div>"
+    + "<div><small>Field accuracy</small><strong>" + formatPercent(metrics.field_accuracy) + "</strong></div>"
+    + "<div><small>Valid JSON</small><strong>" + formatPercent(metrics.json_valid_rate) + "</strong></div>"
+    + "<div><small>95% grouped CI</small><strong>" + escapeHTML(ciText) + "</strong></div>"
+    + pairedDeltaMarkup(metrics)
+    + "<div><small>Load</small><strong>" + seconds(performance.load_seconds) + "</strong></div>"
+    + "<div><small>Inference</small><strong>" + seconds(performance.inference_seconds) + "</strong></div>"
+    + latency("Cold first request", performance.cold_first_request_seconds)
+    + latency("Warm request p50", performance.warm_request_latency_p50_seconds)
+    + latency("Warm request p90", performance.warm_request_latency_p90_seconds)
+    + "<div><small>Warm requests</small><strong>" + (Number.isInteger(performance.warm_request_count) ? "n=" + performance.warm_request_count : "—") + "</strong></div>"
+    + deviceMemory
+    + calibration
+    + quantization
+    + "<div><small>Generation</small><strong>" + rate + "</strong></div>"
+    + "<div><small>Model footprint</small><strong>" + footprint + "</strong></div>"
+    + goldYearSlicesMarkup(metrics.by_gold_year)
+    + failureAnalysisMarkup(metrics.failure_analysis)
+    + quantizationTimingNote
+    + "</article>";
 }
 
 function trainingMetricMarkup(label, base, adapter) {

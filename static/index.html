@@ -12,8 +12,10 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+  <a class="skip-link" id="skipLink" href="#workspace">Skip to main content</a>
   <div class="app-frame" id="appFrame">
     <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+      <button class="mobile-menu mobile-menu-close" id="mobileMenuClose" type="button" aria-label="Close navigation" aria-controls="sidebar" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
       <a class="brand" href="#overview" data-tab="overview" aria-label="PromptMesh home">
         <svg class="brand-mark" viewBox="0 0 34 34" aria-hidden="true">
           <path d="M8 10.5 17 6l9 4.5v11L17 26l-9-4.5v-11Z" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -69,9 +71,9 @@
     </aside>
 
     <div class="mobile-scrim" id="mobileScrim" hidden></div>
-    <main class="workspace" id="workspace">
+    <main class="workspace" id="workspace" tabindex="-1">
       <header class="topbar">
-        <button class="mobile-menu" id="menuToggle" type="button" aria-label="Open navigation" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
+        <button class="mobile-menu" id="menuToggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
         <div class="topbar-context">
           <button class="topbar-back" id="backToOverview" type="button" data-go="overview" aria-label="Back to overview" title="Back to overview" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 10h-13m0 0L9 4.5M3.5 10 9 15.5"/></svg><span>Back</span></button>
           <div class="breadcrumb"><span>Personal workspace</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg><strong id="breadcrumbTitle">Overview</strong></div>
@@ -90,7 +92,7 @@
       <div class="sheet">
         <section id="overview-tab" class="tab-content" aria-labelledby="overviewTitle">
           <div class="page-heading heading-row">
-            <div><h1 id="overviewTitle">Your model lab</h1><p>Run focused experiments. Keep the evidence close to the prompt.</p></div>
+            <div><h1 id="overviewTitle" tabindex="-1">Your model lab</h1><p>Run focused experiments. Keep the evidence close to the prompt.</p></div>
             <button class="button button-primary" type="button" data-go="evaluate"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>New evaluation</button>
           </div>
           <div class="overview-lede">
@@ -120,7 +122,41 @@
         </section>
 
         <section id="finetune-tab" class="tab-content" aria-labelledby="fineTuneTitle" hidden>
-          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="fineTuneTitle">Fine-tune a small model</h1><span class="page-chip"><span class="status-dot"></span>Local SFT</span></div><p>Train a local LoRA adapter for structured entity extraction, then compare validation results with its base model.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-finetune"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-hero.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
+          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="fineTuneTitle" tabindex="-1">Fine-tune a small model</h1><span class="page-chip"><span class="status-dot"></span>Local SFT</span></div><p>Train a local LoRA adapter for structured entity extraction, then compare validation results with its base model.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-finetune"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-hero.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
+          <section id="candidateReview" class="results-panel review-queue" aria-labelledby="candidateReviewTitle">
+            <div class="results-heading"><div><h2 id="candidateReviewTitle">Review source candidates</h2><p>Check every phrasing against its linked source before creating a benchmark.</p></div><span id="candidateReviewSummary" class="review-summary">Loading the local review packet…</span></div>
+            <p id="candidateReviewCoverage" class="review-coverage" role="status" aria-live="polite"></p>
+            <div id="candidateReviewWorkspace" class="review-workspace" hidden>
+              <div class="review-toolbar">
+                <div class="field"><label for="reviewPacketYear">Proposed year</label><select id="reviewPacketYear"><option value="all">All years</option></select></div>
+                <div class="field"><label for="reviewPacketGroup">Source group</label><select id="reviewPacketGroup"></select></div>
+                <div class="review-navigation"><button id="reviewPacketPrevious" class="button button-secondary" type="button">Previous</button><button id="reviewPacketNext" class="button button-secondary" type="button">Next needing review</button></div>
+              </div>
+              <div id="reviewPacketSource" class="review-source"></div>
+              <p id="reviewPacketAnnouncement" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
+              <form id="reviewPacketForm">
+                <p class="review-guidance">Review all variants in this group. <strong>Organization means the named claim actor</strong>; do not substitute a recipient or beneficiary. These phrasings share one source fact, so they count as one group. After review, export can include all eligible groups or a deterministic pilot of 12 groups per reviewed year (2020–2025). The pilot prioritizes distinct normalized source hosts, but host diversity does not balance source owners, topics, organizations, or writing styles and is not a representativeness claim.</p>
+                <div id="reviewPacketRows" class="review-rows"></div>
+                <section class="review-rights" aria-labelledby="reviewRightsTitle">
+                  <div><h3 id="reviewRightsTitle">Source reuse</h3><p>A public page is not automatically licensed for reuse. Keep this unresolved until you check the source terms.</p></div>
+                  <div class="field-grid review-rights-fields"><div class="field"><label for="reviewSourceReuseStatus">Reuse decision</label><select id="reviewSourceReuseStatus"><option value="permission_unconfirmed">Not confirmed</option><option value="permission_confirmed">Permission or license confirmed</option><option value="excluded">Exclude this source</option></select></div><div class="field"><label id="reviewSourceEvidenceLabel" for="reviewSourceEvidence">Evidence or exclusion reason</label><input id="reviewSourceEvidence" type="text" maxlength="1000" placeholder="e.g. license name and source terms"></div></div>
+                </section>
+                <div class="form-actions review-actions"><span id="reviewPacketSaveStatus" class="form-note" role="status" aria-live="polite">Changes save only to this machine's private CSV.</span><button id="reviewPacketSave" class="button button-primary" type="submit">Save review for this group</button></div>
+              </form>
+            </div>
+            <p id="candidateReviewMessage" class="review-message" role="status" aria-live="polite">Loading the local review packet…</p>
+            <section class="review-export" aria-labelledby="reviewExportTitle">
+              <div><h3 id="reviewExportTitle">Build a reviewed dataset</h3><p>Only reviewed variants from groups with permission evidence are eligible. Choose all eligible groups or a year-balanced, host-diverse pilot. It requires 12 groups in each reviewed year from 2020–2025 and uses a deterministic seed to maximize distinct normalized HTTPS source hosts per year, choosing one group per host before repeats when possible. The private benchmark card records candidate host metadata and the selected groups. Hostnames are only a source-diversity proxy; they do not balance source owners, topics, organizations, or writing styles. Export does not train a model or run a benchmark.</p></div>
+              <div class="review-export-fields">
+                <div class="field"><label for="reviewExportDatasetId">Dataset ID</label><input id="reviewExportDatasetId" type="text" value="public_source_entity_v1" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}" autocomplete="off"><small class="field-hint">Use letters, numbers, underscores, or hyphens.</small></div>
+                <div class="field"><label for="reviewExportReviewerRole">Reviewer role</label><input id="reviewExportReviewerRole" type="text" maxlength="128" placeholder="e.g. project author" autocomplete="off"><small class="field-hint">Enter a role, not a personal name.</small></div>
+                <div class="field"><label for="reviewExportCohort">Export cohort</label><select id="reviewExportCohort"><option value="all_eligible">All eligible groups</option><option value="balanced_year_12">Year-balanced, host-diverse pilot · 12 per year</option></select><small class="field-hint">Seed 42; normalized hosts remove a leading www. Subdomains may share an owner.</small></div>
+                <button id="reviewExportButton" class="button button-secondary" type="button" disabled>Build dataset and card</button>
+              </div>
+              <p id="reviewExportReadiness" class="review-export-status" role="status" aria-live="polite">Waiting for the local review packet…</p>
+              <p id="reviewExportResult" class="review-export-status" role="status" aria-live="polite"></p>
+            </section>
+          </section>
           <div class="workbench-grid">
             <form id="fineTuneForm" class="form-panel">
               <div class="form-section">
@@ -135,15 +171,34 @@
             </form>
             <aside class="side-column">
               <section class="side-panel"><h2>What this run measures</h2><p>The same validation groups compare the prompted base model with the LoRA adapter. Final-test examples stay reserved.</p><div class="side-rule"></div><dl class="measure-list"><div><dt>JSON validity</dt><dd>Exact output schema</dd></div><div><dt>Record exact match</dt><dd>All three fields correct</dd></div><div><dt>Field accuracy</dt><dd>Each field scored separately</dd></div></dl></section>
-              <section class="side-panel side-panel-muted"><p class="side-eyebrow">Local run details</p><p>Training and validation scoring run on this machine; the final test is not scored during training. The first run downloads Qwen3-0.6B weights from Hugging Face; your dataset stays local. The general evaluation page uses its configured judge model, which may be remote.</p></section>
+              <section class="side-panel side-panel-muted"><p class="side-eyebrow">Local run details</p><p>Training and validation scoring run on this machine; the final test is not scored during training. The Qwen3-0.6B checkpoint must already be cached; training uses local-only loading. Benchmark selection and final scoring use the pinned cached revision. Your dataset stays local. The general evaluation page uses its configured judge model, which may be remote.</p></section>
             </aside>
           </div>
-          <section id="fineTuneResults" class="results-panel" hidden><div class="results-heading"><div><h2>Base model vs. trained adapter</h2><p id="fineTuneSummary">Validation metrics; final test reserved</p></div><button id="evaluateAdapterBtn" class="button button-secondary" type="button">Use adapter in evaluation</button></div><div id="fineTuneStats" class="result-stats"></div><div id="fineTuneMetrics" class="training-metrics"></div><div class="training-loss-panel"><div><h3>Training progress</h3><p>Training and validation loss by logged step</p></div><div id="fineTuneLossChart" class="loss-chart"></div></div></section>
+          <section id="fineTuneResults" class="results-panel" hidden><div class="results-heading"><div><h2>Base model vs. trained adapter</h2><p id="fineTuneSummary">Validation metrics; final test reserved</p></div><button id="evaluateAdapterBtn" class="button button-secondary" type="button">Use adapter in evaluation</button></div><div id="fineTuneStats" class="result-stats"></div><div id="fineTuneConfiguration" class="training-configuration-result"></div><div id="fineTuneMetrics" class="training-metrics"></div><div class="training-loss-panel"><div><h3>Training progress</h3><p>Training and validation loss by logged step</p></div><div id="fineTuneLossChart" class="loss-chart"></div></div></section>
+          <section id="benchmarkWorkflow" class="results-panel benchmark-workflow">
+            <div class="results-heading"><div><h2>Validation selection → frozen benchmark</h2><p>Choose a prompt on validation, then compare matched model arms on the reserved test set.</p><p>Keep source-group IDs stable across dataset versions. PromptMesh blocks previously tested IDs and normalized exact inputs from training, validation, or later tests. It cannot detect paraphrases when both the ID and wording change.</p></div><span class="page-chip">Label metrics · deterministic scoring</span></div>
+            <form id="promptSelectionForm" class="benchmark-form">
+              <div class="field"><label for="benchmarkAdapter">Validation-scored LoRA adapter</label><select id="benchmarkAdapter" required><option value="">Load a reviewed dataset and validation adapter</option></select><small class="field-hint">The adapter must share this dataset fingerprint and have validation-only metrics.</small></div>
+              <div class="field"><label for="benchmarkCandidatePrompt">Candidate prompt template</label><textarea id="benchmarkCandidatePrompt" rows="6" required placeholder="You are a careful information extraction system. Return only the requested JSON fields.&#10;&#10;Text:&#10;{{text}}"></textarea><small class="field-hint">Include <code>{{text}}</code>. PromptMesh compares this candidate with extraction/v1 using validation labels.</small></div>
+              <div class="form-actions"><span id="benchmarkWorkflowNote" class="form-note" role="status" aria-live="polite">A matching review card is required; its review status is self-attested.</span><button id="promptSelectionSubmit" class="button button-primary" type="submit" disabled>Choose prompt on validation</button></div>
+            </form>
+            <section id="promptSelectionResults" class="benchmark-result" hidden><div class="results-heading"><div><h3>Validation prompt selection</h3><p id="promptSelectionSummary"></p></div></div><p id="promptSelectionEnvironment" class="field-hint"></p><div id="promptSelectionMetrics" class="training-metrics"></div>
+              <fieldset id="quantizationOptions" class="quantization-options">
+                <legend>Optional quantized inference</legend>
+                <p>Choose these before the one-time test run. Extra variants increase run time; every selected method uses the same test rows as the full-precision LoRA control.</p>
+                <div class="quantization-choice"><label><input type="checkbox" name="quantizationMethods" value="bnb_int8"><span><strong>LLM.int8</strong><small>8-bit weights · runtime outlier handling</small></span></label><label><input type="checkbox" name="quantizationMethods" value="bnb_nf4"><span><strong>NF4</strong><small>4-bit NormalFloat · double quantization</small></span></label><label><input type="checkbox" name="quantizationMethods" value="quanto_int8_w8a8"><span><strong>Quanto W8A8</strong><small>8-bit weights + activations · train-split calibration</small></span></label></div>
+                <p id="quantizationRuntimeNote" class="field-hint" role="status" aria-live="polite">Checking local quantization support…</p>
+                <p class="quantization-explanation">bitsandbytes INT8 and NF4 quantize weights on load without offline calibration. Quanto W8A8 calibrates activation ranges with label-free inputs from the training split only, then measures the merged LoRA model on the same reserved test rows. Validation and test inputs stay out of calibration. This is post-training inference quantization, not QLoRA training; MPS speed is measured rather than assumed. AWQ/GPTQ are not included.</p>
+              </fieldset>
+              <button id="runFrozenBenchmarkBtn" class="button button-primary" type="button" disabled>Run frozen test benchmark once</button>
+            </section>
+            <section id="frozenBenchmarkResults" class="benchmark-result" hidden><div class="results-heading"><div><h3>Frozen benchmark report</h3><p id="frozenBenchmarkSummary"></p></div></div><div id="frozenBenchmarkStats" class="result-stats"></div><p id="frozenBenchmarkEnvironment" class="field-hint"></p><div id="frozenBenchmarkConfiguration" class="training-configuration-result"></div><div id="frozenBenchmarkMetrics" class="training-metrics"></div></section>
+          </section>
           <section id="savedAdapters" class="results-panel" hidden><div class="results-heading"><div><h2>Saved local adapters</h2><p>Completed adapters can also be selected on the evaluation page.</p></div></div><div id="savedAdapterList" class="adapter-list"></div></section>
         </section>
 
         <section id="evaluate-tab" class="tab-content" aria-labelledby="evaluateTitle" hidden>
-          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="evaluateTitle">Evaluate a prompt</h1><span class="page-chip"><span class="status-dot"></span>LLM-judged run</span></div><p>Run one prompt across multiple models using the same test inputs.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-evaluate"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-thinking.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
+          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="evaluateTitle" tabindex="-1">Evaluate a prompt</h1><span class="page-chip"><span class="status-dot"></span>LLM-judged run</span></div><p>Run one prompt across multiple models using the same test inputs.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-evaluate"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-thinking.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
           <div class="workbench-grid">
             <form id="evaluateForm" class="form-panel">
               <div class="form-section"><div class="form-section-heading"><span class="step-number">01</span><div><h2>Choose your prompt</h2><p>Use a saved version or write a temporary prompt.</p></div></div>
@@ -164,7 +219,7 @@
         </section>
 
         <section id="compare-tab" class="tab-content" aria-labelledby="compareTitle" hidden>
-          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="compareTitle">Compare prompt versions</h1></div><p>Change the prompt while holding the model and input steady.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-compare"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-hero.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
+          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="compareTitle" tabindex="-1">Compare prompt versions</h1></div><p>Change the prompt while holding the model and input steady.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-compare"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-hero.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
           <div class="workbench-grid"><form id="compareForm" class="form-panel">
             <div class="form-section"><div class="form-section-heading"><span class="step-number">01</span><div><h2>Choose two prompts</h2><p>Compare saved versions or paste two drafts.</p></div></div>
               <label class="toggle-row" for="compareUseCustom"><span><strong>Write custom prompts</strong><small>Use temporary drafts for this comparison.</small></span><input type="checkbox" id="compareUseCustom"><span class="switch" aria-hidden="true"></span></label>
@@ -178,7 +233,7 @@
         </section>
 
         <section id="evolve-tab" class="tab-content" aria-labelledby="evolveTitle" hidden>
-          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="evolveTitle">Evolve a prompt</h1></div><p>Use observed failures to generate and score prompt revisions with an LLM judge.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-evolve"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-thinking.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
+          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="evolveTitle" tabindex="-1">Evolve a prompt</h1></div><p>Use observed failures to generate and score prompt revisions with an LLM judge.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-evolve"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-thinking.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
           <div class="workbench-grid"><form id="evolveForm" class="form-panel">
             <div class="form-section"><div class="form-section-heading"><span class="step-number">01</span><div><h2>Set the starting point</h2><p>Choose a saved prompt or give the optimizer a draft.</p></div></div>
               <label class="toggle-row" for="evolveUseCustomPrompt"><span><strong>Start from a custom prompt</strong><small>Use a temporary prompt as the first version.</small></span><input type="checkbox" id="evolveUseCustomPrompt"><span class="switch" aria-hidden="true"></span></label>
@@ -193,13 +248,13 @@
         </section>
 
         <section id="testcases-tab" class="tab-content" aria-labelledby="testcasesTitle" hidden>
-          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="testcasesTitle">Generate test cases</h1></div><p>Expand a starter set with varied inputs for your evaluation.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-testcases"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-hero.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
+          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="testcasesTitle" tabindex="-1">Generate test cases</h1></div><p>Expand a starter set with varied inputs for your evaluation.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-testcases"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-hero.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
           <div class="workbench-grid"><form id="testcasesForm" class="form-panel"><div class="form-section"><div class="form-section-heading"><span class="step-number">01</span><div><h2>Describe the task</h2><p>Generated cases need review before they become benchmark data.</p></div></div><div class="field-grid"><div class="field"><label for="testcaseType">Task type</label><select id="testcaseType" required><option value="">Select a task type</option><option value="summarization">Summarization</option><option value="extraction">Extraction</option><option value="verification">Verification</option><option value="classification">Classification</option><option value="reasoning">Reasoning</option><option value="generation">Generation</option></select></div><div class="field"><label for="testcaseCount">Cases to generate</label><input id="testcaseCount" type="number" value="5" min="1" max="20"></div></div><div class="field"><label for="testcaseBase">Base inputs</label><textarea id="testcaseBase" rows="7" placeholder="Add a few seed examples, one per line."></textarea><small class="field-hint">Include varied examples and review generated cases for correctness.</small></div></div><div class="form-actions"><span class="form-note">Generated examples are not gold labels.</span><button class="button button-primary" type="submit"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h10v14H5zM7.5 7h5m-5 3h5m-5 3h3"/></svg>Generate cases</button></div></form><aside class="side-column"><section class="side-panel"><h2>Use generated data carefully</h2><p>Generated examples can improve coverage, but they can also repeat patterns or contain incorrect assumptions.</p><div class="side-rule"></div><p class="side-small">Keep source examples, generated examples, and human-reviewed test labels distinguishable.</p></section></aside></div>
           <section id="testcasesResults" class="results-panel" hidden><div class="results-heading"><div><h2>Generated cases</h2><p>Review and copy these into a versioned dataset.</p></div></div><ol id="testcasesResultsList" class="generated-list"></ol></section>
         </section>
 
         <section id="history-tab" class="tab-content" aria-labelledby="historyTitle" hidden>
-          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="historyTitle">Run history</h1></div><p>Recent job summaries saved in this browser only.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-history"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-thinking.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
+          <div class="page-heading page-heading--illustrated"><div class="page-heading__copy"><div class="page-heading__title-row"><h1 id="historyTitle" tabindex="-1">Run history</h1></div><p>Recent job summaries saved in this browser only.</p></div><div class="section-illustration" aria-hidden="true"><svg class="section-illustration__motif" viewBox="0 0 56 56"><use href="#scene-history"></use></svg><img class="section-illustration__companion" src="static/images/promptmesh-companion-thinking.webp" alt="" width="1345" height="1169" loading="lazy"></div></div>
           <section class="results-panel history-panel"><div class="results-heading"><div><h2>Completed work</h2><p>Full results stay in API memory for 30 minutes.</p></div><button class="button button-secondary" type="button" id="clearHistoryBtn">Clear local history</button></div><div id="historyList" class="history-list"><div class="empty-inline empty-inline--illustrated"><img class="empty-inline__art" src="static/images/promptmesh-companion-thinking.webp" alt="" aria-hidden="true" width="1345" height="1169" loading="lazy"><div><strong>No completed runs</strong><p>Evaluation, comparison, and evolution summaries will appear here.</p></div></div></div></section>
         </section>
 

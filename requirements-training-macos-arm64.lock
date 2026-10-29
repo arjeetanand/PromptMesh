@@ -1,0 +1,53 @@
+# PromptMesh local training environment snapshot.
+# Source: .venv, Python 3.12.13, macOS-26.7.1-arm64-arm-64bit, arm64.
+# Pins the installed LoRA/SFT stack, active-platform dependency closure, and bitsandbytes backend.
+# Intended only for Python 3.12 on macOS ARM64; this is not a cross-platform application lock.
+# Install alongside requirements.txt; regenerate and review after changing the validated environment.
+
+accelerate==1.15.0
+annotated-doc==0.0.5
+anyio==4.15.1
+bitsandbytes==0.50.0
+click==8.5.0
+datasets==5.1.0
+dill==0.4.1
+filelock==4.2.4
+fsspec==2026.7.0
+h11==0.16.0
+hf-xet==1.7.0
+httpcore2==2.16.0
+httpx2==2.16.0
+huggingface-hub==2.3.0
+idna==3.20
+jinja2==3.1.6
+markdown-it-py==4.2.0
+markupsafe==3.0.4
+mdurl==0.1.2
+mpmath==1.3.0
+multiprocess==0.70.19
+networkx==3.7
+numpy==2.5.4
+packaging==26.3
+pandas==3.1.0
+peft==0.21.2
+psutil==7.2.2
+pyarrow==26.0.0
+pygments==2.21.0
+python-dateutil==2.9.0.post0
+pyyaml==6.0.3
+regex==2026.9.29
+rich==15.0.0
+safetensors==0.8.0
+setuptools==84.2.1
+shellingham==1.5.4
+six==1.17.0
+sympy==1.14.0
+tokenizers==0.23.3
+torch==2.14.1
+tqdm==4.70.1
+transformers==5.21.0
+trl==1.16.0
+truststore==0.10.5
+typer==0.27.3
+typing-extensions==4.16.0
+xxhash==4.0.2

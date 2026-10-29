@@ -6,16 +6,25 @@ import shutil
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from training.datasets import (
-    DATASET_DIR,
     format_sft_rows,
-    load_dataset,
+    load_dataset_snapshot,
+    SPLIT_SEED,
     split_counts,
     split_dataset,
+    split_strategy,
+)
+from training.environment import runtime_metadata
+from training.holdout_registry import DEFAULT_BENCHMARKS_DIR as BENCHMARKS_DIR, assert_rows_unseen
+from training.manifest import (
+    ADAPTER_MANIFEST_SCHEMA_VERSION,
+    training_configuration_sha256,
+    training_configuration_snapshot,
 )
 from training.metrics import score_predictions
-from training.registry import RUNS_DIR
+from training.registry import RUNS_DIR, artifact_tree_sha256
 
 
 BASE_MODEL_ID = "Qwen/Qwen3-0.6B"
@@ -33,33 +42,50 @@ def training_runtime():
     return {"available": not missing, "missing": missing, "device": device, "base_model": BASE_MODEL_ID}
 
 
-def _generate(model, tokenizer, prompt_template, rows):
-    import torch
+def _resolve_cached_base_revision():
+    from huggingface_hub import snapshot_download
 
+    snapshot = Path(snapshot_download(BASE_MODEL_ID, local_files_only=True))
+    if snapshot.parent.name != "snapshots":
+        raise RuntimeError("Could not identify the cached base-model revision")
+    return snapshot.name
+
+
+def _model_inputs(model, tokenizer, prompt_template, row):
     from core.types import render_prompt
 
+    prompt = render_prompt(prompt_template, {"text": row["input"]})
+    prompt += "\nReturn only a JSON object with exactly these keys: organization, year, claim. Use null for missing fields."
+    return tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt}],
+        tokenize=True,
+        add_generation_prompt=True,
+        return_tensors="pt",
+        enable_thinking=False,
+    ).to(next(model.parameters()).device)
+
+
+def _generate(model, tokenizer, prompt_template, rows, max_new_tokens=128, return_token_counts=False):
+    import torch
+
     outputs = []
+    token_counts = []
     for row in rows:
-        prompt = render_prompt(prompt_template, {"text": row["input"]})
-        prompt += "\nReturn only a JSON object with exactly these keys: organization, year, claim. Use null for missing fields."
-        inputs = tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}],
-            tokenize=True,
-            add_generation_prompt=True,
-            return_tensors="pt",
-            enable_thinking=False,
-        ).to(next(model.parameters()).device)
+        inputs = _model_inputs(model, tokenizer, prompt_template, row)
         input_length = inputs["input_ids"].shape[-1]
         with torch.inference_mode():
             generated = model.generate(
                 **inputs,
-                max_new_tokens=128,
+                max_new_tokens=max_new_tokens,
                 do_sample=False,
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.eos_token_id,
             )
-        outputs.append(tokenizer.decode(generated[0, input_length:], skip_special_tokens=True).strip())
-    return outputs
+        generated_tokens = generated[0, input_length:]
+        outputs.append(tokenizer.decode(generated_tokens, skip_special_tokens=True).strip())
+        if return_token_counts:
+            token_counts.append(int(generated_tokens.numel()))
+    return (outputs, token_counts) if return_token_counts else outputs
 
 
 def _score_validation(model, tokenizer, prompt_template, splits):
@@ -70,6 +96,31 @@ def _score_validation(model, tokenizer, prompt_template, splits):
 
 def _save_manifest(path, manifest):
     path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _sft_config_kwargs(request, output_dir):
+    return {
+        "output_dir": str(output_dir),
+        "learning_rate": request.learning_rate,
+        "num_train_epochs": request.epochs,
+        "per_device_train_batch_size": 1,
+        "per_device_eval_batch_size": 1,
+        "gradient_accumulation_steps": 4,
+        "eval_strategy": "epoch",
+        "save_strategy": "no",
+        "logging_steps": 1,
+        "report_to": "none",
+        "max_length": 512,
+        "completion_only_loss": True,
+        "gradient_checkpointing": False,
+        "dataloader_num_workers": 0,
+        "optim": "adamw_torch",
+        "seed": 42,
+        "data_seed": 42,
+        "disable_tqdm": True,
+        "bf16": False,
+        "fp16": False,
+    }
 
 
 def run_lora_training(job_id, request, jobs):
@@ -85,30 +136,36 @@ def run_lora_training(job_id, request, jobs):
 
         from prompts.registry import PROMPT_BASE_PATH, PromptRegistry
 
-        rows = load_dataset(request.dataset_id)
+        rows, dataset_hash = load_dataset_snapshot(request.dataset_id)
         splits = split_dataset(rows)
+        assert_rows_unseen(
+            splits["train"] + splits["validation"], BENCHMARKS_DIR, "LoRA training/validation data"
+        )
         counts = split_counts(splits)
         prompt_version = "v1"
         prompt = PromptRegistry().load_with_metadata("extraction", prompt_version)["template"]
         prompt_path = PROMPT_BASE_PATH / "extraction" / f"{prompt_version}.yaml"
         prompt_hash = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
-        dataset_path = DATASET_DIR / f"{request.dataset_id}.jsonl"
-        dataset_hash = hashlib.sha256(dataset_path.read_bytes()).hexdigest()
         run_id = uuid.uuid4().hex
         run_dir = RUNS_DIR / run_id
         run_dir.mkdir(parents=True, exist_ok=False)
         adapter_dir = run_dir / "adapter"
         jobs.update(job_id, {"progress": 5, "stage": "loading_model"})
         device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
+        base_revision = _resolve_cached_base_revision()
+        model_load_dtype = "float32"
         model = AutoModelForCausalLM.from_pretrained(
             BASE_MODEL_ID,
-            dtype=torch.float32,
+            revision=base_revision,
+            dtype=getattr(torch, model_load_dtype),
             trust_remote_code=False,
+            local_files_only=True,
         ).to(device)
-        base_revision = getattr(model.config, "_commit_hash", None)
-        tokenizer_args = {"trust_remote_code": False}
-        if base_revision:
-            tokenizer_args["revision"] = base_revision
+        tokenizer_args = {
+            "revision": base_revision,
+            "trust_remote_code": False,
+            "local_files_only": True,
+        }
         tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, **tokenizer_args)
 
         jobs.update(job_id, {"progress": 10, "stage": "evaluating_base"})
@@ -128,44 +185,28 @@ def run_lora_training(job_id, request, jobs):
 
         train_rows = Dataset.from_list(format_sft_rows(splits["train"], prompt))
         validation_rows = Dataset.from_list(format_sft_rows(splits["validation"], prompt))
-        config = SFTConfig(
-            output_dir=str(run_dir / "checkpoint"),
-            learning_rate=request.learning_rate,
-            num_train_epochs=request.epochs,
-            per_device_train_batch_size=1,
-            per_device_eval_batch_size=1,
-            gradient_accumulation_steps=4,
-            eval_strategy="epoch",
-            save_strategy="no",
-            logging_steps=1,
-            report_to="none",
-            max_length=512,
-            completion_only_loss=True,
-            gradient_checkpointing=False,
-            dataloader_num_workers=0,
-            optim="adamw_torch",
-            seed=42,
-            data_seed=42,
-            disable_tqdm=True,
+        config = SFTConfig(**_sft_config_kwargs(request, run_dir / "checkpoint"))
+        lora_config = LoraConfig(
+            r=request.lora_rank,
+            lora_alpha=request.lora_rank * 2,
+            lora_dropout=0.05,
+            bias="none",
+            task_type="CAUSAL_LM",
+            target_modules=["q_proj", "v_proj"],
         )
+        training_configuration = training_configuration_snapshot(config, lora_config, model_load_dtype)
         trainer = SFTTrainer(
             model=model,
             args=config,
             train_dataset=train_rows,
             eval_dataset=validation_rows,
             processing_class=tokenizer,
-            peft_config=LoraConfig(
-                r=request.lora_rank,
-                lora_alpha=request.lora_rank * 2,
-                lora_dropout=0.05,
-                bias="none",
-                task_type="CAUSAL_LM",
-                target_modules=["q_proj", "v_proj"],
-            ),
+            peft_config=lora_config,
             callbacks=[ProgressCallback()],
         )
         trainer.train()
         trainer.save_model(str(adapter_dir))
+        adapter_hash = artifact_tree_sha256(adapter_dir)
 
         jobs.update(job_id, {"progress": 85, "stage": "evaluating_adapter"})
         adapter_metrics = _score_validation(trainer.model, tokenizer, prompt, splits)
@@ -175,7 +216,7 @@ def run_lora_training(job_id, request, jobs):
         completed_at = datetime.now(timezone.utc).isoformat()
         metrics = {"base": base_metrics, "adapter": adapter_metrics}
         manifest = {
-            "schema_version": 2,
+            "schema_version": ADAPTER_MANIFEST_SCHEMA_VERSION,
             "status": "completed",
             "run_id": run_id,
             "base_model": BASE_MODEL_ID,
@@ -183,12 +224,18 @@ def run_lora_training(job_id, request, jobs):
             "tokenizer_revision": base_revision,
             "dataset_id": request.dataset_id,
             "dataset_sha256": dataset_hash,
+            "adapter_sha256": adapter_hash,
             "task": "entity_extraction",
             "prompt_version": f"extraction/{prompt_version}",
             "prompt_sha256": prompt_hash,
             "split_counts": counts,
+            "split_seed": SPLIT_SEED,
+            "split_strategy": split_strategy(rows),
             "metrics_split": "validation",
             "test_split_used": False,
+            "environment": runtime_metadata(device),
+            "training_configuration": training_configuration,
+            "training_configuration_sha256": training_configuration_sha256(training_configuration),
             "hyperparameters": {
                 "method": "LoRA + supervised fine-tuning",
                 "lora_rank": request.lora_rank,
@@ -214,9 +261,12 @@ def run_lora_training(job_id, request, jobs):
                 "dataset_id": request.dataset_id,
                 "dataset_sha256": dataset_hash,
                 "split_counts": counts,
+                "split_seed": SPLIT_SEED,
+                "split_strategy": split_strategy(rows),
                 "metrics_split": "validation",
                 "device": device,
                 "metrics": metrics,
+                "training_configuration": training_configuration,
                 "training_loss": training_losses,
                 "validation_loss": validation_losses,
                 "elapsed_seconds": round(time.perf_counter() - started, 1),

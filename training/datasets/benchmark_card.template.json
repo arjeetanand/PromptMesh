@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "dataset_id": "REPLACE_WITH_DATASET_ID",
+  "dataset_sha256": "REPLACE_WITH_SHA256_FROM_DATASET_READINESS",
   "task": "entity_extraction",
   "source": {
     "description": "REPLACE_WITH_A_NON_SENSITIVE_SOURCE_DESCRIPTION",
@@ -11,7 +12,7 @@
     "policy": "REPLACE_WITH_HOW_GROUP_ID_VALUES_ARE_ASSIGNED"
   },
   "annotation": {
-    "guidelines_version": "REPLACE_WITH_GUIDELINE_VERSION",
+    "guidelines_version": "entity-extraction-v1",
     "review_status": "unreviewed",
     "all_labels_human_reviewed": false,
     "total_examples": 0,

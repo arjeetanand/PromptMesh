@@ -1,0 +1,835 @@
+import hashlib
+import json
+import sys
+import tempfile
+import types
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from training import benchmark
+from training.manifest import (
+    LORA_CONFIGURATION_FIELDS,
+    TRAINER_CONFIGURATION_FIELDS,
+    TRAINING_CONFIGURATION_SCHEMA_VERSION,
+)
+from training.registry import artifact_tree_sha256
+
+
+class JobRecorder:
+    def __init__(self):
+        self.updates = []
+
+    def update(self, job_id, changes):
+        self.updates.append((job_id, changes))
+
+
+def _training_configuration_fixture():
+    return {
+        "schema_version": TRAINING_CONFIGURATION_SCHEMA_VERSION,
+        "trainer": dict.fromkeys(TRAINER_CONFIGURATION_FIELDS),
+        "lora": dict.fromkeys(LORA_CONFIGURATION_FIELDS),
+        "model_load": {"dtype": "float32", "local_files_only": True, "trust_remote_code": False},
+    }
+
+
+def _training_configuration_sha256(configuration):
+    content = json.dumps(configuration, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(content).hexdigest()
+
+
+class FailureAnalysisTests(unittest.TestCase):
+    def test_failure_counts_are_aggregate_by_gold_year_and_omit_text(self):
+        gold = {"organization": "Northstar", "year": 2024, "claim": "opened a lab"}
+        rows = [
+            {"group_id": "private-group-a", "input": "private source A", "output": gold},
+            {"group_id": "private-group-b", "input": "private source B", "output": gold},
+            {
+                "group_id": "private-group-c",
+                "input": "private source C",
+                "output": {"organization": "Northstar", "year": 2025, "claim": "opened a lab"},
+            },
+            {
+                "group_id": "private-group-d",
+                "input": "private source D",
+                "output": {"organization": "Northstar", "year": None, "claim": "opened a lab"},
+            },
+        ]
+        predictions = [
+            "not json",
+            json.dumps({**gold, "claim": "wrong claim"}),
+            json.dumps({"organization": "Northstar", "year": 2025, "claim": "opened a lab", "extra": True}),
+            json.dumps(rows[3]["output"]),
+        ]
+
+        result = benchmark.failure_analysis(rows, predictions)
+
+        self.assertEqual(result["method"], "json-schema-and-field-mismatch-counts-v1")
+        self.assertFalse(result["raw_examples_saved"])
+        self.assertEqual((result["examples"], result["source_groups"]), (4, 4))
+        self.assertEqual((result["failed_examples"], result["failed_source_groups"]), (3, 3))
+        self.assertEqual((result["invalid_json_examples"], result["invalid_schema_examples"]), (1, 1))
+        self.assertEqual(result["field_mismatch_examples"], {"organization": 2, "year": 2, "claim": 3})
+        self.assertEqual(result["by_gold_year"]["2024"]["field_mismatch_examples"], {
+            "organization": 1, "year": 1, "claim": 2,
+        })
+        self.assertEqual(result["by_gold_year"]["2025"]["invalid_schema_examples"], 1)
+        self.assertEqual(result["by_gold_year"]["undated"]["failed_examples"], 0)
+        serialized = json.dumps(result)
+        for private_value in ("private source", "private-group", "wrong claim", "not json"):
+            self.assertNotIn(private_value, serialized)
+
+    def test_failure_analysis_requires_matching_non_empty_predictions(self):
+        row = {"group_id": "group-a", "output": {"organization": None, "year": None, "claim": None}}
+        with self.assertRaisesRegex(ValueError, "match a non-empty held-out split"):
+            benchmark.failure_analysis([row], [])
+        with self.assertRaisesRegex(ValueError, "match a non-empty held-out split"):
+            benchmark.failure_analysis([], [])
+
+
+class FakeTokenizer:
+    def encode(self, text, add_special_tokens=False):
+        return text.split()
+
+
+class FrozenBenchmarkTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        root = Path(self.temp.name)
+        self.dataset_dir = root / "datasets"
+        self.dataset_dir.mkdir()
+        self.runs_dir = root / "runs"
+        self.selections_dir = root / "selections"
+        self.benchmarks_dir = root / "benchmarks"
+        self.rows = [
+            {
+                "group_id": f"source-{index}",
+                "input": f"Private source text {index}",
+                "output": {"organization": f"Org {index}", "year": 2024, "claim": f"claim {index}"},
+            }
+            for index in range(200)
+        ]
+        content = "".join(json.dumps(row) + "\n" for row in self.rows).encode("utf-8")
+        self.dataset_digest = hashlib.sha256(content).hexdigest()
+        (self.dataset_dir / "reviewed.jsonl").write_bytes(content)
+        card = {
+            "schema_version": 1,
+            "dataset_id": "reviewed",
+            "dataset_sha256": self.dataset_digest,
+            "task": "entity_extraction",
+            "source": {"description": "Public reports", "authorization_or_license": "CC BY 4.0"},
+            "grouping": {"unit": "source document", "policy": "One source per group"},
+            "annotation": {
+                "guidelines_version": "v1",
+                "review_status": "human_reviewed",
+                "all_labels_human_reviewed": True,
+                "total_examples": 200,
+                "reviewed_examples": 200,
+                "total_source_groups": 200,
+                "reviewed_source_groups": 200,
+                "reviewed_at_utc": "2026-10-28T12:00:00Z",
+                "reviewer_role": "domain reviewer",
+            },
+            "limitations": ["Synthetic test fixture; not model evidence"],
+        }
+        (self.dataset_dir / "reviewed.card.json").write_text(json.dumps(card), encoding="utf-8")
+
+        run_id = "a" * 32
+        run_dir = self.runs_dir / run_id
+        adapter_dir = run_dir / "adapter"
+        adapter_dir.mkdir(parents=True)
+        (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+        self.adapter_manifest = {
+            "schema_version": 5,
+            "status": "completed",
+            "run_id": run_id,
+            "base_model": "Qwen/Qwen3-0.6B",
+            "base_revision": "base-revision",
+            "tokenizer_revision": "base-revision",
+            "dataset_id": "reviewed",
+            "dataset_sha256": self.dataset_digest,
+            "metrics_split": "validation",
+            "test_split_used": False,
+            "split_seed": 42,
+            "split_strategy": "group-year-stratified-v1",
+            "training_configuration": _training_configuration_fixture(),
+            "training_configuration_sha256": _training_configuration_sha256(_training_configuration_fixture()),
+            "adapter_sha256": artifact_tree_sha256(adapter_dir),
+            "environment": {
+                "device": "cpu", "python_version": "3.12-test", "source_revision": "a" * 40,
+                "source_dirty": False, "packages": {"torch": "test"},
+            },
+        }
+        (run_dir / "manifest.json").write_text(json.dumps(self.adapter_manifest), encoding="utf-8")
+        self.adapter_run_id = run_id
+        self.patchers = [
+            patch("training.datasets.DATASET_DIR", self.dataset_dir),
+            patch("training.registry.RUNS_DIR", self.runs_dir),
+            patch.object(benchmark, "SELECTIONS_DIR", self.selections_dir),
+            patch.object(benchmark, "BENCHMARKS_DIR", self.benchmarks_dir),
+        ]
+        for patcher in self.patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.addCleanup(self.temp.cleanup)
+
+    def _select_prompt(self, candidate="Custom extractor:\n{{text}}"):
+        jobs = JobRecorder()
+        request = types.SimpleNamespace(
+            dataset_id="reviewed",
+            adapter_run_id=self.adapter_run_id,
+            candidate_prompts=[candidate],
+        )
+        validation_groups = {
+            row["group_id"] for row in benchmark.split_dataset(self.rows)["validation"]
+        }
+        generated_groups = []
+
+        def generate(_model, _tokenizer, prompt, rows):
+            generated_groups.append({row["group_id"] for row in rows})
+            if prompt.startswith("Custom extractor"):
+                return [json.dumps(row["output"]) for row in rows]
+            return ["not json"] * len(rows)
+
+        with patch.object(benchmark, "_load_local_model", return_value=(object(), object(), "cpu", types.SimpleNamespace(__version__="test"), {})), \
+             patch.object(benchmark, "_generate", side_effect=generate), \
+             patch.object(benchmark, "runtime_metadata", return_value={
+                 "device": "cpu", "source_revision": "b" * 40, "source_dirty": True,
+             }):
+            benchmark.run_prompt_selection("selection-job", request, jobs)
+        self.assertEqual(generated_groups, [validation_groups, validation_groups])
+        result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "selection-job" and "result" in changes)
+        return result["selection_id"], jobs
+
+    def test_prompt_selection_uses_validation_gold_and_persists_hashes(self):
+        with patch.object(benchmark, "assert_rows_unseen", wraps=benchmark.assert_rows_unseen) as unseen_check:
+            selection_id, jobs = self._select_prompt()
+        unseen_check.assert_called_once()
+        self.assertEqual(
+            unseen_check.call_args.args[0],
+            benchmark.split_dataset(self.rows)["train"] + benchmark.split_dataset(self.rows)["validation"],
+        )
+        selection = benchmark.load_prompt_selection(selection_id)
+
+        self.assertEqual(selection["metrics_split"], "validation")
+        self.assertFalse(selection["test_split_used"])
+        self.assertEqual(selection["split_strategy"], "group-year-stratified-v1")
+        self.assertEqual(selection["selected_prompt_id"], "candidate-1")
+        self.assertEqual(selection["environment"]["device"], "cpu")
+        self.assertEqual(selection["environment"]["source_revision"], "b" * 40)
+        self.assertTrue(selection["environment"]["source_dirty"])
+        result = next(changes["result"] for _job_id, changes in jobs.updates if "result" in changes)
+        self.assertEqual(result["environment"]["device"], "cpu")
+        self.assertEqual(len(selection["selection_sha256"]), 64)
+        self.assertNotIn("Private source text", json.dumps(selection))
+
+    def test_prompt_selection_rejects_a_prior_test_group_moved_into_training(self):
+        original_test = benchmark.split_dataset(self.rows)["test"]
+        old_test_groups = {row["group_id"] for row in original_test}
+        identity = benchmark._test_holdout_identity(original_test)
+        benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "b" * 64, "c" * 32, identity)
+
+        changed_rows = [row | {"output": dict(row["output"])} for row in self.rows]
+        for index, group_id in enumerate(sorted(old_test_groups)):
+            next(row for row in changed_rows if row["group_id"] == group_id)["output"]["year"] = 1000 + index
+        changed_bytes = "".join(json.dumps(row) + "\n" for row in changed_rows).encode("utf-8")
+        changed_digest = hashlib.sha256(changed_bytes).hexdigest()
+        (self.dataset_dir / "reviewed.jsonl").write_bytes(changed_bytes)
+        card_path = self.dataset_dir / "reviewed.card.json"
+        card = json.loads(card_path.read_text(encoding="utf-8"))
+        card["dataset_sha256"] = changed_digest
+        card_path.write_text(json.dumps(card), encoding="utf-8")
+        self.adapter_manifest["dataset_sha256"] = changed_digest
+        (self.runs_dir / self.adapter_run_id / "manifest.json").write_text(
+            json.dumps(self.adapter_manifest), encoding="utf-8"
+        )
+
+        request = types.SimpleNamespace(
+            dataset_id="reviewed",
+            adapter_run_id=self.adapter_run_id,
+            candidate_prompts=["Custom extractor:\n{{text}}"],
+        )
+        jobs = JobRecorder()
+        with patch.object(benchmark, "_load_local_model", side_effect=AssertionError("selection model must not load")) as load_model:
+            with self.assertLogs(benchmark.logger, level="ERROR"):
+                with self.assertRaisesRegex(ValueError, "previously used in a final-test holdout"):
+                    benchmark.run_prompt_selection("selection-reuse-job", request, jobs)
+
+        load_model.assert_not_called()
+
+    def test_paired_exact_match_interval_weights_examples_within_resampled_groups(self):
+        gold = {"organization": "Northstar", "year": 2024, "claim": "opened a lab"}
+        rows = [
+            {"group_id": group_id, "output": gold}
+            for group_id in ("group-a", "group-a", "group-a", "group-b")
+        ]
+        reference = ["not json", "not json", "not json", json.dumps(gold)]
+        comparison = [json.dumps(gold), json.dumps(gold), json.dumps(gold), "not json"]
+
+        interval = benchmark._record_accuracy_difference_ci(
+            rows, reference, comparison, "reference", "comparison"
+        )
+
+        self.assertEqual(interval["method"], "paired source-group bootstrap percentile interval")
+        self.assertEqual(interval["direction"], "comparison minus reference")
+        self.assertEqual(interval["estimate"], 0.5)
+        self.assertEqual((interval["lower"], interval["upper"]), (-1.0, 1.0))
+        self.assertEqual(interval["source_groups"], 2)
+        with self.assertRaisesRegex(ValueError, "match a non-empty frozen test split"):
+            benchmark._record_accuracy_difference_ci(rows, reference[:-1], comparison, "reference", "comparison")
+
+    def test_paired_interval_is_zero_when_arms_match_on_every_source_group(self):
+        gold = {"organization": "Northstar", "year": 2024, "claim": "opened a lab"}
+        rows = [
+            {"group_id": group_id, "output": gold}
+            for group_id in ("group-a", "group-a", "group-b", "group-b")
+        ]
+        predictions = [json.dumps(gold), json.dumps(gold), "not json", "not json"]
+
+        interval = benchmark._record_accuracy_difference_ci(
+            rows, predictions, predictions, "reference", "comparison"
+        )
+
+        self.assertEqual(interval["estimate"], 0.0)
+        self.assertEqual((interval["lower"], interval["upper"]), (0.0, 0.0))
+
+    def test_gold_year_slices_report_group_counts_and_grouped_intervals(self):
+        gold = {"organization": "Northstar", "year": 2024, "claim": "opened a lab"}
+        rows = [
+            {"group_id": "group-a", "output": gold},
+            {"group_id": "group-a", "output": gold},
+            {"group_id": "group-b", "output": gold},
+            {"group_id": "group-c", "output": {**gold, "year": 2023}},
+            {"group_id": "group-d", "output": {**gold, "year": None}},
+        ]
+        predictions = [
+            json.dumps(gold), json.dumps(gold), "not json",
+            json.dumps({**gold, "year": 2023}), json.dumps({**gold, "year": None}),
+        ]
+
+        slices = benchmark._metrics_by_gold_year(rows, predictions)
+
+        self.assertEqual(list(slices), ["2023", "2024", "undated"])
+        self.assertEqual(slices["2024"]["examples"], 3)
+        self.assertEqual(slices["2024"]["source_groups"], 2)
+        self.assertEqual(slices["2024"]["record_exact_match"], 0.6667)
+        self.assertEqual(slices["2024"]["field_exact_match"]["year"], 0.6667)
+        self.assertEqual(slices["2024"]["record_exact_match_95ci"]["source_groups"], 2)
+        self.assertEqual(slices["2023"]["source_groups"], 1)
+        self.assertIsNone(slices["2023"]["record_exact_match_95ci"])
+        self.assertEqual(slices["undated"]["record_exact_match"], 1.0)
+
+    def test_generation_timing_synchronizes_accelerators_and_reads_memory_after_inference(self):
+        events = []
+        memory_bytes = iter([100, 200])
+        fake_torch = types.SimpleNamespace(
+            mps=types.SimpleNamespace(
+                synchronize=lambda: events.append("mps"),
+                driver_allocated_memory=lambda: next(memory_bytes),
+            ),
+            cuda=types.SimpleNamespace(synchronize=lambda: events.append("cuda")),
+        )
+
+        def generate(*_args, **kwargs):
+            self.assertTrue(kwargs["return_token_counts"])
+            events.append("generate")
+            return ["prediction"], [7]
+
+        with patch.object(benchmark, "_generate", side_effect=generate), \
+             patch.object(benchmark.time, "perf_counter", side_effect=[10.0, 12.0, 20.0, 20.0, 23.0, 24.0]):
+            result = benchmark._measure_generation(
+                "model", "tokenizer", "prompt", [{"input": "example"}], fake_torch, "mps"
+            )
+
+        self.assertEqual(result, (
+            ["prediction"], [7], 4.0,
+            {
+                "cold_first_request_seconds": 2.0,
+                "warm_request_latencies_seconds": [3.0],
+                "device_memory": {
+                    "device_memory_status": "mps_driver_snapshot",
+                    "mps_driver_memory_before_bytes": 100,
+                    "mps_driver_memory_after_bytes": 200,
+                    "device_memory_note": "MPS Metal-driver allocation snapshots include cached allocations; they are not peak measurements.",
+                },
+            },
+        ))
+        self.assertEqual(events, ["mps", "mps", "generate", "mps", "mps", "mps", "generate", "mps", "mps", "mps"])
+        self.assertEqual(benchmark._latency_percentile([0.2, 0.5, 1.0, 2.0], 0.50), 0.75)
+        self.assertEqual(benchmark._latency_percentile([0.2, 0.5, 1.0, 2.0], 0.90), 2.0)
+        benchmark._synchronize_device(fake_torch, "cuda")
+        benchmark._synchronize_device(fake_torch, "cpu")
+        self.assertEqual(events[-1], "cuda")
+
+    def test_cuda_peak_memory_resets_after_model_load_and_reports_allocator_stats(self):
+        events = []
+        fake_torch = types.SimpleNamespace(cuda=types.SimpleNamespace(
+            synchronize=lambda: events.append("synchronize"),
+            reset_peak_memory_stats=lambda: events.append("reset"),
+            max_memory_allocated=lambda: 1234,
+            max_memory_reserved=lambda: 2345,
+        ))
+
+        measurement = benchmark._start_device_memory_measurement(fake_torch, "cuda")
+        result = benchmark._finish_device_memory_measurement(fake_torch, "cuda", measurement)
+
+        self.assertEqual(measurement, {"status": "cuda_allocator_peak"})
+        self.assertEqual(events, ["synchronize", "reset", "synchronize"])
+        self.assertEqual(result["peak_device_memory_allocated_bytes"], 1234)
+        self.assertEqual(result["peak_device_memory_reserved_bytes"], 2345)
+        self.assertEqual(result["device_memory_status"], "cuda_allocator_peak")
+
+    def test_frozen_report_compares_matched_arms_and_cannot_be_reused_for_a_sweep(self):
+        selection_id, _ = self._select_prompt()
+        jobs = JobRecorder()
+
+        def generate(_model, _tokenizer, prompt, rows, return_token_counts=False):
+            if prompt.startswith("Custom extractor"):
+                predictions = [json.dumps(row["output"]) for row in rows]
+            else:
+                predictions = ["not json"] * len(rows)
+            return (predictions, [2] * len(rows)) if return_token_counts else predictions
+
+        request = types.SimpleNamespace(selection_id=selection_id, adapter_run_id=self.adapter_run_id)
+        fake_torch = types.SimpleNamespace(__version__="test")
+        inference_environment = {
+            "device": "cpu", "source_revision": "c" * 40, "source_dirty": False,
+            "packages": {"torch": "test"},
+        }
+        with patch("torch.backends.mps.is_available", return_value=False), \
+             patch("torch.cuda.is_available", return_value=False), \
+             patch.object(benchmark, "_load_local_model", return_value=(object(), FakeTokenizer(), "cpu", fake_torch, {})) as load_model, \
+             patch.object(benchmark, "_generate", side_effect=generate), \
+             patch.object(benchmark, "runtime_metadata", return_value=inference_environment):
+            benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
+            first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
+            report = first_result["report"]
+            self.assertEqual(report["schema_version"], 11)
+            self.assertEqual(report["adapter_training_configuration"], self.adapter_manifest["training_configuration"])
+            self.assertEqual(report["metrics_split"], "test")
+            self.assertEqual(report["split_strategy"], "group-year-stratified-v1")
+            self.assertFalse(report["test_split_used_for_selection"])
+            self.assertEqual(report["metrics"]["base_initial_prompt"]["record_exact_match"], 0.0)
+            self.assertEqual(report["metrics"]["base_validation_selected_prompt"]["record_exact_match"], 1.0)
+            self.assertEqual(report["metrics"]["lora_validation_selected_prompt"]["record_exact_match"], 1.0)
+            self.assertEqual(report["metrics"]["base_initial_prompt"]["failure_analysis"]["failed_examples"], 30)
+            self.assertEqual(report["metrics"]["base_initial_prompt"]["failure_analysis"]["invalid_json_examples"], 30)
+            self.assertEqual(report["metrics"]["base_validation_selected_prompt"]["failure_analysis"]["failed_examples"], 0)
+            self.assertFalse(report["metrics"]["base_initial_prompt"]["failure_analysis"]["raw_examples_saved"])
+            self.assertEqual(report["performance"]["lora_full_precision"]["generated_tokens"], 60)
+            self.assertEqual(report["performance"]["lora_full_precision"]["warm_request_count"], 30)
+            self.assertIsNotNone(report["performance"]["lora_full_precision"]["cold_first_request_seconds"])
+            self.assertEqual(report["performance"]["lora_full_precision"]["device_memory_status"], "unavailable")
+            self.assertIn("Synchronized wall-clock generation", report["performance"]["timing_method"])
+            year_slice = report["metrics"]["lora_validation_selected_prompt"]["by_gold_year"]["2024"]
+            self.assertEqual(year_slice["examples"], 30)
+            self.assertEqual(year_slice["source_groups"], 30)
+            self.assertEqual(year_slice["record_exact_match"], 1.0)
+            self.assertEqual(year_slice["record_exact_match_95ci"]["method"], "source-group bootstrap percentile interval")
+            prompt_delta = report["metrics"]["base_validation_selected_prompt"]["paired_record_exact_match_delta_95ci"]
+            lora_delta = report["metrics"]["lora_validation_selected_prompt"]["paired_record_exact_match_delta_95ci"]
+            self.assertEqual(prompt_delta["estimate"], 1.0)
+            self.assertEqual(prompt_delta["reference"], "Base · extraction/v1")
+            self.assertEqual(lora_delta["estimate"], 0.0)
+            self.assertEqual(lora_delta["reference"], "Base · validation-selected prompt")
+            self.assertEqual(report["test_examples"], 30)
+            self.assertEqual(report["test_source_groups"], 30)
+            self.assertEqual(report["test_holdout_identity"]["version"], 1)
+            self.assertEqual(report["test_holdout_identity"]["method"], "SHA-256 of normalized source-group IDs and input text")
+            self.assertEqual(
+                report["test_holdout_identity"]["sha256"],
+                benchmark._test_holdout_identity(benchmark.split_dataset(self.rows)["test"])["sha256"],
+            )
+            self.assertEqual(report["test_holdout_identity"]["unique_inputs"], 30)
+            self.assertEqual(report["adapter_environment"]["python_version"], "3.12-test")
+            self.assertEqual(report["adapter_environment"]["source_revision"], "a" * 40)
+            self.assertFalse(report["adapter_environment"]["source_dirty"])
+            self.assertEqual(report["prompt_selection_environment"]["device"], "cpu")
+            self.assertEqual(report["prompt_selection_environment"]["source_revision"], "b" * 40)
+            self.assertTrue(report["prompt_selection_environment"]["source_dirty"])
+            self.assertEqual(report["environment"]["device"], "cpu")
+            self.assertEqual(report["environment"]["source_revision"], "c" * 40)
+            self.assertFalse(report["environment"]["source_dirty"])
+            self.assertEqual(report["environment"], inference_environment)
+            self.assertEqual(report["metrics"]["lora_validation_selected_prompt"]["record_exact_match_95ci"]["method"], "source-group bootstrap percentile interval")
+            report_path = self.benchmarks_dir / "reviewed" / self.dataset_digest / "final.json"
+            reservation_path = self.benchmarks_dir / "reviewed" / self.dataset_digest / "reservation.json"
+            self.assertTrue(reservation_path.is_file())
+            self.assertNotIn("Private source text", report_path.read_text(encoding="utf-8"))
+
+            load_model.reset_mock()
+            benchmark.run_frozen_benchmark("benchmark-job-repeat", request, jobs)
+            self.assertEqual(load_model.call_count, 0, "same frozen config should return its existing report without rerunning test inference")
+
+        changed_environment = inference_environment | {"packages": {"torch": "changed"}}
+        with patch.object(benchmark, "runtime_metadata", return_value=changed_environment), \
+             patch.object(benchmark, "_load_local_model", side_effect=AssertionError("runtime mismatch must be rejected before model loading")), \
+             patch.object(benchmark, "_generate", side_effect=AssertionError("runtime mismatch must be rejected before test inference")):
+            with self.assertLogs(benchmark.logger, level="ERROR"):
+                with self.assertRaisesRegex(ValueError, "final report already exists"):
+                    benchmark.run_frozen_benchmark("benchmark-job-runtime-change", request, jobs)
+
+        with patch.object(benchmark.platform, "processor", return_value="different processor"), \
+             patch.object(benchmark, "runtime_metadata", return_value=inference_environment), \
+             patch.object(benchmark, "_load_local_model", side_effect=AssertionError("hardware mismatch must be rejected before model loading")), \
+             patch.object(benchmark, "_generate", side_effect=AssertionError("hardware mismatch must be rejected before test inference")):
+            with self.assertLogs(benchmark.logger, level="ERROR"):
+                with self.assertRaisesRegex(ValueError, "final report already exists"):
+                    benchmark.run_frozen_benchmark("benchmark-job-hardware-change", request, jobs)
+
+        other_selection_id, _ = self._select_prompt("Different candidate:\n{{text}}")
+        other_request = types.SimpleNamespace(selection_id=other_selection_id, adapter_run_id=self.adapter_run_id)
+        with patch.object(benchmark, "_load_local_model", side_effect=AssertionError("test model must not be loaded")):
+            with self.assertLogs(benchmark.logger, level="ERROR"):
+                with self.assertRaisesRegex(ValueError, "final report already exists"):
+                    benchmark.run_frozen_benchmark("benchmark-job-sweep", other_request, jobs)
+
+    def test_quantized_inference_uses_matched_test_rows_and_train_only_calibration(self):
+        selection_id, _ = self._select_prompt()
+        jobs = JobRecorder()
+        fake_torch = types.SimpleNamespace(__version__="test")
+        generated_inputs = []
+        loader_calls = []
+        calibration_calls = []
+        train_groups = {row["group_id"] for row in benchmark.split_dataset(self.rows)["train"]}
+
+        class FakeModel:
+            def get_memory_footprint(self):
+                return 123456
+
+        def load_model(_manifest, _adapter_path=None, quantization_method=None, **kwargs):
+            loader_calls.append(quantization_method)
+            calibration_rows = kwargs.get("calibration_rows")
+            if quantization_method == "quanto_int8_w8a8":
+                calibration_calls.append(calibration_rows)
+                self.assertTrue(calibration_rows)
+                self.assertTrue(all(row["group_id"] in train_groups for row in calibration_rows))
+                self.assertTrue(all(set(row) == {"group_id", "input"} for row in calibration_rows))
+                return FakeModel(), FakeTokenizer(), "cpu", fake_torch, {
+                    "calibration_seconds": 0.25,
+                    "quantization_seconds": 0.5,
+                }
+            return FakeModel(), FakeTokenizer(), "cpu", fake_torch, {}
+
+        def generate(_model, _tokenizer, prompt, rows, max_new_tokens=128, return_token_counts=False):
+            generated_inputs.append((max_new_tokens, [row.get("group_id") for row in rows]))
+            if "group_id" not in rows[0]:
+                predictions = ["synthetic canary"]
+            elif prompt.startswith("Custom extractor"):
+                predictions = [json.dumps(row["output"]) for row in rows]
+            else:
+                predictions = ["not json"] * len(rows)
+            return (predictions, [2] * len(rows)) if return_token_counts else predictions
+
+        request = types.SimpleNamespace(
+            selection_id=selection_id,
+            adapter_run_id=self.adapter_run_id,
+            quantization_methods=["bnb_nf4", "quanto_int8_w8a8"],
+        )
+        runtime = {
+            "available": True,
+            "version": "0.50.0-test",
+            "backends": {"bitsandbytes": "0.50.0-test", "optimum-quanto": "0.2.7-test"},
+            "device": "cpu",
+            "methods": [{"id": "bnb_int8"}, {"id": "bnb_nf4"}, {"id": "quanto_int8_w8a8"}],
+            "calibration_note": "Quanto uses training-only inputs.",
+        }
+        with patch.object(benchmark, "quantization_runtime", return_value=runtime), \
+             patch.object(benchmark, "_load_local_model", side_effect=load_model), \
+             patch.object(benchmark, "_generate", side_effect=generate):
+            benchmark.run_frozen_benchmark("quantized-job", request, jobs)
+
+        report = next(changes["result"]["report"] for job_id, changes in jobs.updates if job_id == "quantized-job" and "result" in changes)
+        variant = report["quantized_inference"]["variants"][0]
+        self.assertEqual(report["environment"]["device"], "cpu")
+        self.assertIn("torch", report["environment"]["packages"])
+        self.assertEqual(loader_calls, ["bnb_nf4", "quanto_int8_w8a8", None, None, "bnb_nf4", "quanto_int8_w8a8"])
+        self.assertEqual(generated_inputs[0], (8, [None]))
+        quantized_arm_size = len(benchmark.split_dataset(self.rows)["test"]) + 1
+        first_quantized_arm = generated_inputs[-(2 * quantized_arm_size):-quantized_arm_size]
+        second_quantized_arm = generated_inputs[-quantized_arm_size:]
+        frozen_test_groups = [row["group_id"] for row in benchmark.split_dataset(self.rows)["test"]]
+        self.assertEqual([entry[1][0] for entry in first_quantized_arm][1:], frozen_test_groups)
+        self.assertEqual([entry[1][0] for entry in first_quantized_arm], [entry[1][0] for entry in second_quantized_arm])
+        self.assertEqual(report["metrics_split"], "test")
+        self.assertTrue(report["quantized_inference"]["calibration_required"])
+        self.assertFalse(variant["calibration_required"])
+        quanto_variant = report["quantized_inference"]["variants"][1]
+        self.assertTrue(quanto_variant["calibration_required"])
+        self.assertEqual(quanto_variant["calibration_seconds"], 0.25)
+        self.assertEqual(quanto_variant["quantization_seconds"], 0.5)
+        self.assertEqual(report["quantized_inference"]["calibration"]["split"], "train")
+        self.assertEqual(report["quantized_inference"]["calibration"]["examples"], 16)
+        self.assertEqual(report["quantized_inference"]["calibration"]["source_groups"], 16)
+        calibration_fingerprint = report["quantized_inference"]["calibration"]["input_sha256"]
+        quantization_runtime = benchmark._quantization_runtime_configuration(
+            ["bnb_nf4", "quanto_int8_w8a8"], runtime
+        )
+        int8_configuration = benchmark._quantization_runtime_configuration(["bnb_int8"], runtime)
+        self.assertEqual(int8_configuration["methods"][0]["compute_dtype"], "not applicable")
+        self.assertEqual(int8_configuration["methods"][0]["llm_int8_threshold"], 6.0)
+        self.assertEqual(quantization_runtime["backends"], runtime["backends"])
+        self.assertEqual(quantization_runtime["methods"][0]["compute_dtype"], "float32")
+        self.assertTrue(quantization_runtime["methods"][0]["double_quantization"])
+        self.assertEqual(quantization_runtime["methods"][1]["weights"], "qint8")
+        self.assertEqual(quantization_runtime["methods"][1]["activations"], "qint8")
+        expected_configuration = {
+            "report_schema_version": benchmark.FROZEN_REPORT_SCHEMA_VERSION,
+            "selection_sha256": report["selection_sha256"],
+            "adapter_run_id": self.adapter_run_id,
+            "adapter_sha256": report["adapter_sha256"],
+            "adapter_training_configuration_sha256": benchmark._json_digest(self.adapter_manifest["training_configuration"]),
+            "selected_prompt_sha256": report["selected_prompt_sha256"],
+            "dataset_sha256": report["dataset_sha256"],
+            "benchmark_card_sha256": report["benchmark_card_sha256"],
+            "test_holdout_identity_sha256": report["test_holdout_identity"]["sha256"],
+            "performance_protocol": benchmark.BENCHMARK_TIMING_PROTOCOL,
+            "inference_environment": report["environment"],
+            "inference_hardware": {
+                "device": report["hardware"]["device"],
+                "machine": report["hardware"]["machine"],
+                "processor": report["hardware"]["processor"],
+            },
+            "quantization_methods": ["bnb_nf4", "quanto_int8_w8a8"],
+            "quantization_runtime": quantization_runtime,
+            "calibration": {
+                "method": "quanto-w8a8-v1",
+                "split": "train",
+                "group_limit": benchmark.CALIBRATION_GROUP_LIMIT,
+                "seed": benchmark.CALIBRATION_SEED,
+                "momentum": benchmark.CALIBRATION_MOMENTUM,
+                "input_sha256": calibration_fingerprint,
+            },
+        }
+        self.assertEqual(report["configuration_sha256"], benchmark._json_digest(expected_configuration))
+        self.assertEqual(len(calibration_calls), 2)
+        self.assertEqual(calibration_calls[0], calibration_calls[1])
+        self.assertEqual(variant["model_footprint_bytes"], 123456)
+        self.assertEqual(variant["generated_tokens"], 60)
+        self.assertEqual(variant["warm_request_count"], 30)
+        self.assertIsNotNone(variant["cold_first_request_seconds"])
+        self.assertEqual(variant["metrics"]["record_exact_match"], 1.0)
+        self.assertEqual(variant["metrics"]["by_gold_year"]["2024"]["source_groups"], 30)
+        self.assertEqual(variant["metrics"]["failure_analysis"]["failed_examples"], 0)
+        self.assertFalse(variant["metrics"]["failure_analysis"]["raw_examples_saved"])
+        quantized_delta = variant["metrics"]["paired_record_exact_match_delta_95ci"]
+        self.assertEqual(quantized_delta["estimate"], 0.0)
+        self.assertEqual(quantized_delta["reference"], "Full-precision LoRA control")
+        self.assertIn("not QLoRA", report["quantized_inference"]["adapter_training_method"])
+
+        changed_runtime = runtime | {
+            "backends": runtime["backends"] | {"bitsandbytes": "0.51.0-test"},
+        }
+        with patch.object(benchmark, "quantization_runtime", return_value=changed_runtime), \
+             patch.object(benchmark, "_load_local_model", side_effect=AssertionError("runtime mismatch must be rejected before model loading")), \
+             patch.object(benchmark, "_generate", side_effect=AssertionError("runtime mismatch must be rejected before test inference")):
+            with self.assertLogs(benchmark.logger, level="ERROR"):
+                with self.assertRaisesRegex(ValueError, "final report already exists"):
+                    benchmark.run_frozen_benchmark("quantized-runtime-change", request, jobs)
+
+    def test_quanto_loader_merges_the_pinned_local_adapter_before_calibration(self):
+        events = []
+        tokenizer = object()
+        calibration_rows = [{"group_id": "train-1", "input": "Training source"}]
+        manifest = {
+            "base_model": "Qwen/Qwen3-0.6B",
+            "base_revision": "base-revision",
+            "tokenizer_revision": "tokenizer-revision",
+        }
+
+        class FakeTokenizerLoader:
+            @staticmethod
+            def from_pretrained(*args, **kwargs):
+                events.append(("tokenizer", args, kwargs))
+                return tokenizer
+
+        class FakeModel:
+            def merge_and_unload(self, **kwargs):
+                events.append(("merge", kwargs))
+                return self
+
+            def to(self, device):
+                events.append(("device", device))
+                return self
+
+            def eval(self):
+                events.append("eval")
+                return self
+
+        class FakePeftLoader:
+            @staticmethod
+            def from_pretrained(*args, **kwargs):
+                events.append(("adapter", args, kwargs))
+                return FakeModel()
+
+        fake_torch = types.ModuleType("torch")
+        fake_torch.float16 = "float16"
+        fake_torch.float32 = "float32"
+        fake_torch.backends = types.SimpleNamespace(
+            mps=types.SimpleNamespace(is_available=lambda: False),
+        )
+        fake_torch.cuda = types.SimpleNamespace(is_available=lambda: False)
+        fake_transformers = types.ModuleType("transformers")
+        fake_transformers.AutoModelForCausalLM = object
+        fake_transformers.AutoTokenizer = FakeTokenizerLoader
+        fake_peft = types.ModuleType("peft")
+        fake_peft.AutoPeftModelForCausalLM = FakePeftLoader
+        metadata = {"calibration_seconds": 0.2, "quantization_seconds": 0.4}
+
+        with patch.dict(sys.modules, {
+            "torch": fake_torch,
+            "transformers": fake_transformers,
+            "peft": fake_peft,
+        }), patch.object(benchmark, "apply_quanto_int8_calibration", return_value=metadata) as calibrate:
+            model, loaded_tokenizer, device, torch, result_metadata = benchmark._load_local_model(
+                manifest,
+                Path("/private/local-adapter"),
+                quantization_method="quanto_int8_w8a8",
+                calibration_rows=calibration_rows,
+                calibration_prompt="Extract {{text}}",
+            )
+
+        self.assertEqual(loaded_tokenizer, tokenizer)
+        self.assertEqual(device, "cpu")
+        self.assertIs(torch, fake_torch)
+        self.assertIs(result_metadata, metadata)
+        self.assertIn(("merge", {"safe_merge": True}), events)
+        self.assertIn(("device", "cpu"), events)
+        tokenizer_call = next(event for event in events if isinstance(event, tuple) and event[0] == "tokenizer")
+        self.assertEqual(tokenizer_call[2]["revision"], "tokenizer-revision")
+        self.assertTrue(tokenizer_call[2]["local_files_only"])
+        adapter_call = next(event for event in events if isinstance(event, tuple) and event[0] == "adapter")
+        self.assertEqual(adapter_call[1], (Path("/private/local-adapter"),))
+        self.assertEqual(adapter_call[2]["revision"], "base-revision")
+        self.assertTrue(adapter_call[2]["local_files_only"])
+        calibrate.assert_called_once_with(
+            model, tokenizer, "Extract {{text}}", calibration_rows, fake_torch, "cpu"
+        )
+
+    def test_failed_test_inference_reserves_holdout_and_blocks_retry(self):
+        selection_id, _ = self._select_prompt()
+        request = types.SimpleNamespace(selection_id=selection_id, adapter_run_id=self.adapter_run_id)
+        jobs = JobRecorder()
+        fake_torch = types.SimpleNamespace(__version__="test")
+
+        with patch.object(benchmark, "_load_local_model", return_value=(object(), object(), "cpu", fake_torch, {})), patch.object(benchmark, "_generate", side_effect=RuntimeError("inference failed")):
+            with self.assertLogs(benchmark.logger, level="ERROR"):
+                with self.assertRaisesRegex(RuntimeError, "inference failed"):
+                    benchmark.run_frozen_benchmark("benchmark-job-fail", request, jobs)
+
+        reservation_path = self.benchmarks_dir / "reviewed" / self.dataset_digest / "reservation.json"
+        self.assertTrue(reservation_path.is_file())
+        with patch.object(benchmark, "_load_local_model", side_effect=AssertionError("reservation must be checked before loading")):
+            with self.assertLogs(benchmark.logger, level="ERROR"):
+                with self.assertRaisesRegex(ValueError, "already reserved"):
+                    benchmark.run_frozen_benchmark("benchmark-job-retry", request, jobs)
+
+    def test_only_one_process_can_reserve_the_frozen_holdout(self):
+        path = benchmark._reservation_path("reviewed", self.dataset_digest)
+        identity = benchmark._test_holdout_identity(benchmark.split_dataset(self.rows)["test"])
+        benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "b" * 64, "c" * 32, identity)
+
+        self.assertTrue(path.is_file())
+        with self.assertRaisesRegex(ValueError, "already reserved"):
+            benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "d" * 64, "e" * 32, identity)
+
+    def test_test_groups_cannot_be_reused_under_another_dataset_id(self):
+        test_rows = benchmark.split_dataset(self.rows)["test"]
+        identity = benchmark._test_holdout_identity(test_rows)
+        benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "b" * 64, "c" * 32, identity)
+
+        with self.assertRaisesRegex(ValueError, "already reserved"):
+            benchmark._reject_reserved_benchmark("reviewed_copy", "d" * 64, identity)
+
+        renamed_rows = [row | {"group_id": f"copy-{row['group_id']}"} for row in test_rows]
+        renamed_identity = benchmark._test_holdout_identity(renamed_rows)
+        with self.assertRaisesRegex(ValueError, "already reserved"):
+            benchmark._reject_reserved_benchmark("reviewed_copy", "e" * 64, renamed_identity)
+
+    def test_changing_training_rows_does_not_reopen_the_same_final_test(self):
+        original_splits = benchmark.split_dataset(self.rows)
+        train_groups = {row["group_id"] for row in original_splits["train"]}
+        changed_rows = [row | {"output": dict(row["output"])} for row in self.rows]
+        changed_train_row = next(row for row in changed_rows if row["group_id"] in train_groups)
+        changed_train_row["input"] += " Revised training-only wording."
+        changed_content = "".join(json.dumps(row) + "\n" for row in changed_rows).encode("utf-8")
+        changed_digest = hashlib.sha256(changed_content).hexdigest()
+        changed_splits = benchmark.split_dataset(changed_rows)
+        self.assertNotEqual(changed_digest, self.dataset_digest)
+
+        original_identity = benchmark._test_holdout_identity(original_splits["test"])
+        changed_identity = benchmark._test_holdout_identity(changed_splits["test"])
+        self.assertEqual(original_identity["sha256"], changed_identity["sha256"])
+        benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "b" * 64, "c" * 32, original_identity)
+
+        with self.assertRaisesRegex(ValueError, "already reserved"):
+            benchmark._reject_reserved_benchmark("reviewed", changed_digest, changed_identity)
+
+    def test_legacy_reservation_is_indexed_before_another_dataset_can_use_its_holdout(self):
+        legacy_path = benchmark._reservation_path("reviewed", self.dataset_digest)
+        legacy_path.parent.mkdir(parents=True)
+        legacy_path.write_text(json.dumps({
+            "schema_version": 1,
+            "dataset_id": "reviewed",
+            "dataset_sha256": self.dataset_digest,
+        }), encoding="utf-8")
+        identity = benchmark._test_holdout_identity(benchmark.split_dataset(self.rows)["test"])
+
+        with self.assertRaisesRegex(ValueError, "already reserved"):
+            benchmark._reject_reserved_benchmark("reviewed_copy", "d" * 64, identity)
+
+        registry = self.benchmarks_dir / ".holdout-registry.sqlite3"
+        self.assertTrue(registry.is_file())
+        self.assertEqual(registry.stat().st_mode & 0o777, 0o600)
+
+    def test_unmappable_legacy_reservation_fails_closed(self):
+        legacy_path = benchmark._reservation_path("reviewed", self.dataset_digest)
+        legacy_path.parent.mkdir(parents=True)
+        legacy_path.write_text(json.dumps({
+            "schema_version": 1,
+            "dataset_id": "reviewed",
+            "dataset_sha256": self.dataset_digest,
+        }), encoding="utf-8")
+        changed_rows = [row | {"input": row["input"] + " revised"} for row in self.rows]
+        changed_content = "".join(json.dumps(row) + "\n" for row in changed_rows).encode("utf-8")
+        (self.dataset_dir / "reviewed.jsonl").write_bytes(changed_content)
+        identity = benchmark._test_holdout_identity(benchmark.split_dataset(self.rows)["test"])
+
+        with self.assertRaisesRegex(ValueError, "original snapshot"):
+            benchmark._reject_reserved_benchmark("reviewed_copy", "d" * 64, identity)
+
+    def test_previously_tested_groups_cannot_move_into_train_or_validation(self):
+        original_splits = benchmark.split_dataset(self.rows)
+        old_test_groups = {row["group_id"] for row in original_splits["test"]}
+        identity = benchmark._test_holdout_identity(original_splits["test"])
+        benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "b" * 64, "c" * 32, identity)
+
+        changed_rows = [row | {"output": dict(row["output"])} for row in self.rows]
+        for index, group_id in enumerate(sorted(old_test_groups)):
+            next(row for row in changed_rows if row["group_id"] == group_id)["output"]["year"] = 1000 + index
+        changed_splits = benchmark.split_dataset(changed_rows)
+        new_test_groups = {row["group_id"] for row in changed_splits["test"]}
+        new_train_groups = {row["group_id"] for row in changed_splits["train"]}
+        self.assertFalse(old_test_groups & new_test_groups)
+        self.assertTrue(old_test_groups.issubset(new_train_groups))
+
+        with self.assertRaisesRegex(ValueError, "previously used in a final-test holdout"):
+            benchmark.assert_rows_unseen(
+                changed_splits["train"] + changed_splits["validation"],
+                self.benchmarks_dir,
+                "Training/validation data",
+            )
+
+        renamed_rows = [row | {"group_id": f"renamed-{row['group_id']}"} for row in original_splits["test"]]
+        with self.assertRaisesRegex(ValueError, "previously used in a final-test holdout"):
+            benchmark.assert_rows_unseen(renamed_rows, self.benchmarks_dir, "Training/validation data")
+
+        independent_rows = [
+            {"group_id": f"independent-{index}", "input": f"Independent new source {index}."}
+            for index in range(12)
+        ]
+        benchmark.assert_rows_unseen(independent_rows, self.benchmarks_dir, "Training/validation data")
+
+
+if __name__ == "__main__":
+    unittest.main()

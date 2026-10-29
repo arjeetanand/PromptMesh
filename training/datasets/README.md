@@ -10,22 +10,124 @@ Add private datasets as additional `.jsonl` files in this directory. They are ig
 
 ## Prepare a reviewed benchmark
 
-Use `entity_extraction_template.jsonl.example` as a row-format guide. Copy it to
-`<dataset_id>.jsonl`, remove the comment, and replace every placeholder with an
-authorized source example and its human-checked labels. Keep related passages
-and paraphrases under the same `group_id`.
+Use [ANNOTATION_GUIDE_v1.md](ANNOTATION_GUIDE_v1.md) as the versioned labeling
+protocol and `entity_extraction_template.jsonl.example` as a row-format guide.
+Copy the row example to `<dataset_id>.jsonl`, remove the comment, and replace
+every placeholder with an authorized source example and labels checked against
+that source by a human. Keep related passages and paraphrases under the same
+`group_id`. The guide's examples are synthetic and must not be copied into a
+benchmark.
 
 Copy `benchmark_card.template.json` to `<dataset_id>.card.json` and fill in the
-source permission, grouping policy, annotation guideline version, review counts,
-review date, reviewer role, and known limitations. Do not add personal names,
-private source URLs, or sensitive text to the card. Both the dataset and filled
-card remain ignored by Git; only these two templates are tracked.
+dataset ID and SHA-256 shown in dataset readiness, source permission, grouping
+policy, annotation guideline version, review counts, review date, reviewer role,
+and known limitations. A changed JSONL file has a new fingerprint, so update the
+card only after reviewing the changed examples again. Do not add personal names,
+private source URLs, or sensitive text to the card. The dataset and filled card
+remain ignored by Git; the row/card templates and annotation guide are tracked.
 
 Leave `review_status` as `unreviewed` until every benchmark label has been
-checked by a human against its source. These files prepare the benchmark
-provenance, but the current training flow does not enforce the card yet and no
-human-reviewed benchmark has been verified. Do not report a quality result from
-the synthetic demo.
+checked by a human against its source. Set `guidelines_version` to
+`entity-extraction-v1` when following the included guide. These files prepare
+the benchmark provenance. Prompt selection and final benchmark evaluation
+require a matching card marked `human_reviewed`; the gate validates the card
+and dataset fingerprint, but review is still a local self-attestation. PromptMesh
+cannot independently verify that a reviewer checked the labels. Ordinary
+training remains available for experimentation. No human-reviewed benchmark
+has been supplied. Do not report a quality result from the synthetic demo.
+
+The current `extraction/v1` prompt definition (`1.1.0`) and the guide both use
+the named actor/subject for `organization`; recipients and beneficiaries are
+not the target label.
+
+For datasets with at least 30 source groups, PromptMesh stratifies whole groups
+by event-year signature. A signature with at least three groups contributes
+one group to validation and one to test; additional held-out groups are
+allocated toward 15% in each split. Sparse signatures stay in training.
+Datasets with fewer than 30 groups keep the deterministic group-hash split.
+Both strategies use seed 42 and are recorded with training, prompt-selection,
+and final-benchmark results. This improves year coverage but does not balance
+organizations, topics, source types, or writing styles.
+
+Both the validation and frozen test splits must contain at least 30 examples
+across 10 source groups.
+For the current seed-42 split, one workable planning shape is 67 source groups
+with three distinct, label-consistent examples per group; that yields 30
+examples across 10 groups in each held-out split. Check the app's readiness
+report after annotation because counts depend on group membership.
+The local public-source review packet currently has 423 draft rows across 141
+source groups. Its current split policy projects to 297 training rows and 63
+rows across 21 groups in each held-out split. Each group has three controlled
+phrasings of one source claim; these are not independent facts. Proposed years
+remain imbalanced: 65 groups are from 2024, 16 from 2021, 14 from 2020, 15 each
+from 2022, 2023, and 2025, and one is undated. The packet remains review-only
+and is not representative. Review each source, label, split, and reuse condition
+before using any examples.
+
+After curation, the export form offers **All eligible groups** or an explicit
+**Year-balanced, host-diverse pilot · 12 per year**. The pilot requires at least
+12 eligible groups in each reviewed event year 2020–2025. It uses the
+human-reviewed year, not the draft proposal, and excludes undated or mixed-year
+groups from this cohort. Within each year, `year-host-diverse-v1` uses SHA-256
+ordering with seed 42 to select one group per normalized HTTPS source host
+before repeating a host when possible. If there are more than 12 hosts, a
+deterministic host ranking chooses 12; if there are fewer, groups are selected
+round-robin across the available hosts to maximize host coverage. The host is
+the URL hostname lowercased with a leading `www.` removed; subdomains may still
+share one publisher or owner. This selection happens before train/validation/
+test splitting and does not use model outputs or test metrics. The schema-v3
+benchmark card records each eligible group ID, reviewed year, normalized host,
+source URL, selection seed, rule, and selected IDs so the selection can be
+reproduced and inspected. **All eligible groups** remains a separate export
+option.
+
+If every selected group has three variants, the 72-group target projects to
+50/11/11 train/validation/test groups (150/33/33 rows). Excluded variants can
+reduce example counts, so readiness computes the actual split before export.
+This pilot balances year counts and maximizes exact-host diversity within each
+year. Hostnames are not publisher identities, and the pilot does not balance
+topic, organization, or writing style; it is not a representativeness claim.
+The proposal is only a projection over unreviewed labels until you complete the
+source and reuse review.
+
+The current seed-42 split projection from those **unreviewed proposed years**
+is:
+
+| Split | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Undated |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Train groups | 10 | 10 | 11 | 11 | 45 | 11 | 1 |
+| Validation groups | 2 | 3 | 2 | 2 | 10 | 2 | 0 |
+| Test groups | 2 | 3 | 2 | 2 | 10 | 2 | 0 |
+
+This preview is structural only, not the eventual reviewed benchmark composition.
+2024 remains the largest single year slice, contributing 10 of 21 groups to
+each held-out set. The packet also remains imbalanced by organization, topic,
+source host, and writing style. Curate a more balanced cohort before making
+broad quality claims.
+Use **Fine-tune → Review source candidates** to review the local CSV by source
+group. Check each wording against its linked source, edit labels, and record
+reuse permission separately with evidence. The queue saves only to the ignored
+CSV and is loopback-only. After enough groups are fully resolved and have
+confirmed reuse evidence, **Build a reviewed dataset** exports only reviewed
+variants to an ignored JSONL and creates a matching benchmark card with source
+references. Excluded variants and unresolved groups stay out. Export requires
+at least 30 examples across 10 source groups in both validation and final test;
+it does not train a model or score the test set. Review and reuse decisions in
+the card are local self-attestations, not independent proof of label quality
+or reuse rights.
+The review queue may display an HTTPS source-terms link as a reference for the
+reviewer. Opening or displaying that page does not confirm reuse permission;
+record the permission evidence only after checking the terms.
+Prompt selection compares the built-in `extraction/v1` template with your
+candidate using validation labels only. After selection, the frozen runner
+compares the prompted base and the matching LoRA adapter on the same reserved
+test rows once per dataset fingerprint. A reservation is written before test
+inference; if an error occurs after that point, treat the holdout as consumed
+and make a new dataset version before another final run. It requires the matching adapter to
+have validation-only metrics and a valid artifact hash. The benchmark runner
+uses the pinned model revision from the local cache and will not download model
+weights. It writes aggregate results and a group-bootstrap interval under
+`training/benchmarks/`; it does not save example text or model outputs there.
 
 `group_id` identifies a source or related example family. Keep paraphrases, chunks, or variants from the same source under one group so they cannot leak across splits. The `output` must contain exactly `organization`, `year`, and `claim`; values are strings or `null`, and `year` is a four-digit integer or `null`.
 

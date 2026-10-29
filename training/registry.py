@@ -1,6 +1,10 @@
+import hashlib
 import json
 import re
 from pathlib import Path
+
+from training.datasets import SPLIT_SEED, load_dataset_snapshot, split_strategy
+from training.manifest import ADAPTER_MANIFEST_SCHEMA_VERSION, has_reproducible_training_configuration
 
 
 RUNS_DIR = Path(__file__).parent / "runs"
@@ -13,13 +17,63 @@ def get_adapter_path(run_id):
     run_dir = (RUNS_DIR / run_id).resolve()
     if run_dir.parent != RUNS_DIR.resolve():
         raise ValueError("Trained adapter path is invalid")
-    manifest_path = run_dir / "manifest.json"
-    adapter_path = run_dir / "adapter"
+    manifest_path = (run_dir / "manifest.json").resolve()
+    adapter_path = (run_dir / "adapter").resolve()
+    if manifest_path.parent != run_dir or adapter_path.parent != run_dir:
+        raise ValueError("Trained adapter paths are invalid")
     if not manifest_path.is_file() or not (adapter_path / "adapter_config.json").is_file():
         raise ValueError("Trained adapter is not available")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("status") != "completed" or manifest.get("run_id") != run_id:
         raise ValueError("Trained adapter is not available")
+    return adapter_path, manifest
+
+
+def artifact_tree_sha256(root):
+    root = Path(root)
+    if root.is_symlink():
+        raise ValueError("Adapter artifact must not contain symlinks")
+    root = root.resolve()
+    files = sorted(root.rglob("*"))
+    digest = hashlib.sha256()
+    file_count = 0
+    for path in files:
+        if path.is_symlink():
+            raise ValueError("Adapter artifact must not contain symlinks")
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        digest.update(len(relative).to_bytes(4, "big"))
+        digest.update(relative)
+        with path.open("rb") as artifact:
+            for block in iter(lambda: artifact.read(1024 * 1024), b""):
+                digest.update(block)
+        file_count += 1
+    if not file_count:
+        raise ValueError("Adapter artifact is empty")
+    return digest.hexdigest()
+
+
+def get_benchmark_adapter(run_id, dataset_id, dataset_digest, expected_split_strategy):
+    adapter_path, manifest = get_adapter_path(run_id)
+    if (
+        manifest.get("schema_version") != ADAPTER_MANIFEST_SCHEMA_VERSION
+        or not has_reproducible_training_configuration(manifest)
+    ):
+        raise ValueError("This adapter manifest lacks the frozen-benchmark provenance or reproducible training configuration")
+    if manifest.get("metrics_split") != "validation" or manifest.get("test_split_used") is not False:
+        raise ValueError("Only validation-selected adapters are eligible for final benchmarking")
+    if manifest.get("dataset_id") != dataset_id or manifest.get("dataset_sha256") != dataset_digest:
+        raise ValueError("Adapter was trained on a different dataset fingerprint")
+    if manifest.get("split_seed") != SPLIT_SEED or manifest.get("split_strategy") != expected_split_strategy:
+        raise ValueError("Adapter was trained with a different or missing source-group split policy")
+    if not manifest.get("base_revision") or manifest.get("tokenizer_revision") != manifest.get("base_revision"):
+        raise ValueError("Adapter base and tokenizer revisions are incomplete or inconsistent")
+    expected_digest = manifest.get("adapter_sha256")
+    if not isinstance(expected_digest, str) or not re.fullmatch(r"[a-f0-9]{64}", expected_digest):
+        raise ValueError("Adapter manifest has no valid artifact fingerprint")
+    if artifact_tree_sha256(adapter_path) != expected_digest:
+        raise ValueError("Adapter files do not match the saved artifact fingerprint")
     return adapter_path, manifest
 
 
@@ -32,6 +86,15 @@ def list_adapters():
             _, manifest = get_adapter_path(run_dir.name)
         except (OSError, ValueError, json.JSONDecodeError):
             continue
+        try:
+            rows, dataset_digest = load_dataset_snapshot(manifest["dataset_id"])
+            split_is_current = (
+                dataset_digest == manifest.get("dataset_sha256")
+                and manifest.get("split_seed") == SPLIT_SEED
+                and manifest.get("split_strategy") == split_strategy(rows)
+            )
+        except (KeyError, OSError, ValueError):
+            split_is_current = False
         results.append({
             "id": f"trained:{run_dir.name}",
             "run_id": run_dir.name,
@@ -40,6 +103,20 @@ def list_adapters():
             "dataset_sha256": manifest["dataset_sha256"],
             "created_at": manifest["created_at"],
             "metrics_split": manifest.get("metrics_split", "legacy_test"),
+            "environment": manifest.get("environment"),
+            "training_configuration": manifest.get("training_configuration"),
+            "training_configuration_sha256": manifest.get("training_configuration_sha256"),
+            "benchmark_manifest_ready": (
+                manifest.get("schema_version") == ADAPTER_MANIFEST_SCHEMA_VERSION
+                and has_reproducible_training_configuration(manifest)
+                and manifest.get("metrics_split") == "validation"
+                and manifest.get("test_split_used") is False
+                and split_is_current
+                and bool(manifest.get("base_revision"))
+                and manifest.get("tokenizer_revision") == manifest.get("base_revision")
+                and isinstance(manifest.get("adapter_sha256"), str)
+                and re.fullmatch(r"[a-f0-9]{64}", manifest["adapter_sha256"]) is not None
+            ),
             "metrics": manifest["metrics"]["adapter"],
         })
     return results

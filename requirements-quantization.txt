@@ -1,0 +1,3 @@
+# Optional inference quantization backend for compatible local hardware.
+bitsandbytes==0.50.0
+optimum-quanto==0.2.7

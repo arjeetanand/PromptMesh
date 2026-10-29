@@ -20,7 +20,7 @@ class TrainedAdapterModel(BaseLLM):
 
         adapter_path, manifest = get_adapter_path(self.run_id)
         self.device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
-        tokenizer_args = {"trust_remote_code": False}
+        tokenizer_args = {"trust_remote_code": False, "local_files_only": True}
         if manifest.get("base_revision"):
             tokenizer_args["revision"] = manifest["base_revision"]
         self.tokenizer = AutoTokenizer.from_pretrained(manifest["base_model"], **tokenizer_args)
@@ -28,6 +28,7 @@ class TrainedAdapterModel(BaseLLM):
             adapter_path,
             dtype=torch.float32,
             trust_remote_code=False,
+            local_files_only=True,
             revision=manifest.get("base_revision"),
         ).to(self.device).eval()
 

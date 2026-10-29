@@ -43,9 +43,28 @@ from optimization.failure_analysis import analyze_failure
 from optimization.evolver import evolve_prompt
 from optimization.testcase_generator import generate_test_cases
 from models.registry import get_model
-from training.datasets import list_datasets, load_dataset, split_dataset
+from training.datasets import (
+    SPLIT_SEED,
+    benchmark_card_status,
+    list_datasets,
+    load_dataset,
+    load_dataset_snapshot,
+    split_dataset,
+    split_strategy,
+)
+from training.benchmark import (
+    BENCHMARKS_DIR,
+    MAX_PROMPT_CANDIDATES,
+    load_prompt_selection,
+    run_frozen_benchmark,
+    run_prompt_selection,
+    validate_prompt_template,
+)
+from training.holdout_registry import assert_rows_unseen
 from training.runner import run_lora_training, training_runtime
-from training.registry import list_adapters
+from training.quantization import quantization_runtime
+from training.registry import get_benchmark_adapter, list_adapters
+from training.review_packets import export_reviewed_dataset, load_review_packet, save_group_review
 
 
 # ============================================================
@@ -210,8 +229,12 @@ def _run_admitted_job(job_id, runner, request_model):
 
 
 def _run_admitted_training_job(job_id, request_model):
+    _run_admitted_local_model_job(job_id, run_lora_training, request_model)
+
+
+def _run_admitted_local_model_job(job_id, runner, request_model):
     try:
-        run_lora_training(job_id, request_model, jobs)
+        runner(job_id, request_model, jobs)
     finally:
         jobs.finish(job_id)
         TRAINING_LOCK.release()
@@ -294,6 +317,40 @@ class FineTuneRequest(BaseModel):
     epochs: int = Field(default=1, ge=1, le=3)
     learning_rate: float = Field(default=0.0002, gt=0, le=0.0005)
     lora_rank: Literal[4, 8, 16] = 8
+
+
+class PromptSelectionRequest(BaseModel):
+    dataset_id: str = Field(min_length=1, max_length=64)
+    adapter_run_id: str = Field(min_length=32, max_length=32)
+    candidate_prompts: List[str] = Field(min_length=1, max_length=MAX_PROMPT_CANDIDATES)
+
+
+class FrozenBenchmarkRequest(BaseModel):
+    selection_id: str = Field(min_length=32, max_length=32)
+    adapter_run_id: str = Field(min_length=32, max_length=32)
+    quantization_methods: List[Literal["bnb_int8", "bnb_nf4", "quanto_int8_w8a8"]] = Field(default_factory=list, max_items=3)
+
+
+class CandidateReviewRowRequest(BaseModel):
+    row_index: int = Field(ge=0)
+    review_status: Literal["NEEDS_HUMAN_REVIEW", "REVIEWED", "EXCLUDED"]
+    reviewed_organization: Optional[str] = Field(default=None, max_length=300)
+    reviewed_year: Optional[int] = Field(default=None, ge=1000, le=9999)
+    reviewed_claim: Optional[str] = Field(default=None, max_length=1500)
+    review_notes: str = Field(default="", max_length=2000)
+
+
+class CandidateReviewPacketRequest(BaseModel):
+    group_id: str = Field(min_length=1, max_length=128)
+    rows: List[CandidateReviewRowRequest] = Field(min_length=1, max_length=12)
+    reuse_status: Literal["permission_unconfirmed", "permission_confirmed", "excluded"]
+    reuse_evidence: str = Field(default="", max_length=1000)
+
+
+class ReviewedDatasetExportRequest(BaseModel):
+    dataset_id: str = Field(min_length=1, max_length=64)
+    reviewer_role: str = Field(min_length=1, max_length=128)
+    cohort_mode: Literal["all_eligible", "balanced_year_12"] = "all_eligible"
 
 
 class ApiSessionRequest(BaseModel):
@@ -393,7 +450,50 @@ async def get_models():
 
 @app.get("/api/training/datasets")
 async def get_training_datasets():
-    return {"datasets": list_datasets(), "runtime": training_runtime()}
+    return {"datasets": list_datasets(), "runtime": training_runtime(), "quantization": quantization_runtime()}
+
+
+@app.get("/api/training/review-packet")
+async def get_candidate_review_packet(request: Request):
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="Candidate review is available only on this machine")
+    try:
+        return load_review_packet()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="The local candidate review packet is missing") from exc
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/training/review-packet")
+async def save_candidate_review_packet(request: CandidateReviewPacketRequest, http_request: Request):
+    if not _is_loopback_request(http_request):
+        raise HTTPException(status_code=403, detail="Candidate review is available only on this machine")
+    try:
+        return save_group_review(
+            request.group_id,
+            [row.model_dump() for row in request.rows],
+            request.reuse_status,
+            request.reuse_evidence,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="The local candidate review packet is missing") from exc
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/training/review-packet/export")
+async def export_candidate_review_packet(request: ReviewedDatasetExportRequest, http_request: Request):
+    if not _is_loopback_request(http_request):
+        raise HTTPException(status_code=403, detail="Candidate review is available only on this machine")
+    try:
+        return export_reviewed_dataset(request.dataset_id, request.reviewer_role, request.cohort_mode)
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="The local candidate review packet is missing") from exc
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/api/training/adapters")
@@ -408,7 +508,8 @@ async def start_training(request: FineTuneRequest, bg: BackgroundTasks, http_req
         missing = ", ".join(runtime["missing"])
         raise HTTPException(status_code=503, detail=f"Local training dependencies are missing: {missing}")
     try:
-        split_dataset(load_dataset(request.dataset_id))
+        splits = split_dataset(load_dataset(request.dataset_id))
+        assert_rows_unseen(splits["train"] + splits["validation"], BENCHMARKS_DIR, "LoRA training/validation data")
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Training dataset not found") from exc
     except (OSError, ValueError) as exc:
@@ -420,6 +521,80 @@ async def start_training(request: FineTuneRequest, bg: BackgroundTasks, http_req
     try:
         job_id = _admit_job(http_request)
         bg.add_task(_run_admitted_training_job, job_id, request)
+    except Exception:
+        if job_id:
+            jobs.finish(job_id)
+        TRAINING_LOCK.release()
+        raise
+    return {"job_id": job_id, "status": "started"}
+
+
+@app.post("/api/training/prompt-selections")
+async def start_prompt_selection(request: PromptSelectionRequest, bg: BackgroundTasks, http_request: Request):
+    _validate_text_values(request.candidate_prompts, "prompt candidate", max_length=MAX_PROMPT_CHARS)
+    try:
+        for prompt in request.candidate_prompts:
+            validate_prompt_template(prompt)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        rows, digest = load_dataset_snapshot(request.dataset_id)
+        card = benchmark_card_status(request.dataset_id, rows, digest)
+        if not card["card_ready"]:
+            raise HTTPException(status_code=422, detail=card.get("reason") or "A matching review card is required")
+        if not card["validation_ready"] or not card["final_test_ready"]:
+            raise HTTPException(status_code=422, detail="Validation and final-test splits each need at least 30 examples across 10 source groups")
+        get_benchmark_adapter(request.adapter_run_id, request.dataset_id, digest, split_strategy(rows))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset or adapter not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _schedule_local_model_job(bg, http_request, request, run_prompt_selection)
+
+
+@app.post("/api/training/benchmarks")
+async def start_frozen_benchmark(request: FrozenBenchmarkRequest, bg: BackgroundTasks, http_request: Request):
+    if len(request.quantization_methods) != len(set(request.quantization_methods)):
+        raise HTTPException(status_code=422, detail="Quantization methods must be unique")
+    if request.quantization_methods:
+        runtime = quantization_runtime()
+        if not runtime["available"]:
+            raise HTTPException(status_code=503, detail=runtime.get("reason") or "Quantized inference is unavailable")
+        available = {method["id"] for method in runtime.get("methods", [])}
+        if not set(request.quantization_methods).issubset(available):
+            raise HTTPException(status_code=422, detail="A requested quantization method is unsupported by this runtime")
+    try:
+        selection = load_prompt_selection(request.selection_id)
+        if request.adapter_run_id != selection["adapter_run_id"]:
+            raise ValueError("The benchmark adapter must match validation prompt selection")
+        rows, digest = load_dataset_snapshot(selection["dataset_id"])
+        current_split_strategy = split_strategy(rows)
+        if selection.get("split_seed") != SPLIT_SEED or selection.get("split_strategy") != current_split_strategy:
+            raise ValueError("Dataset split policy changed after validation prompt selection")
+        card = benchmark_card_status(selection["dataset_id"], rows, digest)
+        if not card["card_ready"] or digest != selection["dataset_sha256"] or card.get("card_sha256") != selection["benchmark_card_sha256"]:
+            raise ValueError("Dataset or benchmark card changed after validation prompt selection")
+        get_benchmark_adapter(request.adapter_run_id, selection["dataset_id"], digest, current_split_strategy)
+        if not card["validation_ready"] or not card["final_test_ready"]:
+            raise ValueError("Validation and final-test splits each need at least 30 examples across 10 source groups")
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset or adapter not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _schedule_local_model_job(bg, http_request, request, run_frozen_benchmark)
+
+
+def _schedule_local_model_job(bg, http_request, request, runner):
+    runtime = training_runtime()
+    if not runtime["available"]:
+        missing = ", ".join(runtime["missing"])
+        raise HTTPException(status_code=503, detail=f"Local model dependencies are missing: {missing}")
+    if not TRAINING_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="A local model job is already running")
+    job_id = None
+    try:
+        job_id = _admit_job(http_request)
+        bg.add_task(_run_admitted_local_model_job, job_id, runner, request)
     except Exception:
         if job_id:
             jobs.finish(job_id)
