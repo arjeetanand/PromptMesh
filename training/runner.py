@@ -18,6 +18,11 @@ from training.datasets import (
 )
 from training.environment import runtime_metadata
 from training.holdout_registry import DEFAULT_BENCHMARKS_DIR as BENCHMARKS_DIR, assert_rows_unseen
+from training.manifest import (
+    ADAPTER_MANIFEST_SCHEMA_VERSION,
+    training_configuration_sha256,
+    training_configuration_snapshot,
+)
 from training.metrics import score_predictions
 from training.registry import RUNS_DIR, artifact_tree_sha256
 
@@ -93,6 +98,31 @@ def _save_manifest(path, manifest):
     path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def _sft_config_kwargs(request, output_dir):
+    return {
+        "output_dir": str(output_dir),
+        "learning_rate": request.learning_rate,
+        "num_train_epochs": request.epochs,
+        "per_device_train_batch_size": 1,
+        "per_device_eval_batch_size": 1,
+        "gradient_accumulation_steps": 4,
+        "eval_strategy": "epoch",
+        "save_strategy": "no",
+        "logging_steps": 1,
+        "report_to": "none",
+        "max_length": 512,
+        "completion_only_loss": True,
+        "gradient_checkpointing": False,
+        "dataloader_num_workers": 0,
+        "optim": "adamw_torch",
+        "seed": 42,
+        "data_seed": 42,
+        "disable_tqdm": True,
+        "bf16": False,
+        "fp16": False,
+    }
+
+
 def run_lora_training(job_id, request, jobs):
     started = time.perf_counter()
     run_dir = None
@@ -123,10 +153,11 @@ def run_lora_training(job_id, request, jobs):
         jobs.update(job_id, {"progress": 5, "stage": "loading_model"})
         device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
         base_revision = _resolve_cached_base_revision()
+        model_load_dtype = "float32"
         model = AutoModelForCausalLM.from_pretrained(
             BASE_MODEL_ID,
             revision=base_revision,
-            dtype=torch.float32,
+            dtype=getattr(torch, model_load_dtype),
             trust_remote_code=False,
             local_files_only=True,
         ).to(device)
@@ -154,40 +185,23 @@ def run_lora_training(job_id, request, jobs):
 
         train_rows = Dataset.from_list(format_sft_rows(splits["train"], prompt))
         validation_rows = Dataset.from_list(format_sft_rows(splits["validation"], prompt))
-        config = SFTConfig(
-            output_dir=str(run_dir / "checkpoint"),
-            learning_rate=request.learning_rate,
-            num_train_epochs=request.epochs,
-            per_device_train_batch_size=1,
-            per_device_eval_batch_size=1,
-            gradient_accumulation_steps=4,
-            eval_strategy="epoch",
-            save_strategy="no",
-            logging_steps=1,
-            report_to="none",
-            max_length=512,
-            completion_only_loss=True,
-            gradient_checkpointing=False,
-            dataloader_num_workers=0,
-            optim="adamw_torch",
-            seed=42,
-            data_seed=42,
-            disable_tqdm=True,
+        config = SFTConfig(**_sft_config_kwargs(request, run_dir / "checkpoint"))
+        lora_config = LoraConfig(
+            r=request.lora_rank,
+            lora_alpha=request.lora_rank * 2,
+            lora_dropout=0.05,
+            bias="none",
+            task_type="CAUSAL_LM",
+            target_modules=["q_proj", "v_proj"],
         )
+        training_configuration = training_configuration_snapshot(config, lora_config, model_load_dtype)
         trainer = SFTTrainer(
             model=model,
             args=config,
             train_dataset=train_rows,
             eval_dataset=validation_rows,
             processing_class=tokenizer,
-            peft_config=LoraConfig(
-                r=request.lora_rank,
-                lora_alpha=request.lora_rank * 2,
-                lora_dropout=0.05,
-                bias="none",
-                task_type="CAUSAL_LM",
-                target_modules=["q_proj", "v_proj"],
-            ),
+            peft_config=lora_config,
             callbacks=[ProgressCallback()],
         )
         trainer.train()
@@ -202,7 +216,7 @@ def run_lora_training(job_id, request, jobs):
         completed_at = datetime.now(timezone.utc).isoformat()
         metrics = {"base": base_metrics, "adapter": adapter_metrics}
         manifest = {
-            "schema_version": 4,
+            "schema_version": ADAPTER_MANIFEST_SCHEMA_VERSION,
             "status": "completed",
             "run_id": run_id,
             "base_model": BASE_MODEL_ID,
@@ -220,6 +234,8 @@ def run_lora_training(job_id, request, jobs):
             "metrics_split": "validation",
             "test_split_used": False,
             "environment": runtime_metadata(device),
+            "training_configuration": training_configuration,
+            "training_configuration_sha256": training_configuration_sha256(training_configuration),
             "hyperparameters": {
                 "method": "LoRA + supervised fine-tuning",
                 "lora_rank": request.lora_rank,
@@ -250,6 +266,7 @@ def run_lora_training(job_id, request, jobs):
                 "metrics_split": "validation",
                 "device": device,
                 "metrics": metrics,
+                "training_configuration": training_configuration,
                 "training_loss": training_losses,
                 "validation_loss": validation_losses,
                 "elapsed_seconds": round(time.perf_counter() - started, 1),

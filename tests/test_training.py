@@ -21,9 +21,28 @@ from training.datasets import (
 )
 from training.metrics import score_predictions
 from training.holdout_registry import create_holdout_identity, reserve_holdout
+from training.manifest import (
+    LORA_CONFIGURATION_FIELDS,
+    TRAINER_CONFIGURATION_FIELDS,
+    TRAINING_CONFIGURATION_SCHEMA_VERSION,
+)
 from training.registry import artifact_tree_sha256, get_adapter_path, get_benchmark_adapter, list_adapters
 from training import runner
 from training.runner import BASE_MODEL_ID, _resolve_cached_base_revision
+
+
+def _training_configuration_fixture():
+    return {
+        "schema_version": TRAINING_CONFIGURATION_SCHEMA_VERSION,
+        "trainer": dict.fromkeys(TRAINER_CONFIGURATION_FIELDS),
+        "lora": dict.fromkeys(LORA_CONFIGURATION_FIELDS),
+        "model_load": {"dtype": "float32", "local_files_only": True, "trust_remote_code": False},
+    }
+
+
+def _training_configuration_sha256(configuration):
+    content = json.dumps(configuration, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(content).hexdigest()
 
 
 class TrainingRunnerProvenanceTests(unittest.TestCase):
@@ -37,6 +56,99 @@ class TrainingRunnerProvenanceTests(unittest.TestCase):
         with patch("huggingface_hub.snapshot_download", return_value="/cache/model"):
             with self.assertRaisesRegex(RuntimeError, "cached base-model revision"):
                 _resolve_cached_base_revision()
+
+
+class TrainingManifestConfigurationTests(unittest.TestCase):
+    def test_training_manifest_snapshot_records_effective_trainer_and_lora_settings(self):
+        from enum import Enum
+
+        from training.manifest import training_configuration_snapshot
+
+        class ConfigEnum(Enum):
+            LINEAR = "linear"
+            ADAMW = "adamw_torch"
+            CAUSAL_LM = "CAUSAL_LM"
+
+        trainer = types.SimpleNamespace(
+            learning_rate=0.0002,
+            num_train_epochs=2,
+            max_steps=-1,
+            per_device_train_batch_size=1,
+            per_device_eval_batch_size=1,
+            gradient_accumulation_steps=4,
+            lr_scheduler_type=ConfigEnum.LINEAR,
+            warmup_steps=0,
+            weight_decay=0.0,
+            adam_beta1=0.9,
+            adam_beta2=0.999,
+            adam_epsilon=1e-8,
+            max_grad_norm=1.0,
+            optim=ConfigEnum.ADAMW,
+            bf16=False,
+            fp16=False,
+            tf32=None,
+            seed=42,
+            data_seed=42,
+            eval_strategy="epoch",
+            eval_steps=None,
+            save_strategy="no",
+            logging_steps=1,
+            max_length=512,
+            truncation_mode="keep_start",
+            dataset_text_field="text",
+            completion_only_loss=True,
+            assistant_only_loss=False,
+            gradient_checkpointing=False,
+            gradient_checkpointing_kwargs=None,
+            dataloader_num_workers=0,
+            dataloader_pin_memory=True,
+            dataloader_drop_last=False,
+            packing=False,
+        )
+        lora = types.SimpleNamespace(
+            r=8,
+            lora_alpha=16,
+            lora_dropout=0.05,
+            target_modules={"v_proj", "q_proj"},
+            bias="none",
+            task_type=ConfigEnum.CAUSAL_LM,
+            init_lora_weights=True,
+            use_rslora=False,
+            use_dora=False,
+            modules_to_save=None,
+            fan_in_fan_out=False,
+            layers_to_transform=None,
+            layers_pattern=None,
+            rank_pattern={},
+            alpha_pattern={},
+        )
+
+        snapshot = training_configuration_snapshot(trainer, lora, "float32")
+
+        self.assertEqual(snapshot["schema_version"], 1)
+        self.assertEqual(set(snapshot["trainer"]), set(TRAINER_CONFIGURATION_FIELDS))
+        self.assertEqual(set(snapshot["lora"]), set(LORA_CONFIGURATION_FIELDS))
+        self.assertEqual(snapshot["trainer"]["per_device_train_batch_size"], 1)
+        self.assertEqual(snapshot["trainer"]["per_device_eval_batch_size"], 1)
+        self.assertEqual(snapshot["trainer"]["gradient_accumulation_steps"], 4)
+        self.assertEqual(snapshot["trainer"]["max_length"], 512)
+        self.assertEqual(snapshot["trainer"]["optim"], "adamw_torch")
+        self.assertEqual(snapshot["trainer"]["lr_scheduler_type"], "linear")
+        self.assertEqual(snapshot["lora"]["lora_alpha"], 16)
+        self.assertEqual(snapshot["lora"]["lora_dropout"], 0.05)
+        self.assertEqual(snapshot["lora"]["target_modules"], ["q_proj", "v_proj"])
+        self.assertEqual(snapshot["lora"]["task_type"], "CAUSAL_LM")
+        self.assertEqual(snapshot["model_load"], {
+            "dtype": "float32",
+            "local_files_only": True,
+            "trust_remote_code": False,
+        })
+
+    def test_training_manifest_snapshot_rejects_missing_effective_settings(self):
+        from training.manifest import training_configuration_snapshot
+
+        with self.assertRaisesRegex(ValueError, "Missing effective trainer settings"):
+            training_configuration_snapshot(types.SimpleNamespace(), types.SimpleNamespace(), "float32")
 
 
 class TrainingDatasetTests(unittest.TestCase):
@@ -295,6 +407,64 @@ class AdapterRegistryTests(unittest.TestCase):
             config_path = adapter_dir / "adapter_config.json"
             config_path.write_text("{}", encoding="utf-8")
             manifest = {
+                "schema_version": 5,
+                "status": "completed",
+                "run_id": run_id,
+                "base_model": "Qwen/Qwen3-0.6B",
+                "base_revision": "base-revision",
+                "tokenizer_revision": "base-revision",
+                "dataset_id": "reviewed",
+                "dataset_sha256": dataset_digest,
+                "adapter_sha256": artifact_tree_sha256(adapter_dir),
+                "metrics_split": "validation",
+                "test_split_used": False,
+                "split_seed": 42,
+                "split_strategy": "group-year-stratified-v1",
+                "training_configuration": _training_configuration_fixture(),
+                "training_configuration_sha256": _training_configuration_sha256(_training_configuration_fixture()),
+                "created_at": "2026-10-29T00:00:00+00:00",
+                "metrics": {"adapter": {"record_exact_match": 0.5}},
+            }
+            (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            with patch("training.registry.RUNS_DIR", Path(temp_dir)):
+                self.assertEqual(
+                    get_benchmark_adapter(run_id, "reviewed", dataset_digest, "group-year-stratified-v1")[1]["adapter_sha256"],
+                    manifest["adapter_sha256"],
+                )
+                with (
+                    patch("training.registry.load_dataset_snapshot", return_value=([], dataset_digest)),
+                    patch("training.registry.split_strategy", return_value="group-year-stratified-v1"),
+                ):
+                    adapter = list_adapters()[0]
+                self.assertTrue(adapter["benchmark_manifest_ready"])
+                self.assertEqual(adapter["training_configuration"], manifest["training_configuration"])
+                original_configuration = manifest["training_configuration"]
+                manifest["training_configuration"] = json.loads(json.dumps(original_configuration))
+                manifest["training_configuration"]["trainer"]["learning_rate"] = 0.0003
+                (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "reproducible training configuration"):
+                    get_benchmark_adapter(run_id, "reviewed", dataset_digest, "group-year-stratified-v1")
+                manifest["training_configuration"] = original_configuration
+                (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+                manifest["split_strategy"] = "group-hash-v1"
+                (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "split policy"):
+                    get_benchmark_adapter(run_id, "reviewed", dataset_digest, "group-year-stratified-v1")
+                manifest["split_strategy"] = "group-year-stratified-v1"
+                (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+                config_path.write_text("changed", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "artifact fingerprint"):
+                    get_benchmark_adapter(run_id, "reviewed", dataset_digest, "group-year-stratified-v1")
+
+    def test_frozen_benchmark_rejects_schema_v4_manifests_without_training_settings(self):
+        run_id = "9" * 32
+        dataset_digest = "8" * 64
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / run_id
+            adapter_dir = run_dir / "adapter"
+            adapter_dir.mkdir(parents=True)
+            (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+            (run_dir / "manifest.json").write_text(json.dumps({
                 "schema_version": 4,
                 "status": "completed",
                 "run_id": run_id,
@@ -308,21 +478,11 @@ class AdapterRegistryTests(unittest.TestCase):
                 "test_split_used": False,
                 "split_seed": 42,
                 "split_strategy": "group-year-stratified-v1",
-            }
-            (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+                "training_configuration": _training_configuration_fixture(),
+            }), encoding="utf-8")
+
             with patch("training.registry.RUNS_DIR", Path(temp_dir)):
-                self.assertEqual(
-                    get_benchmark_adapter(run_id, "reviewed", dataset_digest, "group-year-stratified-v1")[1]["adapter_sha256"],
-                    manifest["adapter_sha256"],
-                )
-                manifest["split_strategy"] = "group-hash-v1"
-                (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-                with self.assertRaisesRegex(ValueError, "split policy"):
-                    get_benchmark_adapter(run_id, "reviewed", dataset_digest, "group-year-stratified-v1")
-                manifest["split_strategy"] = "group-year-stratified-v1"
-                (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-                config_path.write_text("changed", encoding="utf-8")
-                with self.assertRaisesRegex(ValueError, "artifact fingerprint"):
+                with self.assertRaisesRegex(ValueError, "reproducible training configuration"):
                     get_benchmark_adapter(run_id, "reviewed", dataset_digest, "group-year-stratified-v1")
 
     def test_frozen_benchmark_rejects_legacy_adapter_manifests(self):
@@ -400,6 +560,35 @@ class AdapterRegistryTests(unittest.TestCase):
 
 
 class TrainingRunnerTests(unittest.TestCase):
+    def test_float32_training_config_disables_automatic_mixed_precision(self):
+        from peft import LoraConfig
+        from trl import SFTConfig
+        from training.manifest import (
+            has_reproducible_training_configuration,
+            training_configuration_sha256,
+            training_configuration_snapshot,
+        )
+        from training.runner import _sft_config_kwargs
+
+        request = types.SimpleNamespace(learning_rate=0.0002, epochs=1)
+        with tempfile.TemporaryDirectory() as output_dir:
+            config = SFTConfig(**_sft_config_kwargs(request, output_dir))
+
+        self.assertIs(config.bf16, False)
+        self.assertIs(config.fp16, False)
+        lora_config = LoraConfig(
+            r=8, lora_alpha=16, lora_dropout=0.05, bias="none",
+            task_type="CAUSAL_LM", target_modules=["q_proj", "v_proj"],
+        )
+        snapshot = training_configuration_snapshot(config, lora_config, "float32")
+        self.assertTrue(has_reproducible_training_configuration({
+            "training_configuration": snapshot,
+            "training_configuration_sha256": training_configuration_sha256(snapshot),
+        }))
+        self.assertEqual(snapshot["lora"]["target_modules"], ["q_proj", "v_proj"])
+        self.assertIs(snapshot["trainer"]["bf16"], False)
+        json.dumps(snapshot)
+
     def test_selection_metrics_use_validation_rows_not_final_test_rows(self):
         from training.runner import _score_validation
 

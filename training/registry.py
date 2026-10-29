@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from training.datasets import SPLIT_SEED, load_dataset_snapshot, split_strategy
+from training.manifest import ADAPTER_MANIFEST_SCHEMA_VERSION, has_reproducible_training_configuration
 
 
 RUNS_DIR = Path(__file__).parent / "runs"
@@ -55,8 +56,11 @@ def artifact_tree_sha256(root):
 
 def get_benchmark_adapter(run_id, dataset_id, dataset_digest, expected_split_strategy):
     adapter_path, manifest = get_adapter_path(run_id)
-    if manifest.get("schema_version") != 4:
-        raise ValueError("This adapter manifest lacks the frozen-benchmark provenance")
+    if (
+        manifest.get("schema_version") != ADAPTER_MANIFEST_SCHEMA_VERSION
+        or not has_reproducible_training_configuration(manifest)
+    ):
+        raise ValueError("This adapter manifest lacks the frozen-benchmark provenance or reproducible training configuration")
     if manifest.get("metrics_split") != "validation" or manifest.get("test_split_used") is not False:
         raise ValueError("Only validation-selected adapters are eligible for final benchmarking")
     if manifest.get("dataset_id") != dataset_id or manifest.get("dataset_sha256") != dataset_digest:
@@ -100,8 +104,11 @@ def list_adapters():
             "created_at": manifest["created_at"],
             "metrics_split": manifest.get("metrics_split", "legacy_test"),
             "environment": manifest.get("environment"),
+            "training_configuration": manifest.get("training_configuration"),
+            "training_configuration_sha256": manifest.get("training_configuration_sha256"),
             "benchmark_manifest_ready": (
-                manifest.get("schema_version") == 4
+                manifest.get("schema_version") == ADAPTER_MANIFEST_SCHEMA_VERSION
+                and has_reproducible_training_configuration(manifest)
                 and manifest.get("metrics_split") == "validation"
                 and manifest.get("test_split_used") is False
                 and split_is_current

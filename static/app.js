@@ -963,6 +963,10 @@ function renderSavedAdapters() {
     runtime.textContent = runtimeSummary(adapter.environment) || "Runtime versions not recorded (legacy run)";
     runtime.title = runtimeDetails(adapter.environment);
     copy.append(runtime);
+    const configuration = document.createElement("div");
+    configuration.innerHTML = trainingConfigurationMarkup(adapter.training_configuration)
+      || '<p class="training-configuration-missing">Full trainer settings were not recorded for this run.</p>';
+    copy.append(configuration);
     const button = document.createElement("button");
     button.className = "button button-secondary";
     button.type = "button";
@@ -1449,6 +1453,7 @@ function displayFineTuneRun(result) {
     + statMarkup("Validation examples", splits.validation || 0)
     + statMarkup("Reserved final-test examples", splits.test || 0)
     + statMarkup("Device", result.device || "—");
+  $("fineTuneConfiguration").innerHTML = trainingConfigurationMarkup(result.training_configuration);
   $("fineTuneMetrics").innerHTML = [
     trainingMetricMarkup("Record exact match", base.record_exact_match, adapter.record_exact_match),
     trainingMetricMarkup("Field accuracy", base.field_accuracy, adapter.field_accuracy),
@@ -1456,6 +1461,28 @@ function displayFineTuneRun(result) {
     ...["organization", "year", "claim"].map((field) => trainingMetricMarkup(field + " exact", base.field_exact_match?.[field], adapter.field_exact_match?.[field]))
   ].join("");
   renderLossChart(result.training_loss || [], result.validation_loss || []);
+}
+
+function trainingConfigurationMarkup(configuration) {
+  if (!configuration || configuration.schema_version !== 1
+    || !configuration.trainer || !configuration.lora || !configuration.model_load) return "";
+  const renderSection = (title, values) => {
+    const rows = Object.entries(values).map(([key, value]) => {
+      const label = key.replace(/_/g, " ").replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+      const formatted = value === null ? "null"
+        : (typeof value === "object" ? JSON.stringify(value) : String(value));
+      return "<div><dt>" + escapeHTML(label) + "</dt><dd>" + escapeHTML(formatted) + "</dd></div>";
+    }).join("");
+    return "<section><h4>" + escapeHTML(title) + "</h4><dl>" + rows + "</dl></section>";
+  };
+  const loraRank = escapeHTML(configuration.lora.r ?? "—");
+  const loraAlpha = escapeHTML(configuration.lora.lora_alpha ?? "—");
+  return "<details class=\"training-configuration\"><summary>Reproducibility settings · LoRA rank "
+    + loraRank + " · alpha " + loraAlpha + "</summary><div class=\"training-configuration-sections\">"
+    + renderSection("Trainer", configuration.trainer)
+    + renderSection("LoRA adapter", configuration.lora)
+    + renderSection("Model loading", configuration.model_load)
+    + "</div></details>";
 }
 
 function displayPromptSelection(result) {
@@ -1491,6 +1518,7 @@ function displayFrozenBenchmark(report, created = true) {
   ];
   runtime.textContent = environments.map(([stage, environment]) => stage + ": " + (runtimeSummary(environment) || "runtime versions not recorded")).join(" · ");
   runtime.title = environments.map(([stage, environment]) => stage + ": " + (runtimeDetails(environment) || "runtime versions not recorded")).join("\n");
+  $("frozenBenchmarkConfiguration").innerHTML = trainingConfigurationMarkup(report.adapter_training_configuration);
   const labels = [
     ["Base · extraction/v1", report.metrics?.base_initial_prompt],
     ["Base · validation-selected prompt", report.metrics?.base_validation_selected_prompt],

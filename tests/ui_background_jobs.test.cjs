@@ -397,6 +397,12 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
     hardware: { device: "mps" },
     adapter_run_id: "adapter-run",
     adapter_environment: { device: "cpu", python_version: "3.11.9", packages: { torch: "2.0.0" } },
+    adapter_training_configuration: {
+      schema_version: 1,
+      trainer: { per_device_train_batch_size: 1, gradient_accumulation_steps: 4, max_length: 512, optim: "adamw_torch" },
+      lora: { r: 8, lora_alpha: 16, lora_dropout: 0.05, target_modules: ["q_proj", "v_proj"] },
+      model_load: { dtype: "float32", local_files_only: true, trust_remote_code: false }
+    },
     prompt_selection_environment: { device: "cuda", python_version: "3.12.0", packages: { torch: "2.1.0" } },
     metrics: {
       base_initial_prompt: { record_exact_match: 0.1, field_accuracy: 0.2, json_valid_rate: 0.5, failure_analysis: failureAnalysis },
@@ -546,6 +552,8 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
   assert.match(elements.get("frozenBenchmarkEnvironment").textContent, /Validation selection: cuda · Python 3\.12\.0/);
   assert.match(elements.get("frozenBenchmarkEnvironment").textContent, /Frozen benchmark: mps · Python 3\.12\.1/);
   assert.match(elements.get("frozenBenchmarkEnvironment").title, /macOS-test/);
+  assert.match(elements.get("frozenBenchmarkConfiguration").innerHTML, /Reproducibility settings · LoRA rank 8 · alpha 16/);
+  assert.match(elements.get("frozenBenchmarkConfiguration").innerHTML, /Gradient Accumulation Steps/);
 });
 
 test("prompt selection results show the validation runtime", () => {
@@ -566,4 +574,42 @@ test("runtime labels distinguish missing metadata from measured environments", (
   assert.equal(missing, "Runtime versions not recorded (legacy run)");
   assert.equal(source, "mps · code abcdef01 (dirty)");
   assert.match(details, /source revision abcdef0123456789 · source tree clean/);
+});
+
+test("training result and saved adapter show accessible effective configuration details", () => {
+  const { context, elements } = loadApp();
+  const trainingConfiguration = {
+    schema_version: 1,
+    trainer: {
+      learning_rate: 0.0002, num_train_epochs: 2, per_device_train_batch_size: 1,
+      per_device_eval_batch_size: 1, gradient_accumulation_steps: 4, max_length: 512,
+      optim: "adamw_torch", lr_scheduler_type: "linear", completion_only_loss: true
+    },
+    lora: {
+      r: 8, lora_alpha: 16, lora_dropout: 0.05, target_modules: ["q_proj", "v_proj"],
+      task_type: "CAUSAL_LM"
+    },
+    model_load: { dtype: "float32", local_files_only: true, trust_remote_code: false }
+  };
+  context.trainingRunJSON = JSON.stringify({
+    model_id: "trained:run-a", dataset_id: "reviewed", dataset_sha256: "a".repeat(64),
+    split_counts: { train: 20, validation: 5, test: 5 }, device: "mps",
+    metrics: { base: {}, adapter: {} }, training_configuration: trainingConfiguration
+  });
+  vm.runInContext("displayFineTuneRun(JSON.parse(trainingRunJSON))", context);
+
+  const resultMarkup = elements.get("fineTuneConfiguration").innerHTML;
+  assert.match(resultMarkup, /<details class="training-configuration">/);
+  assert.match(resultMarkup, /Reproducibility settings · LoRA rank 8 · alpha 16/);
+  assert.match(resultMarkup, /<dt>Gradient Accumulation Steps<\/dt><dd>4<\/dd>/);
+  assert.match(resultMarkup, /<dt>Target Modules<\/dt><dd>\[&quot;q_proj&quot;,&quot;v_proj&quot;\]<\/dd>/);
+  assert.match(resultMarkup, /<h4>Model loading<\/h4>/);
+
+  context.savedAdapterJSON = JSON.stringify([{
+    id: "trained:run-a", run_id: "run-a", dataset_id: "reviewed", dataset_sha256: "a".repeat(64),
+    metrics_split: "validation", environment: {}, metrics: {}, training_configuration: trainingConfiguration
+  }]);
+  vm.runInContext("state.trainedAdapters = JSON.parse(savedAdapterJSON); renderSavedAdapters()", context);
+  const savedMarkup = elements.get("savedAdapterList").children[0].children[0].children[1].innerHTML;
+  assert.match(savedMarkup, /Reproducibility settings · LoRA rank 8 · alpha 16/);
 });

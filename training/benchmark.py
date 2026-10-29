@@ -23,6 +23,7 @@ from training.holdout_registry import (
     reject_used_holdout,
     reserve_holdout,
 )
+from training.manifest import training_configuration_sha256
 from training.metrics import failure_analysis, score_predictions
 from training.quantization import (
     CALIBRATION_GROUP_LIMIT,
@@ -43,7 +44,7 @@ SELECTIONS_DIR = Path(__file__).parent / "selections"
 BENCHMARKS_DIR = DEFAULT_BENCHMARKS_DIR
 MAX_PROMPT_CANDIDATES = 3
 SELECTION_ID_RE = re.compile(r"^[a-f0-9]{32}$")
-FROZEN_REPORT_SCHEMA_VERSION = 9
+FROZEN_REPORT_SCHEMA_VERSION = 10
 BENCHMARK_TIMING_PROTOCOL = {
     "version": "cold-first-request-warm-scored-pass-v1",
     "cold_first_request": "Fresh model load: one request on the first frozen test input before its scored pass; output is discarded. Reused model arms do not repeat this measurement.",
@@ -694,6 +695,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             "selection_sha256": selection["selection_sha256"],
             "adapter_run_id": request.adapter_run_id,
             "adapter_sha256": adapter["adapter_sha256"],
+            "adapter_training_configuration_sha256": training_configuration_sha256(adapter["training_configuration"]),
             "selected_prompt_sha256": selection["selected_prompt_sha256"],
             "dataset_sha256": dataset_digest,
             "benchmark_card_sha256": card_status["card_sha256"],
@@ -921,6 +923,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             "adapter_run_id": request.adapter_run_id,
             "adapter_sha256": adapter["adapter_sha256"],
             "adapter_environment": adapter.get("environment"),
+            "adapter_training_configuration": adapter["training_configuration"],
             "prompt_selection_environment": selection.get("environment"),
             "selected_prompt_id": selection["selected_prompt_id"],
             "selected_prompt_sha256": selection["selected_prompt_sha256"],

@@ -8,6 +8,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from training import benchmark
+from training.manifest import (
+    LORA_CONFIGURATION_FIELDS,
+    TRAINER_CONFIGURATION_FIELDS,
+    TRAINING_CONFIGURATION_SCHEMA_VERSION,
+)
 from training.registry import artifact_tree_sha256
 
 
@@ -17,6 +22,20 @@ class JobRecorder:
 
     def update(self, job_id, changes):
         self.updates.append((job_id, changes))
+
+
+def _training_configuration_fixture():
+    return {
+        "schema_version": TRAINING_CONFIGURATION_SCHEMA_VERSION,
+        "trainer": dict.fromkeys(TRAINER_CONFIGURATION_FIELDS),
+        "lora": dict.fromkeys(LORA_CONFIGURATION_FIELDS),
+        "model_load": {"dtype": "float32", "local_files_only": True, "trust_remote_code": False},
+    }
+
+
+def _training_configuration_sha256(configuration):
+    content = json.dumps(configuration, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(content).hexdigest()
 
 
 class FailureAnalysisTests(unittest.TestCase):
@@ -121,7 +140,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
         adapter_dir.mkdir(parents=True)
         (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
         self.adapter_manifest = {
-            "schema_version": 4,
+            "schema_version": 5,
             "status": "completed",
             "run_id": run_id,
             "base_model": "Qwen/Qwen3-0.6B",
@@ -133,6 +152,8 @@ class FrozenBenchmarkTests(unittest.TestCase):
             "test_split_used": False,
             "split_seed": 42,
             "split_strategy": "group-year-stratified-v1",
+            "training_configuration": _training_configuration_fixture(),
+            "training_configuration_sha256": _training_configuration_sha256(_training_configuration_fixture()),
             "adapter_sha256": artifact_tree_sha256(adapter_dir),
             "environment": {
                 "device": "cpu", "python_version": "3.12-test", "source_revision": "a" * 40,
@@ -379,7 +400,8 @@ class FrozenBenchmarkTests(unittest.TestCase):
             benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
-            self.assertEqual(report["schema_version"], 9)
+            self.assertEqual(report["schema_version"], 10)
+            self.assertEqual(report["adapter_training_configuration"], self.adapter_manifest["training_configuration"])
             self.assertEqual(report["metrics_split"], "test")
             self.assertEqual(report["split_strategy"], "group-year-stratified-v1")
             self.assertFalse(report["test_split_used_for_selection"])
@@ -524,6 +546,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             "selection_sha256": report["selection_sha256"],
             "adapter_run_id": self.adapter_run_id,
             "adapter_sha256": report["adapter_sha256"],
+            "adapter_training_configuration_sha256": benchmark._json_digest(self.adapter_manifest["training_configuration"]),
             "selected_prompt_sha256": report["selected_prompt_sha256"],
             "dataset_sha256": report["dataset_sha256"],
             "benchmark_card_sha256": report["benchmark_card_sha256"],

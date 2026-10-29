@@ -88,7 +88,7 @@
 - [x] Assert that the loaded extraction prompt definition 1.1.0 keeps the actor/recipient rule.
 - [x] Check Fine-tune at 1440px and 390px in Edge; the document has no horizontal overflow or browser console errors.
 - [x] Verify adapter-attached NF4/INT8 generation on MPS with one synthetic canary input; this confirms the hardware path only, not benchmark quality.
-- [ ] Supply and human-review an authorized real dataset, train a new schema-v4 adapter, and run a real frozen benchmark; no model-quality result exists yet.
+- [ ] Supply and human-review an authorized real dataset, train a new schema-v5 adapter, and run a real frozen benchmark; no model-quality result exists yet.
 - [ ] Run the calibrated quantized comparison on a human-reviewed corpus; no real-data quality result exists.
 
 ## Local candidate review workbench
@@ -271,4 +271,17 @@
 - [x] Restart PromptMesh in a persistent foreground session on port 4004; API health is HTTP 200 and the app reports MPS with bitsandbytes 0.50.0.
 - [x] Serve-check the updated UI script and inspect the live Fine-tune queue in Edge; no review decisions were saved.
 - [ ] Inspect the failure-analysis report at desktop and mobile sizes once a real reviewed benchmark is available; complete the full screen-reader/axe audit.
-- [ ] Add the remaining effective trainer/LoRA settings to saved training manifests for more self-contained reproduction.
+- [x] Add the remaining effective trainer/LoRA settings to saved training manifests for more self-contained reproduction.
+
+## LoRA manifest reproducibility — 2026-10-29
+
+- [x] Snapshot effective SFT trainer and PEFT LoRA settings, including optimizer, schedule, precision, batch sizes, accumulation, sequence length, rank, alpha, dropout, and target modules.
+- [x] Record float32 model loading, local-only weight access, and disabled remote code execution without storing an output path or credentials.
+- [x] Make bf16/fp16 false explicit for the float32 training path; test the installed TRL config constructor without loading model weights.
+- [x] Bump the adapter manifest contract to schema v5 and require the complete saved configuration for frozen-benchmark eligibility; schema-v4 adapters remain available for inference.
+- [x] Show the full configuration in training results and saved-adapter details; label older runs whose settings were not recorded.
+- [x] Embed the adapter settings in frozen reports and include their digest in the benchmark configuration fingerprint; bump the frozen report schema to v10.
+- [x] Full Python suite (103) and Node UI suite (21) pass; Python compilation, JavaScript/shell syntax, and `git diff --check` pass.
+- [x] Inspect the updated Fine-tune page in Edge at 1185px: no overflow or console errors; existing adapters are clearly labeled as legacy.
+- [ ] Inspect the configuration disclosure on a schema-v5 adapter at mobile width; no schema-v5 run exists yet and Edge's viewport override did not apply.
+- [ ] Human-review the 423-row public-source packet and reuse terms before creating a real training dataset or benchmark.

@@ -231,7 +231,7 @@ source title and review guidance politely to assistive technology.
 
 A defensible current résumé line is:
 
-> Built a local LLM evaluation and adaptation workspace with source-grouped splits, validation-only prompt selection, Qwen3-0.6B LoRA/SFT, frozen-test benchmarking controls, runtime provenance, and post-training INT8/NF4 plus optional W8A8 inference paths.
+> Built a local LLM evaluation and adaptation workspace with source-grouped splits, validation-only prompt selection, Qwen3-0.6B LoRA/SFT, reproducible trainer/adapter manifests, per-year failure analysis, frozen-test benchmark controls, and post-training INT8/NF4 plus optional W8A8 inference paths.
 
 Pair it with this evidence qualifier until the real corpus is reviewed:
 
@@ -463,11 +463,17 @@ checks the card fields and exact data fingerprint; this local self-attestation
 cannot independently prove that a human reviewed the labels. The UI states this
 limit beside readiness and selection controls.
 
-Schema-v4 adapter manifests, schema-v2 validation prompt-selection records,
-and schema-v5 frozen benchmark reports record the Python, platform, machine,
+Schema-v5 adapter manifests, schema-v2 validation prompt-selection records,
+and schema-v10 frozen benchmark reports record the Python, platform, machine,
 device, and installed versions of the training and inference packages, plus
 the PromptMesh Git revision and whether its working tree was dirty when each
-stage finished. Both source fields are `null` when Git metadata is unavailable.
+stage finished. Adapter manifests also snapshot the effective TRL SFT settings,
+PEFT LoRA settings, and float32 local-only model-loading configuration. Older
+schema-v4 adapters remain loadable for inference, but cannot be selected for a
+new frozen benchmark because their full training configuration was not saved.
+Frozen reports carry the adapter configuration and include its digest in the
+configuration fingerprint.
+Both source fields are `null` when Git metadata is unavailable.
 The Fine-tune page surfaces the training, selection, and benchmark environments
 separately and labels legacy runs when their environment was not recorded. This
 is run provenance, and the local training stack has an exact macOS ARM64 snapshot in

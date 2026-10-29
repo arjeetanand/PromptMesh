@@ -58,12 +58,12 @@ Tasks and checkpoints are tracked in the repository's existing `CHECKLIST.md`.
 
 ## Current verified gaps
 
-- `training/runner.py` trains LoRA on train rows and scores the base/adapter on validation only; schema-v4 manifests fingerprint the adapter artifact and record validation provenance. Prompt selection and the frozen matched benchmark are implemented in `training/benchmark.py` and exposed in the Fine-tune UI. Frozen report schema v9 adds aggregate failure counts without storing text or generations.
+- `training/runner.py` trains LoRA on train rows and scores the base/adapter on validation only; schema-v5 manifests record validation provenance plus effective SFT, LoRA, precision, and model-loading settings. Schema-v4 adapters remain available for inference but are not eligible for new frozen reports. Prompt selection and the frozen matched benchmark are implemented in `training/benchmark.py` and exposed in the Fine-tune UI. Frozen report schema v10 embeds and fingerprints the adapter training configuration alongside aggregate failure counts.
 - `optimization/evolver.py` still scores revisions on user-supplied optimization inputs with an LLM judge. It is not directly wired to the gold validation selector; users paste a candidate into the Fine-tune flow to score it.
 - The repository contains only the synthetic demo dataset. The tracked card template remains `unreviewed`; no user-authorized human-reviewed corpus or real model benchmark exists. The card is checked as a self-attestation and is not an independent review audit.
 - Training and final evaluation require the pinned Qwen snapshot in the local cache and load it with `local_files_only=True`; these paths do not fetch model weights.
 - The host-context `.venv` probe and live API both report MPS; the default command sandbox reports MPS unavailable because it lacks host device access. bitsandbytes 0.50.0 is available and was exercised with synthetic smoke inputs; Quanto is not installed. No real-data quantized comparison exists.
-- The schema-v4 LoRA manifest still omits some effective trainer settings (including LoRA alpha/dropout/targets, batch sizes, sequence length, optimizer, and gradient accumulation); add these before claiming fully self-contained training reproducibility.
+- Run manifests now capture the effective trainer and LoRA settings and the Fine-tune UI surfaces them. A clean-environment installation of the pinned local training lock is still unverified.
 
 ## Risks and open questions
 

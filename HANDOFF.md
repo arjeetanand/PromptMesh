@@ -541,3 +541,15 @@
 - Remaining: human-review labels, wording, and reuse terms; run the matched real-data prompt/LoRA/quantized comparison only after that gate; test the failure table at mobile widths and complete the full screen-reader/axe audit. Saved LoRA manifests still need the effective trainer/adapter settings added for more self-contained reproduction.
 - Next: keep the 423-row packet review-only until human review is completed, then export a matching benchmark/card and run the validation-selected, frozen matched study.
 - Delivery: implementation commit `6cfc68d` is on `codex/promptmesh-validation-selection`, the branch for existing PR #2 targeting `main`; no merge.
+
+## LoRA manifest reproducibility — 2026-10-29
+
+- Added schema-v5 `training_configuration` snapshots from the constructed TRL `SFTConfig` and PEFT `LoraConfig`, including precision, optimizer/schedule, batch and accumulation settings, sequence length, LoRA rank/alpha/dropout/targets, plus float32 local-only base-model loading.
+- Made bf16 and fp16 explicitly false on the float32 training path. The installed `SFTConfig` raised a BF16/GPU compatibility error with its current defaults; the regression now constructs the pinned config and verifies the saved settings without loading model weights.
+- Frozen benchmark eligibility now requires a complete schema-v5 configuration. Older schema-v4 adapters remain available for ordinary inference, but cannot be selected for a new final benchmark.
+- Added an accessible expandable configuration disclosure to training results and saved-adapter rows. Legacy adapters say their effective settings were not recorded.
+- Frozen report schema v10 embeds the adapter configuration, includes its digest in the report configuration fingerprint, and renders the same settings disclosure in benchmark results.
+- Verification: 103 Python tests and 21 UI tests passed; Python compilation, JavaScript syntax, launcher syntax, and `git diff --check` passed.
+- Browser: the fresh Edge Fine-tune page at 1185px has no document overflow or console errors. The locally saved adapters are legacy and correctly show the missing-settings note. The new disclosure is covered by the UI fixture; no schema-v5 adapter exists for live result rendering. Edge's 390px viewport override still leaves the page at 1185px.
+- No model was loaded or trained in this change. Human review of candidate labels and reuse terms, a real schema-v5 run, a clean-lock installation, and real matched benchmark/quantization measurements remain open.
+- Next: review and rights-clear the public-source packet, then train a schema-v5 adapter on the reviewed split and run the validation-selected, frozen matched study.

@@ -426,6 +426,17 @@ input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent);
 .adapter-row strong { font-size: 12px; font-weight: 500; }
 .adapter-row span { overflow: hidden; color: var(--muted); font-family: var(--mono); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .adapter-row .button { flex: 0 0 auto; min-height: 31px; padding: 0 10px; font-size: 11px; }
+.training-configuration-result { padding: 0 20px 15px; }
+.training-configuration { min-width: 0; color: var(--muted); font-size: 11px; }
+.training-configuration summary { color: var(--accent-strong); cursor: pointer; font-size: 11px; }
+.training-configuration-sections { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; padding-top: 10px; }
+.training-configuration-sections section { min-width: 0; }
+.training-configuration-sections h4 { margin: 0 0 6px; color: var(--text); font-size: 10px; font-weight: 600; }
+.training-configuration-sections dl { display: grid; gap: 4px; margin: 0; }
+.training-configuration-sections dl > div { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.2fr); gap: 6px; }
+.training-configuration-sections dt { min-width: 0; color: var(--muted); }
+.training-configuration-sections dd { min-width: 0; margin: 0; color: var(--text); font-family: var(--mono); overflow-wrap: anywhere; }
+.training-configuration-missing { margin: 3px 0; color: var(--muted); font-size: 10px; }
 .evolution-timeline { display: grid; }
 .evolution-item { display: grid; grid-template-columns: 74px 1fr auto; gap: 14px; padding: 15px 20px; border-top: 1px solid var(--rule-soft); }
 .evolution-item > span { color: var(--muted); font-size: 11px; }
@@ -559,6 +570,8 @@ input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent);
   .training-metrics { grid-template-columns: minmax(0,1fr); padding: 0 15px 15px; }
   .training-loss-panel { grid-template-columns: minmax(0,1fr); gap: 12px; padding: 15px; }
   .adapter-row { align-items: flex-start; padding: 11px 15px; }
+  .training-configuration-result { padding: 0 15px 15px; }
+  .training-configuration-sections { grid-template-columns: minmax(0,1fr); gap: 10px; }
   .data-table { min-width: 680px; }
   .evolution-item { grid-template-columns: 58px 1fr auto; gap: 8px; padding: 13px 14px; }
   .history-row { grid-template-columns: minmax(100px,1fr) auto; gap: 5px 12px; padding: 10px 14px; }
