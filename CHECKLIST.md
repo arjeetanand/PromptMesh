@@ -231,8 +231,9 @@
 - [x] Keep the 12-groups-per-year pilot and maximize distinct normalized HTTPS hosts before repeating hosts; use deterministic seed-42 SHA-256 ranking.
 - [x] Record every eligible candidate group ID, reviewed year, normalized host, and source URL plus selected groups in schema-v3 cards; keep schema-v2 year-only cards loadable.
 - [x] Add export/UI regressions for host maximization, deterministic ordering, balanced repeat fill, source URL validation, candidate provenance, and legacy card loading.
-- [x] Verify the live 4004 browser shows the host-diverse explanation, API connected, and 423 rows / 141 groups / 0 reviewed / 0 eligible without saving review data. At the compact browser size actually available (487 CSS px), the document has no horizontal overflow and export fields use one column; the viewport was restored afterward.
-- [ ] Verify at an exact 390 CSS px viewport. The browser's 390px override returned a 487px viewport, so this breakpoint was not confirmed at the requested width.
+- [x] Verify the live 4004 browser shows the host-diverse explanation, API connected, and 423 rows / 141 groups / 0 reviewed / 0 eligible without saving review data.
+- [x] Measure actual 320, 390, 767, and 1440 CSS px layouts: document width matches the viewport, review cards have no internal overflow, and export fields switch to one column on mobile; restore the browser viewport afterward.
+- [x] At 390 CSS px, inspect the rendered review workbench: all 55 visible controls have names, there are no duplicate IDs or visible images without alt text, 11 live regions are present, and browser console errors are empty. This is a targeted DOM audit; full screen-reader and axe checks remain open.
 - [ ] Review labels, variants, and reuse rights; inspect the real selected host distribution before training or quality claims. Current projection uses unreviewed proposed labels only.
 
 ## Keyboard skip navigation — 2026-10-29
