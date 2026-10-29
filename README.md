@@ -138,8 +138,14 @@ where applicable, latency, generated-token rate, and model footprint beside
 the full-precision LoRA control. Model footprint is not peak device memory.
 New reports synchronize MPS/CUDA around timed
 generation and count the generated token IDs directly; CPU timing uses its
-synchronous execution. The report records this method, but each arm still gets
-one cold pass, so these numbers are not a throughput benchmark.
+synchronous execution. Each freshly loaded model records one cold first request
+on the first frozen test input, then one complete scored pass records per-request
+warm latency. Reports show the cold request, median warm p50, nearest-rank p90,
+and warm request count. The first input is generated twice, while only the
+scored pass contributes task metrics. This is one scored pass, not repeated-run
+throughput. Human-reviewed
+benchmark data and a real quantized report are still required before making
+quality or speed claims.
 Frozen reports also include paired source-group bootstrap 95% intervals for
 record exact-match differences: selected prompt vs. initial prompt, LoRA vs.
 the validation-selected base prompt, and each quantized variant vs. full-

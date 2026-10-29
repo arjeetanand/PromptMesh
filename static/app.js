@@ -1472,7 +1472,7 @@ function displayFrozenBenchmark(report, created = true) {
     const note = calibrationNote + " Adapter training: " + quantized.adapter_training_method + " Backends: " + backendVersions + ". Model footprint is not peak device memory.";
     $("frozenBenchmarkMetrics").innerHTML = metricCards
       + timingNote
-      + "<div class=\"quantization-report-heading\"><h4>Quantized adapter inference</h4><p>Matched test quality and single-run resource measurements. " + escapeHTML(note) + "</p></div>"
+      + "<div class=\"quantization-report-heading\"><h4>Quantized adapter inference</h4><p>Matched test quality with cold first-request and warm latency measurements. " + escapeHTML(note) + "</p></div>"
       + control + variants;
   } else {
     $("frozenBenchmarkMetrics").innerHTML = timingNote + metricCards;
@@ -1543,6 +1543,8 @@ function quantizationMetricCard(label, metrics = {}, performance = {}) {
     : "—";
   const seconds = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) + " s" : "—";
   const rate = Number.isFinite(Number(performance.tokens_per_second)) ? Number(performance.tokens_per_second).toFixed(2) + " tok/s" : "—";
+  const latency = (label, value) => "<div><small>" + label + "</small><strong>"
+    + (value != null && Number.isFinite(Number(value)) ? seconds(value) : "—") + "</strong></div>";
   const calibration = Number.isFinite(performance.calibration_seconds)
     ? "<div><small>Calibration</small><strong>" + seconds(performance.calibration_seconds) + "</strong></div>"
     : "";
@@ -1557,6 +1559,10 @@ function quantizationMetricCard(label, metrics = {}, performance = {}) {
     + pairedDeltaMarkup(metrics)
     + "<div><small>Load</small><strong>" + seconds(performance.load_seconds) + "</strong></div>"
     + "<div><small>Inference</small><strong>" + seconds(performance.inference_seconds) + "</strong></div>"
+    + latency("Cold first request", performance.cold_first_request_seconds)
+    + latency("Warm request p50", performance.warm_request_latency_p50_seconds)
+    + latency("Warm request p90", performance.warm_request_latency_p90_seconds)
+    + "<div><small>Warm requests</small><strong>" + (Number.isInteger(performance.warm_request_count) ? "n=" + performance.warm_request_count : "—") + "</strong></div>"
     + calibration
     + quantization
     + "<div><small>Generation</small><strong>" + rate + "</strong></div>"

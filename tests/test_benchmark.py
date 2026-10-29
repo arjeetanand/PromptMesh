@@ -262,14 +262,21 @@ class FrozenBenchmarkTests(unittest.TestCase):
             return ["prediction"], [7]
 
         with patch.object(benchmark, "_generate", side_effect=generate), \
-             patch.object(benchmark.time, "perf_counter", side_effect=[10.0, 12.0]):
-            result = benchmark._measure_generation("model", "tokenizer", "prompt", [], fake_torch, "mps")
+             patch.object(benchmark.time, "perf_counter", side_effect=[10.0, 12.0, 20.0, 20.0, 23.0, 24.0]):
+            result = benchmark._measure_generation(
+                "model", "tokenizer", "prompt", [{"input": "example"}], fake_torch, "mps"
+            )
 
-        self.assertEqual(result, (["prediction"], [7], 2.0))
-        self.assertEqual(events, ["mps", "generate", "mps"])
+        self.assertEqual(result, (
+            ["prediction"], [7], 4.0,
+            {"cold_first_request_seconds": 2.0, "warm_request_latencies_seconds": [3.0]},
+        ))
+        self.assertEqual(events, ["mps", "generate", "mps", "mps", "mps", "generate", "mps", "mps"])
+        self.assertEqual(benchmark._latency_percentile([0.2, 0.5, 1.0, 2.0], 0.50), 0.75)
+        self.assertEqual(benchmark._latency_percentile([0.2, 0.5, 1.0, 2.0], 0.90), 2.0)
         benchmark._synchronize_device(fake_torch, "cuda")
         benchmark._synchronize_device(fake_torch, "cpu")
-        self.assertEqual(events, ["mps", "generate", "mps", "cuda"])
+        self.assertEqual(events[-1], "cuda")
 
     def test_frozen_report_compares_matched_arms_and_cannot_be_reused_for_a_sweep(self):
         selection_id, _ = self._select_prompt()
@@ -292,7 +299,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
-            self.assertEqual(report["schema_version"], 6)
+            self.assertEqual(report["schema_version"], 7)
             self.assertEqual(report["metrics_split"], "test")
             self.assertEqual(report["split_strategy"], "group-year-stratified-v1")
             self.assertFalse(report["test_split_used_for_selection"])
@@ -300,6 +307,8 @@ class FrozenBenchmarkTests(unittest.TestCase):
             self.assertEqual(report["metrics"]["base_validation_selected_prompt"]["record_exact_match"], 1.0)
             self.assertEqual(report["metrics"]["lora_validation_selected_prompt"]["record_exact_match"], 1.0)
             self.assertEqual(report["performance"]["lora_full_precision"]["generated_tokens"], 60)
+            self.assertEqual(report["performance"]["lora_full_precision"]["warm_request_count"], 30)
+            self.assertIsNotNone(report["performance"]["lora_full_precision"]["cold_first_request_seconds"])
             self.assertIn("Synchronized wall-clock generation", report["performance"]["timing_method"])
             year_slice = report["metrics"]["lora_validation_selected_prompt"]["by_gold_year"]["2024"]
             self.assertEqual(year_slice["examples"], 30)
@@ -408,7 +417,12 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertIn("torch", report["environment"]["packages"])
         self.assertEqual(loader_calls, ["bnb_nf4", "quanto_int8_w8a8", None, None, "bnb_nf4", "quanto_int8_w8a8"])
         self.assertEqual(generated_inputs[0], (8, [None]))
-        self.assertEqual(generated_inputs[-1][1], generated_inputs[-2][1])
+        quantized_arm_size = len(benchmark.split_dataset(self.rows)["test"]) + 1
+        first_quantized_arm = generated_inputs[-(2 * quantized_arm_size):-quantized_arm_size]
+        second_quantized_arm = generated_inputs[-quantized_arm_size:]
+        frozen_test_groups = [row["group_id"] for row in benchmark.split_dataset(self.rows)["test"]]
+        self.assertEqual([entry[1][0] for entry in first_quantized_arm][1:], frozen_test_groups)
+        self.assertEqual([entry[1][0] for entry in first_quantized_arm], [entry[1][0] for entry in second_quantized_arm])
         self.assertEqual(report["metrics_split"], "test")
         self.assertTrue(report["quantized_inference"]["calibration_required"])
         self.assertFalse(variant["calibration_required"])
@@ -428,6 +442,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             "dataset_sha256": report["dataset_sha256"],
             "benchmark_card_sha256": report["benchmark_card_sha256"],
             "test_holdout_identity_sha256": report["test_holdout_identity"]["sha256"],
+            "performance_protocol": benchmark.BENCHMARK_TIMING_PROTOCOL,
             "quantization_methods": ["bnb_nf4", "quanto_int8_w8a8"],
             "calibration": {
                 "method": "quanto-w8a8-v1",
@@ -443,6 +458,8 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertEqual(calibration_calls[0], calibration_calls[1])
         self.assertEqual(variant["model_footprint_bytes"], 123456)
         self.assertEqual(variant["generated_tokens"], 60)
+        self.assertEqual(variant["warm_request_count"], 30)
+        self.assertIsNotNone(variant["cold_first_request_seconds"])
         self.assertEqual(variant["metrics"]["record_exact_match"], 1.0)
         self.assertEqual(variant["metrics"]["by_gold_year"]["2024"]["source_groups"], 30)
         quantized_delta = variant["metrics"]["paired_record_exact_match_delta_95ci"]

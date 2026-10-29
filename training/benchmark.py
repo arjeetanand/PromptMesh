@@ -2,10 +2,12 @@ import gc
 import hashlib
 import json
 import logging
+import math
 import os
 import platform
 import random
 import re
+import statistics
 import time
 import uuid
 from datetime import datetime, timezone
@@ -41,6 +43,13 @@ SELECTIONS_DIR = Path(__file__).parent / "selections"
 BENCHMARKS_DIR = DEFAULT_BENCHMARKS_DIR
 MAX_PROMPT_CANDIDATES = 3
 SELECTION_ID_RE = re.compile(r"^[a-f0-9]{32}$")
+BENCHMARK_TIMING_PROTOCOL = {
+    "version": "cold-first-request-warm-scored-pass-v1",
+    "cold_first_request": "Fresh model load: one request on the first frozen test input before its scored pass; output is discarded. Reused model arms do not repeat this measurement.",
+    "warm_scored_pass": "One sequential pass over every frozen test input; record synchronized per-request wall time.",
+    "percentiles": "Median p50 and nearest-rank p90 across the scored test requests.",
+    "generation": "Greedy decoding with max_new_tokens=128; MPS/CUDA synchronized around each request; CPU is synchronous.",
+}
 logger = logging.getLogger(__name__)
 
 
@@ -204,21 +213,67 @@ def _synchronize_device(torch, device):
         torch.cuda.synchronize()
 
 
-def _measure_generation(model, tokenizer, prompt, rows, torch, device):
+def _measure_generation(model, tokenizer, prompt, rows, torch, device, *, measure_cold_first_request=True):
+    cold_first_request_seconds = None
+    if rows and measure_cold_first_request:
+        _synchronize_device(torch, device)
+        started = time.perf_counter()
+        _generate(model, tokenizer, prompt, rows[:1], return_token_counts=True)
+        _synchronize_device(torch, device)
+        cold_first_request_seconds = time.perf_counter() - started
+
+    predictions = []
+    token_counts = []
+    request_latencies = []
     _synchronize_device(torch, device)
-    started = time.perf_counter()
-    predictions, token_counts = _generate(model, tokenizer, prompt, rows, return_token_counts=True)
+    pass_started = time.perf_counter()
+    for row in rows:
+        _synchronize_device(torch, device)
+        request_started = time.perf_counter()
+        row_predictions, row_token_counts = _generate(
+            model, tokenizer, prompt, [row], return_token_counts=True
+        )
+        _synchronize_device(torch, device)
+        request_latencies.append(time.perf_counter() - request_started)
+        predictions.extend(row_predictions)
+        token_counts.extend(row_token_counts)
     _synchronize_device(torch, device)
-    return predictions, token_counts, time.perf_counter() - started
+    elapsed_seconds = time.perf_counter() - pass_started
+    return predictions, token_counts, elapsed_seconds, {
+        "cold_first_request_seconds": cold_first_request_seconds,
+        "warm_request_latencies_seconds": request_latencies,
+    }
 
 
-def _generation_performance(token_counts, elapsed_seconds):
+def _latency_percentile(values, percentile):
+    if not values:
+        return None
+    ordered = sorted(values)
+    if percentile == 0.50:
+        return round(statistics.median(ordered), 4)
+    rank = max(1, math.ceil(len(ordered) * percentile))
+    return round(ordered[rank - 1], 4)
+
+
+def _generation_performance(token_counts, elapsed_seconds, request_timing=None):
     generated_tokens = sum(token_counts)
-    return {
+    performance = {
         "inference_seconds": round(elapsed_seconds, 4),
         "generated_tokens": generated_tokens,
         "tokens_per_second": round(generated_tokens / elapsed_seconds, 3) if elapsed_seconds > 0 else None,
     }
+    if request_timing:
+        cold_first_request = request_timing.get("cold_first_request_seconds")
+        request_latencies = request_timing.get("warm_request_latencies_seconds", [])
+        performance.update({
+            "cold_first_request_seconds": (
+                round(cold_first_request, 4) if cold_first_request is not None else None
+            ),
+            "warm_request_latency_p50_seconds": _latency_percentile(request_latencies, 0.50),
+            "warm_request_latency_p90_seconds": _latency_percentile(request_latencies, 0.90),
+            "warm_request_count": len(request_latencies),
+        })
+    return performance
 
 
 def _clear_device_cache(torch, device):
@@ -582,6 +637,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             "dataset_sha256": dataset_digest,
             "benchmark_card_sha256": card_status["card_sha256"],
             "test_holdout_identity_sha256": holdout_identity["sha256"],
+            "performance_protocol": BENCHMARK_TIMING_PROTOCOL,
         }
         if quantization_methods:
             configuration["quantization_methods"] = quantization_methods
@@ -655,19 +711,30 @@ def run_frozen_benchmark(job_id, request, jobs):
             selection["dataset_id"], dataset_digest, configuration_digest, request.selection_id, holdout_identity
         )
         jobs.update(job_id, {"progress": 15, "stage": "scoring_frozen_test"})
-        baseline_predictions, _, baseline_seconds = _measure_generation(
+        baseline_predictions, baseline_token_counts, baseline_seconds, baseline_timing = _measure_generation(
             base_model, tokenizer, baseline_prompt, test_rows, torch, device
         )
+        baseline_performance = {
+            "load_seconds": round(base_load_seconds, 4),
+            **_generation_performance(baseline_token_counts, baseline_seconds, baseline_timing),
+            "model_footprint_bytes": _model_footprint_bytes(base_model),
+        }
         baseline_metrics = score_predictions(test_rows, baseline_predictions)
         baseline_metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, baseline_predictions)
         if selection["selected_prompt_sha256"] == _prompt_sha256(baseline_prompt):
             selected_predictions = baseline_predictions
             selected_metrics = baseline_metrics
             selected_seconds = baseline_seconds
+            selected_performance = baseline_performance
         else:
-            selected_predictions, _, selected_seconds = _measure_generation(
-                base_model, tokenizer, selected_prompt, test_rows, torch, device
+            selected_predictions, selected_token_counts, selected_seconds, selected_timing = _measure_generation(
+                base_model, tokenizer, selected_prompt, test_rows, torch, device, measure_cold_first_request=False
             )
+            selected_performance = {
+                "load_seconds": round(base_load_seconds, 4),
+                **_generation_performance(selected_token_counts, selected_seconds, selected_timing),
+                "model_footprint_bytes": baseline_performance["model_footprint_bytes"],
+            }
             selected_metrics = score_predictions(test_rows, selected_predictions)
             selected_metrics["by_gold_year"] = _metrics_by_gold_year(test_rows, selected_predictions)
         baseline_ci = _record_accuracy_ci(test_rows, baseline_predictions)
@@ -681,7 +748,7 @@ def run_frozen_benchmark(job_id, request, jobs):
         _synchronize_device(torch, device)
         adapter_load_seconds = time.perf_counter() - adapter_load_started
         adapter_footprint = _model_footprint_bytes(adapted_model)
-        adapter_predictions, adapter_token_counts, adapter_inference_seconds = _measure_generation(
+        adapter_predictions, adapter_token_counts, adapter_inference_seconds, adapter_timing = _measure_generation(
             adapted_model, adapter_tokenizer, selected_prompt, test_rows, torch, device
         )
         adapter_metrics = score_predictions(test_rows, adapter_predictions)
@@ -703,7 +770,7 @@ def run_frozen_benchmark(job_id, request, jobs):
         )
         adapter_performance = {
             "load_seconds": round(adapter_load_seconds, 4),
-            **_generation_performance(adapter_token_counts, adapter_inference_seconds),
+            **_generation_performance(adapter_token_counts, adapter_inference_seconds, adapter_timing),
             "model_footprint_bytes": adapter_footprint,
         }
         del adapted_model
@@ -727,7 +794,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             _synchronize_device(quantized_torch, quantized_device)
             quantized_load_seconds = time.perf_counter() - quantized_load_started
             model_footprint = _model_footprint_bytes(quantized_model)
-            predictions, token_counts, inference_seconds = _measure_generation(
+            predictions, token_counts, inference_seconds, request_timing = _measure_generation(
                 quantized_model, quantized_tokenizer, selected_prompt, test_rows, quantized_torch, quantized_device
             )
             metrics = score_predictions(test_rows, predictions)
@@ -767,7 +834,7 @@ def run_frozen_benchmark(job_id, request, jobs):
                     if "quantization_seconds" in quantization_metadata else None
                 ),
                 "load_seconds": round(quantized_load_seconds, 4),
-                **_generation_performance(token_counts, inference_seconds),
+                **_generation_performance(token_counts, inference_seconds, request_timing),
                 "model_footprint_bytes": model_footprint,
                 "metrics": metrics,
             })
@@ -775,7 +842,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             _clear_device_cache(quantized_torch, quantized_device)
 
         report = {
-            "schema_version": 6,
+            "schema_version": 7,
             "status": "completed",
             "dataset_id": selection["dataset_id"],
             "dataset_sha256": dataset_digest,
@@ -805,13 +872,16 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "unique_inputs": holdout_identity["unique_inputs"],
             },
             "inference": {"max_new_tokens": 128, "do_sample": False, "temperature": None},
+            "performance_protocol": BENCHMARK_TIMING_PROTOCOL,
             "performance": {
                 "base_full_precision_load_seconds": round(base_load_seconds, 4),
                 "base_initial_prompt_inference_seconds": round(baseline_seconds, 4),
                 "base_selected_prompt_inference_seconds": round(selected_seconds, 4),
+                "base_initial_prompt": baseline_performance,
+                "base_validation_selected_prompt": selected_performance,
                 "lora_full_precision": adapter_performance,
-                "timing_method": "Synchronized wall-clock generation on MPS/CUDA; CPU generation is synchronous. Counts are generated token IDs. One cold pass per arm, not a throughput benchmark.",
-                "memory_note": "Model footprint is not peak device memory; cold single-run timings are not a throughput benchmark.",
+                "timing_method": "Synchronized wall-clock generation on MPS/CUDA; CPU generation is synchronous. Each freshly loaded model records one cold first request, then one full sequential scored pass with per-request latency. Warm p50/p90 use the scored test requests; total inference time covers one scored pass and is not a throughput benchmark. Counts are generated token IDs.",
+                "memory_note": "Model footprint is not peak device memory. Warm latency percentiles come from one scored pass and are not repeated-run throughput measurements.",
             },
             "hardware": {
                 "device": device,

@@ -263,7 +263,7 @@ for (const [type, label] of [
   });
 }
 
-test("quantized benchmark cards show task metrics, resource measurements, and the calibration caveat", () => {
+test("quantized benchmark cards show task metrics, cold/warm latency, and the calibration caveat", () => {
   const { context, elements } = loadApp();
   const report = {
     dataset_sha256: "a".repeat(64),
@@ -303,7 +303,11 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
       }
     },
     performance: {
-      lora_full_precision: { load_seconds: 2, inference_seconds: 3, tokens_per_second: 12, model_footprint_bytes: 800000000 },
+      lora_full_precision: {
+        load_seconds: 2, inference_seconds: 3, tokens_per_second: 12, model_footprint_bytes: 800000000,
+        cold_first_request_seconds: 2.5, warm_request_latency_p50_seconds: 0.3,
+        warm_request_latency_p90_seconds: 0.8, warm_request_count: 30
+      },
       timing_method: "Synchronized wall-clock generation on MPS/CUDA; CPU generation is synchronous.",
     },
     environment: { device: "mps", python_version: "3.12.1", platform: "macOS-test", machine: "arm64", packages: { torch: "2.14.1", transformers: "5.1.0", bitsandbytes: "0.50.0" } },
@@ -322,7 +326,9 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
           paired_record_exact_match_delta_95ci: {
             reference: "Full-precision LoRA control", estimate: -0.1, lower: -0.3, upper: 0.1
           } },
-        load_seconds: 1, inference_seconds: 4, tokens_per_second: 8, model_footprint_bytes: 400000000
+        load_seconds: 1, inference_seconds: 4, tokens_per_second: 8, model_footprint_bytes: 400000000,
+        cold_first_request_seconds: 3.5, warm_request_latency_p50_seconds: 0.4,
+        warm_request_latency_p90_seconds: 0.9, warm_request_count: 30
       }]
     }
   };
@@ -335,6 +341,14 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
   assert.match(html, /Calibration: not required/);
   assert.match(html, /not QLoRA training/);
   assert.match(html, /Timing: Synchronized wall-clock generation on MPS\/CUDA/);
+  assert.match(html, /Matched test quality with cold first-request and warm latency measurements/);
+  assert.match(html, /Cold first request/);
+  assert.match(html, /Warm request p50/);
+  assert.match(html, /Warm request p90/);
+  assert.match(html, /n=30/);
+  assert.match(html, /3\.50 s/);
+  assert.match(html, /0\.40 s/);
+  assert.match(html, /0\.90 s/);
   assert.match(html, /Paired source-group exact-match Δ vs Base · validation-selected prompt/);
   assert.match(html, /\+30\.0 pp \(\+10\.0 pp to \+50\.0 pp\)/);
   assert.match(html, /Paired source-group exact-match Δ vs Full-precision LoRA control/);
