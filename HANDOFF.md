@@ -611,3 +611,13 @@
 - The app is running on the main local port 4004. Run it with `./run.sh`; the launcher uses `/tmp/promptmesh-<uid>` for managed PID/log state. No action touched the occupied 5004/6004 instances.
 - No human review, permission decision, dataset export, training, prompt selection, frozen benchmark, quantized comparison, screen-reader session, or axe scan was performed. The terms page is reference material only; human label and rights review remain required.
 - Implementation commit: `d6f3a02` is pushed to `origin/codex/promptmesh-validation-selection`, updating PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2) targeting `main`. The PR was open and mergeable when checked; GitGuardian passed. No merge.
+
+## Frozen benchmark runtime fingerprint — 2026-10-29
+
+- Frozen report schema v11 now binds the inference environment and device/processor identity into the configuration fingerprint before cache lookup. Quantized runs also bind selected backend versions and effective method settings, and the report uses those same settings. bitsandbytes INT8 now correctly reports that compute dtype is not applicable.
+- Regression coverage confirms identical configuration reuses a report, while changed runtime packages, processor identity, or backend version are rejected before model loading or test inference.
+- Verification: all 108 Python tests passed in the approved disposable environment; all 22 Node UI tests passed; Python compilation, `bash -n run.sh`, and `git diff --check` passed.
+- Delivery: implementation commit `d2ca77e` is pushed to `codex/promptmesh-validation-selection`, the branch for existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2) targeting `main`. A post-push GitHub API refresh failed with `error connecting to api.github.com`; the PR was previously verified open against `main`. No merge.
+- Launch command: `./run.sh` serves the app on `http://127.0.0.1:4004` (test/preview suffixes remain 5004/6004). The restart attempt found port 4004 occupied by PID 61475 and stopped without killing it because ownership could not be established. The running process was not restarted or browser-verified for this code revision.
+- Remaining: the 423-row public-source packet still requires human source/label/reuse review; there is no real-data benchmark or quantized quality result. Do not present synthetic smoke metrics as model-quality evidence.
+- Next: confirm ownership of the port-4004 listener, restart the app with `./run.sh`, then continue only after the review packet has been human-reviewed and reuse permissions confirmed.
