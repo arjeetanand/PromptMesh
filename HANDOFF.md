@@ -653,3 +653,10 @@
 - Accessibility changes are committed locally as `d1800e7` on `codex/promptmesh-validation-selection`. The push to update the existing PR targeting `main` timed out while connecting to GitHub; the commit is safe locally, but the PR's current head and checks are unverified. No merge occurred.
 - The user-approved disposable venv `/private/tmp/promptmesh-fresh-setup-20261029` was created, but PyPI connections timed out before the first dependency installed (`fastapi` is absent). No package was added to the project `.venv`; the earlier successful fresh-install verification remains recorded above.
 - Next: retry the push and, if a repeat install is still needed, the package resolution after outbound access recovers. Human review of labels and reuse terms remains the data gate before real model-quality or quantization claims.
+
+## Live browser and delivery recheck — 2026-10-29
+
+- The working tree was clean at `8013acb` on `codex/promptmesh-validation-selection`; the two local commits after the last known remote-tracking ref (`c511fa6`) are not confirmed on GitHub.
+- Reopened the current Fine-tune page at `http://127.0.0.1:4004/#finetune` in a persistent local session. It reports API connected and shows the unchanged review packet: 423 candidates, 141 source groups, 0 labels reviewed, and 0 export-eligible groups. The 48-row synthetic dataset and saved demo adapters are clearly marked workflow-only. No review or training action was submitted.
+- Retried the user-authorized push; GitHub port 443 timed out after about 75 seconds. The Code Review GitHub connection was also unavailable, so PR #2's current head, base, and checks could not be refreshed. It was previously verified to target `main`; no merge occurred.
+- Remaining: update PR #2 when GitHub connectivity returns; complete human source, label, and reuse review; run the real matched benchmark and quantized comparison; finish screen-reader and axe audits.
