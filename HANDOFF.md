@@ -480,3 +480,13 @@
 - Delivery: implementation commit `6c2753d` and handoff commit `0301ae0` are pushed on `codex/promptmesh-validation-selection`. Existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2) was verified OPEN against `main`; no merge occurred.
 - Run instructions: `./run.sh` serves the local app on port 4004. The app is currently available at `http://127.0.0.1:4004/#finetune`.
 - Next action: review the draft variants and source-reuse terms in the local workbench, then train and run the frozen benchmark only on reviewed, permission-cleared data.
+
+## Backend-aware device memory reporting — 2026-10-29
+
+- Frozen benchmark schema 8 fingerprints the memory measurement protocol. CUDA runs reset PyTorch allocator peak counters after model load and report peak allocated/reserved bytes. Allocations made outside the PyTorch allocator may be missing. MPS runs record Metal-driver allocated bytes before and after inference, including cached allocations; these are snapshots, not peaks. CPU runs show device memory as unavailable. Model footprint remains separate.
+- Quantized and full-precision result cards distinguish CUDA peaks, MPS snapshots, unavailable values, and reports that predate memory metadata. The report note explains the MPS and CUDA limitations.
+- Verification: 89 Python tests and 18 Node UI tests passed; Python compilation, JavaScript syntax, launcher syntax, and `git diff --check` passed. CUDA and MPS memory APIs were exercised with deterministic mocks; no model inference was run. The default `.venv` reports CPU only; the live Fine-tune page reports API connected and MPS for the host runtime.
+- Live browser check at `http://127.0.0.1:4004/#finetune`: 381 draft rows / 127 source groups / 0 reviewed, and the synthetic demo remains blocked from final benchmarking. There is no completed report to render; CUDA, MPS, and unavailable memory-card rendering is covered by the Node UI test.
+- Limitations remain: no human-reviewed benchmark, quantized quality comparison, or actual memory result exists. MPS cannot provide a peak through the exposed PyTorch API, and the CUDA allocator metric may exclude third-party allocations.
+- Delivery: implementation commit `8e6107e` is on `codex/promptmesh-validation-selection` for existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2), targeting `main`. No merge.
+- Next action: review labels and source reuse rights before the real training and frozen quantized comparison.
