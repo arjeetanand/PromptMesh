@@ -424,3 +424,12 @@
 - Current draft JSONL has the same 381 rows / 127 groups; the 246-row / 82-group JSONL is historical. No benchmark or prompt-selection report JSON was found under `training/`; the artifact-name search only matched the tracked benchmark-card template.
 - Next: restore the app from the desktop terminal after unlock, review source claims and reuse terms, select a balanced rights-cleared cohort, then export the card and run validation selection before a single frozen-test comparison.
 - Delivery: commits `431cf2c` and `4ed72d6` are pushed to `origin/codex/promptmesh-validation-selection`. PR #2 is currently open and targets `main` at head `4ed72d696e37db66f65008342312c629dbef5a33`; it remains unmerged.
+
+## Calibration fingerprint binding — 2026-10-29
+
+- Confirmed `organization` means the focal claim actor; the extraction prompt and annotation guide already follow that rule. The clarification did not change any candidate labels or review decisions.
+- The frozen Quanto W8A8 configuration hash now includes the SHA-256 of the exact deterministic, input-only calibration rows selected from the training split. The same rows feed the backend canary and inference arm; test examples and labels remain excluded from calibration.
+- Clarified that the two NF4 smoke observations were separate runs with different adapters: one returned parseable JSON, while the earlier run did not. Neither smoke establishes extraction quality.
+- Verification: 81 Python tests and 17 Node UI tests passed; `node --check static/app.js`, `bash -n run.sh`, and `git diff --check` passed. Existing `datetime.utcnow()` deprecation warnings remain. Quanto calibration was not run because Quanto and `ninja` are absent.
+- Implementation commit: `1abc362` (`Bind calibration inputs to benchmark configuration`) on `codex/promptmesh-validation-selection`, for existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2) targeting `main`. No merge occurred.
+- No model inference, data review, or browser session occurred. Port 4004 had no listener when checked; Quanto calibration remains unverified because Quanto and `ninja` are absent.
