@@ -55,13 +55,14 @@ For the current seed-42 split, one workable planning shape is 67 source groups
 with three distinct, label-consistent examples per group; that yields 30
 examples across 10 groups in each held-out split. Check the app's readiness
 report after annotation because counts depend on group membership.
-The local public-source review packet has 381 draft rows across 127 groups.
-Its current split policy yields 267 training rows and 57 rows across 19 groups
-in each held-out split. Each group has three controlled phrasings of one source
-claim; these are not independent facts. Proposed years are still imbalanced:
-65 groups are from 2024, 13 from 2021, 12 each from 2020, 2022, 2023, and 2025,
-and one is undated. The packet remains review-only and is not representative. Review
-each source, label, split, and reuse condition before using any examples.
+The local public-source review packet currently has 423 draft rows across 141
+source groups. Its current split policy projects to 297 training rows and 63
+rows across 21 groups in each held-out split. Each group has three controlled
+phrasings of one source claim; these are not independent facts. Proposed years
+remain imbalanced: 65 groups are from 2024, 16 from 2021, 14 from 2020, 15 each
+from 2022, 2023, and 2025, and one is undated. The packet remains review-only
+and is not representative. Review each source, label, split, and reuse condition
+before using any examples.
 
 After curation, the export form offers **All eligible groups** or an explicit
 **Year-balanced pilot · 12 per year**. The pilot requires at least 12 eligible
@@ -87,13 +88,15 @@ is:
 
 | Split | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Undated |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Train groups | 8 | 9 | 8 | 8 | 47 | 8 | 1 |
-| Validation groups | 2 | 2 | 2 | 2 | 9 | 2 | 0 |
-| Test groups | 2 | 2 | 2 | 2 | 9 | 2 | 0 |
+| Train groups | 10 | 10 | 11 | 11 | 45 | 11 | 1 |
+| Validation groups | 2 | 3 | 2 | 2 | 10 | 2 | 0 |
+| Test groups | 2 | 3 | 2 | 2 | 10 | 2 | 0 |
 
 This preview is structural only, not the eventual reviewed benchmark composition.
-Both held-out sets are dominated by 2024, and some year slices contain only one
-source group. Curate a more balanced cohort before making broad quality claims.
+2024 remains the largest single year slice, contributing 10 of 21 groups to
+each held-out set. The packet also remains imbalanced by organization, topic,
+source host, and writing style. Curate a more balanced cohort before making
+broad quality claims.
 Use **Fine-tune → Review source candidates** to review the local CSV by source
 group. Check each wording against its linked source, edit labels, and record
 reuse permission separately with evidence. The queue saves only to the ignored

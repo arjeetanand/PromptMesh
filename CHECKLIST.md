@@ -240,7 +240,7 @@
 - [x] Safely index older reservation/report artifacts only when their exact original dataset snapshot is still available; otherwise fail closed.
 - [x] Verify with 88 Python tests, 17 Node UI tests, Python/JavaScript/launcher syntax checks, and `git diff --check`.
 - [x] Restart the app on port 4004 and confirm the Fine-tune page is connected and discloses the exact-match limitation.
-- [ ] Human-review the 381-row / 127-group source packet and reuse terms before training or benchmark claims.
+- [ ] Human-review the 423-row / 141-group source packet and reuse terms before training or benchmark claims.
 
 ## Workspace navigation focus — 2026-10-29
 
@@ -248,3 +248,13 @@
 - [x] Add a UI regression for sidebar navigation, initial load, hash changes, and focusable page headings.
 - [x] Verify in the browser that selecting Overview focuses its `h1`; API remains connected on port 4004.
 - [ ] Complete a full screen-reader and axe audit.
+
+## Public-source candidate expansion — 2026-10-29
+
+- [x] Add 14 official-source candidate groups (42 paraphrase rows) across 2020, 2021, 2022, 2023, and 2025; keep all entries in the ignored review packet.
+- [x] Keep every proposed label in `NEEDS_HUMAN_REVIEW`, reviewed-label/note fields blank, and reuse permission unresolved.
+- [x] Regenerate the ignored JSONL mirror; verify 423 rows / 141 groups, three variants per group, consistent labels, visible proposed actor/year in every input, exact CSV/JSONL mirror order, and application parser acceptance.
+- [x] Recompute the seed-42 split with PromptMesh: 297/63/63 rows across 99/21/21 groups; update the dataset guide and review handoff with proposed-year counts and review caveats.
+- [x] Spot-check the 14 focal claims against their official primary pages and record actor/date ambiguities for human review.
+- [ ] Reload the Fine-tune review queue in a browser after the Mac is unlocked; current CUA reports the Mac is locked and its tab-control API is unavailable.
+- [ ] Human-review every source, label, and wording variant; confirm source-specific reuse rights before creating a benchmark dataset/card.
