@@ -195,3 +195,11 @@
 - [x] Record load/inference time, generated token count, and model footprint as one hardware smoke only; no dataset rows, test reservation, or benchmark artifact was used.
 - [x] Confirm `pip check` reports no broken requirements and that Quanto/`ninja` remain absent; inspect that the W8A8 calibration settings and input fingerprint are recorded by the benchmark path.
 - [ ] Repeat quantized quality/performance measurement on a human-reviewed, rights-cleared benchmark; the synthetic smoke is not model-quality or throughput evidence.
+
+## Keyboard skip navigation — 2026-10-29
+
+- [x] Add a keyboard-visible skip link to the main workspace and keep in-page fragments from redirecting the active app route.
+- [x] Add regression coverage for the skip-link target and route preservation; all 81 Python tests and 17 Node UI tests pass, JavaScript and launcher syntax checks pass, and `git diff --check` is clean.
+- [x] In the browser, Tab focuses the skip link and Enter moves focus to the workspace while Fine-tune remains selected; no review was saved.
+- [ ] Recheck the final served stylesheet and page after restarting the local app; the desktop browser reports the Mac is locked and cannot reach the restarted service.
+- [ ] Complete the full screen-reader and axe audit.

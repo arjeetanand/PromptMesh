@@ -66,6 +66,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 code, .mono { font-family: var(--mono); font-size: .92em; }
 [hidden] { display: none !important; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.skip-link { position: fixed; top: 8px; left: 8px; z-index: 100; transform: translateY(calc(-100% - 12px)); padding: 8px 12px; border: 1px solid var(--rule); border-radius: var(--radius-control); background: var(--sheet); color: var(--ink); font-weight: 600; }
+.skip-link:focus { transform: translateY(0); }
 
 .app-frame { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 100vh; }
 .sidebar { display: flex; min-height: 100vh; flex-direction: column; padding: 20px 12px 12px; background: var(--ground); color: var(--sidebar-ink); }

@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#workspace">Skip to main content</a>
   <div class="app-frame" id="appFrame">
     <aside class="sidebar" id="sidebar" aria-label="Main navigation">
       <a class="brand" href="#overview" data-tab="overview" aria-label="PromptMesh home">
@@ -69,7 +70,7 @@
     </aside>
 
     <div class="mobile-scrim" id="mobileScrim" hidden></div>
-    <main class="workspace" id="workspace">
+    <main class="workspace" id="workspace" tabindex="-1">
       <header class="topbar">
         <button class="mobile-menu" id="menuToggle" type="button" aria-label="Open navigation" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
         <div class="topbar-context">

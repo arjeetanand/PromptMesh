@@ -248,7 +248,7 @@ function setupNavigation() {
   });
   window.addEventListener("hashchange", () => {
     const tab = window.location.hash.slice(1);
-    activateTab(validTab(tab) ? tab : "overview", false);
+    if (validTab(tab)) activateTab(tab, false);
   });
   const initial = window.location.hash.slice(1);
   activateTab(validTab(initial) ? initial : "overview", false);

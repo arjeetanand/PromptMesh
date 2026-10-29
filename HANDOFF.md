@@ -403,3 +403,11 @@
 - These are single-input, single-pass synthetic timings. They are sensitive to load/cache state, output length, and runtime conditions; footprint is not peak device memory. No arm's schema-valid JSON establishes extraction accuracy, and the INT8 arm was slower in this smoke. Do not present these values as a quality result, stable speed ranking, or throughput benchmark.
 - Read-only audit confirmed the Quanto configuration digest includes method, split, group limit, seed, and momentum, while the report stores the deterministic calibration-input fingerprint and runtime metadata. `pip check` found no broken requirements; its pip-cache warning was non-fatal. A fresh clean-environment install remains unverified.
 - No Quanto calibration run occurred because `optimum-quanto==0.2.7` and `ninja` are not installed. The real-data quantized study still requires reviewed labels/rights, a selected adapter, and a one-shot frozen test run.
+
+## Keyboard skip navigation — 2026-10-29
+
+- Added a keyboard-visible skip link before the app frame. Its `#workspace` target is programmatically focusable, and the hash router now ignores non-tab fragments so the selected page is preserved.
+- Added a focused Node regression for the target and route behavior. The full Python suite passes (81 tests) and the UI suite passes (17 tests); JavaScript and launcher syntax checks and `git diff --check` pass. Python emitted existing `datetime.utcnow()` deprecation warnings.
+- Browser check before the restart: Tab focused the skip link; Enter changed the hash to `#workspace`, focused the main workspace, and kept Fine-tune selected. No review data was saved.
+- The guarded `./run.sh` command reported port 4004 healthy after restart, but the embedded browser then returned `ERR_CONNECTION_REFUSED`; CUA also reports the Mac is locked. The final served CSS and live page could not be checked after that restart. Resume by unlocking the Mac, starting the app through its desktop project terminal, and repeating the keyboard check.
+- Screen-reader and axe checks remain open. No provider calls, training jobs, or benchmark runs were started.

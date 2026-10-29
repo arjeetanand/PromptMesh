@@ -55,6 +55,29 @@ test("candidate source changes are announced to assistive technology", () => {
   assert.match(sourceRegion, /aria-atomic="true"/);
 });
 
+test("skip link reaches the workspace without redirecting the active app tab", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "static", "index.html"), "utf8");
+  assert.match(html, /<a class="skip-link" href="#workspace">Skip to main content<\/a>/);
+  assert.match(html, /<main class="workspace" id="workspace" tabindex="-1">/);
+
+  const { context } = loadApp();
+  const activations = [];
+  let onHashChange;
+  context.activateTab = (tab, updateHash) => activations.push([tab, updateHash]);
+  context.window.location.hash = "#finetune";
+  context.window.addEventListener = (event, handler) => {
+    if (event === "hashchange") onHashChange = handler;
+  };
+  vm.runInContext("setupNavigation()", context);
+  context.window.location.hash = "#workspace";
+  onHashChange();
+
+  assert.deepEqual(activations, [["finetune", false]], "an in-page fragment must not redirect to Overview");
+  context.window.location.hash = "#evaluate";
+  onHashChange();
+  assert.deepEqual(activations, [["finetune", false], ["evaluate", false]]);
+});
+
 test("synthetic adapter metrics keep their workflow-only context", () => {
   const { context, elements } = loadApp();
   context.adapterData = JSON.stringify([{
