@@ -391,7 +391,7 @@ cannot independently prove that a human reviewed the labels. The UI states this
 limit beside readiness and selection controls.
 
 Schema-v4 adapter manifests, schema-v2 validation prompt-selection records,
-and schema-v4 frozen benchmark reports record the Python, platform, machine,
+and schema-v5 frozen benchmark reports record the Python, platform, machine,
 device, and installed versions of the training and inference packages, plus
 the PromptMesh Git revision and whether its working tree was dirty when each
 stage finished. Both source fields are `null` when Git metadata is unavailable.
