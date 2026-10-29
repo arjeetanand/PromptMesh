@@ -249,10 +249,14 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertIsNone(slices["2023"]["record_exact_match_95ci"])
         self.assertEqual(slices["undated"]["record_exact_match"], 1.0)
 
-    def test_generation_timing_synchronizes_accelerators_and_uses_wall_clock(self):
+    def test_generation_timing_synchronizes_accelerators_and_reads_memory_after_inference(self):
         events = []
+        memory_bytes = iter([100, 200])
         fake_torch = types.SimpleNamespace(
-            mps=types.SimpleNamespace(synchronize=lambda: events.append("mps")),
+            mps=types.SimpleNamespace(
+                synchronize=lambda: events.append("mps"),
+                driver_allocated_memory=lambda: next(memory_bytes),
+            ),
             cuda=types.SimpleNamespace(synchronize=lambda: events.append("cuda")),
         )
 
@@ -269,14 +273,41 @@ class FrozenBenchmarkTests(unittest.TestCase):
 
         self.assertEqual(result, (
             ["prediction"], [7], 4.0,
-            {"cold_first_request_seconds": 2.0, "warm_request_latencies_seconds": [3.0]},
+            {
+                "cold_first_request_seconds": 2.0,
+                "warm_request_latencies_seconds": [3.0],
+                "device_memory": {
+                    "device_memory_status": "mps_driver_snapshot",
+                    "mps_driver_memory_before_bytes": 100,
+                    "mps_driver_memory_after_bytes": 200,
+                    "device_memory_note": "MPS Metal-driver allocation snapshots include cached allocations; they are not peak measurements.",
+                },
+            },
         ))
-        self.assertEqual(events, ["mps", "generate", "mps", "mps", "mps", "generate", "mps", "mps"])
+        self.assertEqual(events, ["mps", "mps", "generate", "mps", "mps", "mps", "generate", "mps", "mps", "mps"])
         self.assertEqual(benchmark._latency_percentile([0.2, 0.5, 1.0, 2.0], 0.50), 0.75)
         self.assertEqual(benchmark._latency_percentile([0.2, 0.5, 1.0, 2.0], 0.90), 2.0)
         benchmark._synchronize_device(fake_torch, "cuda")
         benchmark._synchronize_device(fake_torch, "cpu")
         self.assertEqual(events[-1], "cuda")
+
+    def test_cuda_peak_memory_resets_after_model_load_and_reports_allocator_stats(self):
+        events = []
+        fake_torch = types.SimpleNamespace(cuda=types.SimpleNamespace(
+            synchronize=lambda: events.append("synchronize"),
+            reset_peak_memory_stats=lambda: events.append("reset"),
+            max_memory_allocated=lambda: 1234,
+            max_memory_reserved=lambda: 2345,
+        ))
+
+        measurement = benchmark._start_device_memory_measurement(fake_torch, "cuda")
+        result = benchmark._finish_device_memory_measurement(fake_torch, "cuda", measurement)
+
+        self.assertEqual(measurement, {"status": "cuda_allocator_peak"})
+        self.assertEqual(events, ["synchronize", "reset", "synchronize"])
+        self.assertEqual(result["peak_device_memory_allocated_bytes"], 1234)
+        self.assertEqual(result["peak_device_memory_reserved_bytes"], 2345)
+        self.assertEqual(result["device_memory_status"], "cuda_allocator_peak")
 
     def test_frozen_report_compares_matched_arms_and_cannot_be_reused_for_a_sweep(self):
         selection_id, _ = self._select_prompt()
@@ -299,7 +330,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
-            self.assertEqual(report["schema_version"], 7)
+            self.assertEqual(report["schema_version"], 8)
             self.assertEqual(report["metrics_split"], "test")
             self.assertEqual(report["split_strategy"], "group-year-stratified-v1")
             self.assertFalse(report["test_split_used_for_selection"])
@@ -309,6 +340,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             self.assertEqual(report["performance"]["lora_full_precision"]["generated_tokens"], 60)
             self.assertEqual(report["performance"]["lora_full_precision"]["warm_request_count"], 30)
             self.assertIsNotNone(report["performance"]["lora_full_precision"]["cold_first_request_seconds"])
+            self.assertEqual(report["performance"]["lora_full_precision"]["device_memory_status"], "unavailable")
             self.assertIn("Synchronized wall-clock generation", report["performance"]["timing_method"])
             year_slice = report["metrics"]["lora_validation_selected_prompt"]["by_gold_year"]["2024"]
             self.assertEqual(year_slice["examples"], 30)

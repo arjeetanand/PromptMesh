@@ -46,7 +46,7 @@ Tasks and checkpoints are tracked in the repository's existing `CHECKLIST.md`.
 ### Phase 3: Quantized inference study
 
 7. **Backend decision:** choose an installed, hardware-compatible quantization backend; ask before installing packages or downloading new weights.
-8. **Matched inference report:** run unquantized and quantized variants on the same frozen benchmark and hardware; record quality, warm/cold latency, peak memory, precision, and serving settings. The runner now fingerprints a cold first request plus warm per-request p50/p90 timing protocol. A human-reviewed run and peak-memory measurement are still pending.
+8. **Matched inference report:** run unquantized and quantized variants on the same frozen benchmark and hardware; record quality, warm/cold latency, peak memory, precision, and serving settings. The runner now fingerprints cold/warm latency and memory protocols; CUDA reports allocator peaks and MPS reports non-peak driver snapshots. A human-reviewed run and backend-appropriate memory results are still pending.
 9. **UI disclosure:** show backend/hardware and keep quantization claims absent until the measured comparison completes.
 
 ### Checkpoint: efficiency evidence

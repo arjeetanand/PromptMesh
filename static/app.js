@@ -1469,7 +1469,8 @@ function displayFrozenBenchmark(report, created = true) {
     const backendVersions = Object.entries(quantized.backend_versions || {})
       .map(([name, version]) => name + " " + version)
       .join(" · ") || (quantized.backend + " " + (quantized.backend_version || ""));
-    const note = calibrationNote + " Adapter training: " + quantized.adapter_training_method + " Backends: " + backendVersions + ". Model footprint is not peak device memory.";
+    const memoryNote = report.performance?.memory_note || "Model footprint does not record runtime peak device memory.";
+    const note = calibrationNote + " Adapter training: " + quantized.adapter_training_method + " Backends: " + backendVersions + ". " + memoryNote;
     $("frozenBenchmarkMetrics").innerHTML = metricCards
       + timingNote
       + "<div class=\"quantization-report-heading\"><h4>Quantized adapter inference</h4><p>Matched test quality with cold first-request and warm latency measurements. " + escapeHTML(note) + "</p></div>"
@@ -1542,9 +1543,19 @@ function quantizationMetricCard(label, metrics = {}, performance = {}) {
     ? (Number(performance.model_footprint_bytes) / (1024 ** 3)).toFixed(2) + " GiB"
     : "—";
   const seconds = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) + " s" : "—";
+  const gibibytes = (value) => value != null && Number.isFinite(Number(value))
+    ? (Number(value) / (1024 ** 3)).toFixed(2) + " GiB" : "—";
   const rate = Number.isFinite(Number(performance.tokens_per_second)) ? Number(performance.tokens_per_second).toFixed(2) + " tok/s" : "—";
   const latency = (label, value) => "<div><small>" + label + "</small><strong>"
     + (value != null && Number.isFinite(Number(value)) ? seconds(value) : "—") + "</strong></div>";
+  const deviceMemory = performance.device_memory_status === "cuda_allocator_peak"
+    ? "<div><small>CUDA peak allocated</small><strong>" + gibibytes(performance.peak_device_memory_allocated_bytes) + "</strong></div>"
+      + "<div><small>CUDA peak reserved</small><strong>" + gibibytes(performance.peak_device_memory_reserved_bytes) + "</strong></div>"
+    : performance.device_memory_status === "mps_driver_snapshot"
+      ? "<div><small>MPS driver before</small><strong>" + gibibytes(performance.mps_driver_memory_before_bytes) + "</strong></div>"
+        + "<div><small>MPS driver after</small><strong>" + gibibytes(performance.mps_driver_memory_after_bytes) + "</strong></div>"
+      : "<div><small>Device memory</small><strong>" + (performance.device_memory_status ? "Unavailable" : "Not recorded") + "</strong>"
+        + (performance.device_memory_note ? "<small>" + escapeHTML(performance.device_memory_note) + "</small>" : "") + "</div>";
   const calibration = Number.isFinite(performance.calibration_seconds)
     ? "<div><small>Calibration</small><strong>" + seconds(performance.calibration_seconds) + "</strong></div>"
     : "";
@@ -1563,6 +1574,7 @@ function quantizationMetricCard(label, metrics = {}, performance = {}) {
     + latency("Warm request p50", performance.warm_request_latency_p50_seconds)
     + latency("Warm request p90", performance.warm_request_latency_p90_seconds)
     + "<div><small>Warm requests</small><strong>" + (Number.isInteger(performance.warm_request_count) ? "n=" + performance.warm_request_count : "—") + "</strong></div>"
+    + deviceMemory
     + calibration
     + quantization
     + "<div><small>Generation</small><strong>" + rate + "</strong></div>"

@@ -49,6 +49,7 @@ BENCHMARK_TIMING_PROTOCOL = {
     "warm_scored_pass": "One sequential pass over every frozen test input; record synchronized per-request wall time.",
     "percentiles": "Median p50 and nearest-rank p90 across the scored test requests.",
     "generation": "Greedy decoding with max_new_tokens=128; MPS/CUDA synchronized around each request; CPU is synchronous.",
+    "memory": "CUDA PyTorch allocator peaks reset after model load; MPS Metal-driver allocation snapshots before and after the pass, not a peak; CPU device memory is unavailable.",
 }
 logger = logging.getLogger(__name__)
 
@@ -213,7 +214,63 @@ def _synchronize_device(torch, device):
         torch.cuda.synchronize()
 
 
+def _start_device_memory_measurement(torch, device):
+    if device == "cuda":
+        try:
+            _synchronize_device(torch, device)
+            torch.cuda.reset_peak_memory_stats()
+            return {"status": "cuda_allocator_peak"}
+        except (AttributeError, RuntimeError, TypeError):
+            return {"status": "unavailable", "reason": "CUDA allocator peak counters are unavailable."}
+    if device == "mps":
+        try:
+            _synchronize_device(torch, device)
+            return {
+                "status": "mps_driver_snapshot",
+                "before_bytes": int(torch.mps.driver_allocated_memory()),
+            }
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return {"status": "unavailable", "reason": "MPS driver allocation snapshots are unavailable."}
+    return {"status": "unavailable", "reason": "CPU execution has no accelerator memory measurement."}
+
+
+def _finish_device_memory_measurement(torch, device, measurement):
+    if measurement["status"] == "cuda_allocator_peak":
+        try:
+            _synchronize_device(torch, device)
+            return {
+                "device_memory_status": "cuda_allocator_peak",
+                "peak_device_memory_allocated_bytes": int(torch.cuda.max_memory_allocated()),
+                "peak_device_memory_reserved_bytes": int(torch.cuda.max_memory_reserved()),
+                "device_memory_note": "PyTorch CUDA allocator peak since reset after model load; allocations outside this allocator may be excluded.",
+            }
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return {
+                "device_memory_status": "unavailable",
+                "device_memory_note": "CUDA allocator peak counters could not be read after inference.",
+            }
+    if measurement["status"] == "mps_driver_snapshot":
+        try:
+            _synchronize_device(torch, device)
+            return {
+                "device_memory_status": "mps_driver_snapshot",
+                "mps_driver_memory_before_bytes": measurement["before_bytes"],
+                "mps_driver_memory_after_bytes": int(torch.mps.driver_allocated_memory()),
+                "device_memory_note": "MPS Metal-driver allocation snapshots include cached allocations; they are not peak measurements.",
+            }
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return {
+                "device_memory_status": "unavailable",
+                "device_memory_note": "MPS driver allocation snapshots could not be read after inference.",
+            }
+    return {
+        "device_memory_status": "unavailable",
+        "device_memory_note": measurement.get("reason", "Device memory measurement is unavailable."),
+    }
+
+
 def _measure_generation(model, tokenizer, prompt, rows, torch, device, *, measure_cold_first_request=True):
+    device_memory_measurement = _start_device_memory_measurement(torch, device)
     cold_first_request_seconds = None
     if rows and measure_cold_first_request:
         _synchronize_device(torch, device)
@@ -242,6 +299,7 @@ def _measure_generation(model, tokenizer, prompt, rows, torch, device, *, measur
     return predictions, token_counts, elapsed_seconds, {
         "cold_first_request_seconds": cold_first_request_seconds,
         "warm_request_latencies_seconds": request_latencies,
+        "device_memory": _finish_device_memory_measurement(torch, device, device_memory_measurement),
     }
 
 
@@ -273,6 +331,7 @@ def _generation_performance(token_counts, elapsed_seconds, request_timing=None):
             "warm_request_latency_p90_seconds": _latency_percentile(request_latencies, 0.90),
             "warm_request_count": len(request_latencies),
         })
+        performance.update(request_timing.get("device_memory", {}))
     return performance
 
 
@@ -842,7 +901,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             _clear_device_cache(quantized_torch, quantized_device)
 
         report = {
-            "schema_version": 7,
+            "schema_version": 8,
             "status": "completed",
             "dataset_id": selection["dataset_id"],
             "dataset_sha256": dataset_digest,
@@ -881,7 +940,7 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "base_validation_selected_prompt": selected_performance,
                 "lora_full_precision": adapter_performance,
                 "timing_method": "Synchronized wall-clock generation on MPS/CUDA; CPU generation is synchronous. Each freshly loaded model records one cold first request, then one full sequential scored pass with per-request latency. Warm p50/p90 use the scored test requests; total inference time covers one scored pass and is not a throughput benchmark. Counts are generated token IDs.",
-                "memory_note": "Model footprint is not peak device memory. Warm latency percentiles come from one scored pass and are not repeated-run throughput measurements.",
+                "memory_note": "CUDA allocator peaks may omit allocations made outside PyTorch. MPS reports before/after Metal-driver allocation snapshots, including cached allocations, not a peak; CPU has no device-memory value. Model footprint is separate from runtime memory. Warm latency percentiles come from one scored pass and are not repeated-run throughput measurements.",
             },
             "hardware": {
                 "device": device,

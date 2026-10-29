@@ -84,6 +84,7 @@
 - [ ] Human-review every candidate and wording variant against its linked source, confirm reuse rights, and build a more balanced, representative dataset before claiming general extraction quality.
 - [x] Add regression coverage for INT8/NF4 configuration, identical test rows, calibration labeling, and invalid or unavailable API selections.
 - [x] Add a fingerprinted cold-first-request and warm per-request p50/p90 protocol; render its timing fields in quantized result cards.
+- [x] Capture CUDA PyTorch allocator peaks and MPS driver allocation snapshots; label snapshots and unavailable values distinctly from peaks.
 - [x] Assert that the loaded extraction prompt definition 1.1.0 keeps the actor/recipient rule.
 - [x] Check Fine-tune at 1440px and 390px in Edge; the document has no horizontal overflow or browser console errors.
 - [x] Verify adapter-attached NF4/INT8 generation on MPS with one synthetic canary input; this confirms the hardware path only, not benchmark quality.

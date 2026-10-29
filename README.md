@@ -135,7 +135,11 @@ metrics with uncertainty alongside latency and memory. A quantized-inference
 comparison should use the same frozen test set and declare the hardware/backend.
 The optional INT8/NF4/Quanto comparison records quality, calibration provenance
 where applicable, latency, generated-token rate, and model footprint beside
-the full-precision LoRA control. Model footprint is not peak device memory.
+the full-precision LoRA control. CUDA reports PyTorch allocator peak allocated
+and reserved memory; allocations outside that allocator may be omitted. MPS
+reports Metal-driver allocations before and after the pass, including cached
+allocations, and labels them as snapshots rather than peaks. CPU has no device
+memory measurement. Model footprint remains a separate model-size metric.
 New reports synchronize MPS/CUDA around timed
 generation and count the generated token IDs directly; CPU timing uses its
 synchronous execution. Each freshly loaded model records one cold first request

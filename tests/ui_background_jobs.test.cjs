@@ -306,9 +306,12 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
       lora_full_precision: {
         load_seconds: 2, inference_seconds: 3, tokens_per_second: 12, model_footprint_bytes: 800000000,
         cold_first_request_seconds: 2.5, warm_request_latency_p50_seconds: 0.3,
-        warm_request_latency_p90_seconds: 0.8, warm_request_count: 30
+        warm_request_latency_p90_seconds: 0.8, warm_request_count: 30,
+        device_memory_status: "mps_driver_snapshot", mps_driver_memory_before_bytes: 900000000,
+        mps_driver_memory_after_bytes: 1000000000
       },
       timing_method: "Synchronized wall-clock generation on MPS/CUDA; CPU generation is synchronous.",
+      memory_note: "MPS reports before/after Metal-driver allocation snapshots, including cached allocations, not a peak.",
     },
     environment: { device: "mps", python_version: "3.12.1", platform: "macOS-test", machine: "arm64", packages: { torch: "2.14.1", transformers: "5.1.0", bitsandbytes: "0.50.0" } },
     quantized_inference: {
@@ -328,7 +331,9 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
           } },
         load_seconds: 1, inference_seconds: 4, tokens_per_second: 8, model_footprint_bytes: 400000000,
         cold_first_request_seconds: 3.5, warm_request_latency_p50_seconds: 0.4,
-        warm_request_latency_p90_seconds: 0.9, warm_request_count: 30
+        warm_request_latency_p90_seconds: 0.9, warm_request_count: 30,
+        device_memory_status: "mps_driver_snapshot", mps_driver_memory_before_bytes: 1000000000,
+        mps_driver_memory_after_bytes: 1200000000
       }]
     }
   };
@@ -349,6 +354,9 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
   assert.match(html, /3\.50 s/);
   assert.match(html, /0\.40 s/);
   assert.match(html, /0\.90 s/);
+  assert.match(html, /MPS driver before/);
+  assert.match(html, /MPS driver after/);
+  assert.match(html, /not a peak/);
   assert.match(html, /Paired source-group exact-match Δ vs Base · validation-selected prompt/);
   assert.match(html, /\+30\.0 pp \(\+10\.0 pp to \+50\.0 pp\)/);
   assert.match(html, /Paired source-group exact-match Δ vs Full-precision LoRA control/);
@@ -359,6 +367,15 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
   assert.match(html, /2 source groups · 6 examples/);
   assert.match(html, /Group counts are per year slice/);
   assert.match(html, /unavailable \(&lt;2 groups\)/);
+  report.quantized_inference.variants[0].device_memory_status = "cuda_allocator_peak";
+  report.quantized_inference.variants[0].peak_device_memory_allocated_bytes = 1073741824;
+  report.quantized_inference.variants[0].peak_device_memory_reserved_bytes = 1610612736;
+  context.report = JSON.stringify(report);
+  vm.runInContext("displayFrozenBenchmark(JSON.parse(report))", context);
+  const cudaMemoryHtml = elements.get("frozenBenchmarkMetrics").innerHTML;
+  assert.match(cudaMemoryHtml, /CUDA peak allocated/);
+  assert.match(cudaMemoryHtml, /CUDA peak reserved/);
+  assert.match(cudaMemoryHtml, /1\.50 GiB/);
   report.quantized_inference.backend = "mixed";
   report.quantized_inference.backend_version = null;
   report.quantized_inference.backend_versions = { bitsandbytes: "0.50.0", "optimum-quanto": "0.2.7" };
@@ -369,7 +386,9 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
     activation_bits: 8, compute_dtype: "INT8 linear; FP32 remainder", calibration_required: true,
     calibration_seconds: 1.25, quantization_seconds: 0.5,
     metrics: { record_exact_match: 0.4, field_accuracy: 0.6, json_valid_rate: 0.8 },
-    load_seconds: 2, inference_seconds: 4, tokens_per_second: 8, model_footprint_bytes: 400000000
+    load_seconds: 2, inference_seconds: 4, tokens_per_second: 8, model_footprint_bytes: 400000000,
+    device_memory_status: "unavailable",
+    device_memory_note: "MPS driver allocation snapshots could not be read after inference."
   });
   context.report = JSON.stringify(report);
   vm.runInContext("displayFrozenBenchmark(JSON.parse(report))", context);
@@ -378,6 +397,7 @@ test("quantized benchmark cards show task metrics, cold/warm latency, and the ca
   assert.match(calibratedHtml, /Calibration: 16 input-only examples from 16 training groups/);
   assert.match(calibratedHtml, /Calibration<\/small><strong>1\.25 s/);
   assert.match(calibratedHtml, /optimum-quanto 0\.2\.7/);
+  assert.match(calibratedHtml, /MPS driver allocation snapshots could not be read after inference/);
   delete report.performance.timing_method;
   context.report = JSON.stringify(report);
   vm.runInContext("displayFrozenBenchmark(JSON.parse(report))", context);
