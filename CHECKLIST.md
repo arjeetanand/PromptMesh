@@ -193,9 +193,10 @@
 ## MPS quantization smoke — 2026-10-29
 
 - [x] Resolve the runtime discrepancy: the default sandbox sees CPU, while the host-context check and live API both report MPS using the project `.venv`.
-- [x] Run FP32 LoRA, bitsandbytes INT8, and NF4 on one fixed synthetic input at the app's 128-token limit; all three completed on MPS and returned parseable JSON with the expected keys.
+- [x] Run FP32 LoRA, bitsandbytes INT8, and NF4 on fixed synthetic inputs at the app's 128-token limit. A later smoke returned parseable JSON for all three; an earlier run on another adapter produced invalid JSON for NF4.
 - [x] Record load/inference time, generated token count, and model footprint as one hardware smoke only; no dataset rows, test reservation, or benchmark artifact was used.
-- [x] Confirm `pip check` reports no broken requirements and that Quanto/`ninja` remain absent; inspect that the W8A8 calibration settings and input fingerprint are recorded by the benchmark path.
+- [x] Confirm `pip check` reports no broken requirements and that Quanto/`ninja` remain absent; record W8A8 calibration settings and bind the exact input fingerprint into the frozen-run configuration hash.
+- [x] Assert the calibration-input fingerprint participates in the frozen configuration hash; run the 81-test Python suite and 17-test UI suite.
 - [ ] Repeat quantized quality/performance measurement on a human-reviewed, rights-cleared benchmark; the synthetic smoke is not model-quality or throughput evidence.
 
 ## Keyboard skip navigation — 2026-10-29

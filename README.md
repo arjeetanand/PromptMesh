@@ -232,8 +232,9 @@ merges it into the base model, applies INT8 weight and activation quantization,
 calibrates activation ranges on deterministic training-split inputs, then
 freezes the quantized model. The report records the calibration input
 fingerprint, prompt hash, split, group and example counts, package versions,
-quantization time, and calibration time. Validation and final-test inputs and
-labels are excluded from calibration. MPS placement is supported by Quanto,
+quantization time, and calibration time; the selected-input fingerprint also
+participates in the frozen-run configuration hash. Validation and final-test
+inputs and labels are excluded from calibration. MPS placement is supported by Quanto,
 but optimized matrix kernels are CUDA-specific; the app measures MPS behavior
 and does not promise a speedup. Quanto is in maintenance mode.
 

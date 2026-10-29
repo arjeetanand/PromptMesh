@@ -372,6 +372,25 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertEqual(report["quantized_inference"]["calibration"]["split"], "train")
         self.assertEqual(report["quantized_inference"]["calibration"]["examples"], 16)
         self.assertEqual(report["quantized_inference"]["calibration"]["source_groups"], 16)
+        calibration_fingerprint = report["quantized_inference"]["calibration"]["input_sha256"]
+        expected_configuration = {
+            "selection_sha256": report["selection_sha256"],
+            "adapter_run_id": self.adapter_run_id,
+            "adapter_sha256": report["adapter_sha256"],
+            "selected_prompt_sha256": report["selected_prompt_sha256"],
+            "dataset_sha256": report["dataset_sha256"],
+            "benchmark_card_sha256": report["benchmark_card_sha256"],
+            "quantization_methods": ["bnb_nf4", "quanto_int8_w8a8"],
+            "calibration": {
+                "method": "quanto-w8a8-v1",
+                "split": "train",
+                "group_limit": benchmark.CALIBRATION_GROUP_LIMIT,
+                "seed": benchmark.CALIBRATION_SEED,
+                "momentum": benchmark.CALIBRATION_MOMENTUM,
+                "input_sha256": calibration_fingerprint,
+            },
+        }
+        self.assertEqual(report["configuration_sha256"], benchmark._json_digest(expected_configuration))
         self.assertEqual(len(calibration_calls), 2)
         self.assertEqual(calibration_calls[0], calibration_calls[1])
         self.assertEqual(variant["model_footprint_bytes"], 123456)

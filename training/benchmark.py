@@ -531,6 +531,25 @@ def run_frozen_benchmark(job_id, request, jobs):
         test_groups = len({row["group_id"] for row in test_rows})
         if len(test_rows) != readiness["final_test_examples"] or test_groups != readiness["final_test_source_groups"]:
             raise ValueError("Dataset changed while preparing the final test split")
+        selected_prompt = selection["selected_prompt"]
+        calibration_rows = None
+        calibration_record = None
+        if QUANTO_INT8_METHOD in quantization_methods:
+            calibration_rows = select_calibration_rows(train_rows)
+            calibration_record = {
+                "method": "Quanto post-training static W8A8",
+                "split": "train",
+                "examples": len(calibration_rows),
+                "source_groups": len({row["group_id"] for row in calibration_rows}),
+                "input_sha256": _json_digest(calibration_rows),
+                "input_only": True,
+                "labels_used": False,
+                "selection": "one input per source group; deterministic sample",
+                "seed": CALIBRATION_SEED,
+                "group_limit": CALIBRATION_GROUP_LIMIT,
+                "momentum": CALIBRATION_MOMENTUM,
+                "prompt_sha256": _prompt_sha256(selected_prompt),
+            }
         configuration = {
             "selection_sha256": selection["selection_sha256"],
             "adapter_run_id": request.adapter_run_id,
@@ -548,6 +567,7 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "group_limit": CALIBRATION_GROUP_LIMIT,
                 "seed": CALIBRATION_SEED,
                 "momentum": CALIBRATION_MOMENTUM,
+                "input_sha256": calibration_record["input_sha256"],
             }
         configuration_digest = _json_digest(configuration)
         existing = _existing_report(selection["dataset_id"], dataset_digest, configuration_digest)
@@ -571,25 +591,6 @@ def run_frozen_benchmark(job_id, request, jobs):
                 raise ValueError(quant_runtime.get("reason") or "The requested quantization backend is unavailable")
 
         baseline_prompt = next(item["prompt"] for item in selection["candidates"] if item["id"] == "extraction/v1")
-        selected_prompt = selection["selected_prompt"]
-        calibration_rows = None
-        calibration_record = None
-        if any(QUANTIZATION_METHODS[method]["calibration_required"] for method in quantization_methods):
-            calibration_rows = select_calibration_rows(train_rows)
-            calibration_record = {
-                "method": "Quanto post-training static W8A8",
-                "split": "train",
-                "examples": len(calibration_rows),
-                "source_groups": len({row["group_id"] for row in calibration_rows}),
-                "input_sha256": _json_digest(calibration_rows),
-                "input_only": True,
-                "labels_used": False,
-                "selection": "one input per source group; deterministic sample",
-                "seed": CALIBRATION_SEED,
-                "group_limit": CALIBRATION_GROUP_LIMIT,
-                "momentum": CALIBRATION_MOMENTUM,
-                "prompt_sha256": _prompt_sha256(selected_prompt),
-            }
 
         # Exercise every selected backend with a fixed synthetic input before reserving the one-shot test split.
         for index, method in enumerate(quantization_methods):
