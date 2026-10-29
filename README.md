@@ -191,6 +191,23 @@ dataset. `organization` means the named actor performing the claim. Changing
 source groups announces the selected source title and review guidance politely
 to assistive technology.
 
+### Résumé and interview framing
+
+A defensible current résumé line is:
+
+> Built a local LLM evaluation and adaptation workspace with source-grouped splits, validation-only prompt selection, Qwen3-0.6B LoRA/SFT, frozen-test benchmarking controls, runtime provenance, and post-training INT8/NF4 plus optional W8A8 inference paths.
+
+Pair it with this evidence qualifier until the real corpus is reviewed:
+
+> Validated synthetic-data training and workflow controls, and recorded a single-input MPS inference smoke; real-data quality and performance results are pending human label and reuse review.
+
+In interviews, explain that source-related paraphrases stay together, prompt
+and model selection use validation, and the final test is reserved for matched
+arms. NF4 and INT8 are post-training inference paths; optional W8A8 activation
+calibration uses label-free training inputs. QLoRA training is not implemented.
+The current MPS measurements are a single synthetic smoke, not an accuracy or
+stable throughput result.
+
 ## Quantization, calibration, and QLoRA
 
 The frozen benchmark can compare a full-precision LoRA adapter with three

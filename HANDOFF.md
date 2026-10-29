@@ -412,3 +412,8 @@
 - The guarded `./run.sh` command reported port 4004 healthy in its command environment, but the embedded browser returned `ERR_CONNECTION_REFUSED`; a later listener check found no process on port 4004. CUA also reports the Mac is locked. The final served CSS and live page could not be checked after that restart. Resume by unlocking the Mac, starting the app through its desktop project terminal, and repeating the keyboard check.
 - Screen-reader and axe checks remain open. No provider calls, training jobs, or benchmark runs were started.
 - Delivery: commit `71daeb0` was pushed to `origin/codex/promptmesh-validation-selection`, updating the existing PR #2 (previously verified to target `main`). A fresh PR-state query failed because `api.github.com` was unreachable. No merge occurred.
+
+## Résumé and interview framing — 2026-10-29
+
+- Added a current résumé line and interview talk track to the README. It describes the implemented source-grouped evaluation, validation-only selection, local Qwen3-0.6B LoRA/SFT, runtime provenance, and post-training quantization paths without claiming real-data gains.
+- The wording explicitly says the available MPS timings are one synthetic smoke, Quanto W8A8 is optional, and QLoRA training is not implemented. Real-data quality and performance claims remain gated on a reviewed, rights-cleared corpus.

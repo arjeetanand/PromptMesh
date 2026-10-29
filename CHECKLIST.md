@@ -53,6 +53,7 @@
 
 ## Next résumé milestones
 
+- [x] Add evidence-based résumé wording and an interview talk track that distinguish implemented workflow from real-data results still pending human review.
 - [ ] Create a human-reviewed, versioned gold benchmark with grouped train/validation/test splits; keep prompt evolution and model selection on validation data only.
 - [ ] Compare base, prompt-only, and LoRA results on the same untouched test examples; report task metrics and uncertainty.
 - [ ] Measure quantized versus unquantized inference quality, latency, and memory on a declared backend and hardware.
