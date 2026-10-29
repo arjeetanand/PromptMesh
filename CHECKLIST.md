@@ -187,3 +187,11 @@
 - [x] Document a possible 72-group year-balanced planning cohort (12 groups per year from 2020–2025; choose 12 of the 66 proposed 2024 groups only after review), projecting to 150/33/33 rows across 50/11/11 groups.
 - [x] Refresh the review workbench at `http://127.0.0.1:4004/#finetune`; it displays 381 rows / 127 groups / 0 reviewed / 0 excluded / 0 eligible, the year counts, and a disabled export action. No decision was saved.
 - [ ] Human-review source fidelity, actor/year/claim labels, every variant, and reuse terms before exporting a dataset or making benchmark claims.
+
+## MPS quantization smoke — 2026-10-29
+
+- [x] Resolve the runtime discrepancy: the default sandbox sees CPU, while the host-context check and live API both report MPS using the project `.venv`.
+- [x] Run FP32 LoRA, bitsandbytes INT8, and NF4 on one fixed synthetic input at the app's 128-token limit; all three completed on MPS and returned parseable JSON with the expected keys.
+- [x] Record load/inference time, generated token count, and model footprint as one hardware smoke only; no dataset rows, test reservation, or benchmark artifact was used.
+- [x] Confirm `pip check` reports no broken requirements and that Quanto/`ninja` remain absent; inspect that the W8A8 calibration settings and input fingerprint are recorded by the benchmark path.
+- [ ] Repeat quantized quality/performance measurement on a human-reviewed, rights-cleared benchmark; the synthetic smoke is not model-quality or throughput evidence.

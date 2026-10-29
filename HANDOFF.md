@@ -388,3 +388,18 @@
 - Browser check: the Fine-tune page at `http://127.0.0.1:4004/#finetune` loaded with API connected and showed 381 rows / 127 groups / zero reviewed labels / zero excluded variants / zero export-eligible groups. Its proposed-year coverage matched the CSV, and the export action was disabled. No decision was saved.
 - Delivery: commit `8175dc0` (`Expand public-source review packet`) is pushed to `origin/codex/promptmesh-validation-selection`, updating existing PR #2, previously confirmed to target `main`; it remains unmerged. A fresh PR-state query failed because `api.github.com` was unreachable and the web fetch returned a cache miss.
 - Pending: human-review all source labels and variants and verify reuse terms. Do not create a benchmark card, train/select, score the final test, or make résumé quality claims from this draft.
+
+## MPS quantization smoke and reproducibility audit — 2026-10-29
+
+- Runtime identity: the live API and an approved host-context probe of the project `.venv` report MPS available. The default sandboxed shell reports CPU, so its device result is not representative of the app process. Runtime: macOS 26.7.1 arm64, Python 3.12.13, Torch 2.14.1, Transformers 5.21.0, PEFT 0.21.2, TRL 1.16.0, bitsandbytes 0.50.0. Quanto and `ninja` are absent.
+- Ran an in-memory smoke using cached Qwen/Qwen3-0.6B revision `c1899de289a0`, validation-only synthetic adapter `67eb726005d4434181b3c95512ca0577`, and one fixed fictional input. All arms used the extraction prompt, deterministic generation, and the app's 128-token limit; no dataset rows, provider calls, benchmark reservation, or report files were used.
+
+| Arm | Load seconds | Inference seconds | Generated tokens | Tokens/sec | Model footprint bytes | JSON keys valid |
+|---|---:|---:|---:|---:|---:|---|
+| FP32 LoRA | 4.4290 | 0.5512 | 27 | 48.981 | 2,388,787,712 | Yes |
+| bitsandbytes INT8 + LoRA | 0.8936 | 6.7463 | 27 | 4.002 | 756,285,952 | Yes |
+| bitsandbytes NF4 + LoRA | 2.0609 | 0.9864 | 24 | 24.332 | 536,084,992 | Yes |
+
+- These are single-input, single-pass synthetic timings. They are sensitive to load/cache state, output length, and runtime conditions; footprint is not peak device memory. No arm's schema-valid JSON establishes extraction accuracy, and the INT8 arm was slower in this smoke. Do not present these values as a quality result, stable speed ranking, or throughput benchmark.
+- Read-only audit confirmed the Quanto configuration digest includes method, split, group limit, seed, and momentum, while the report stores the deterministic calibration-input fingerprint and runtime metadata. `pip check` found no broken requirements; its pip-cache warning was non-fatal. A fresh clean-environment install remains unverified.
+- No Quanto calibration run occurred because `optimum-quanto==0.2.7` and `ninja` are not installed. The real-data quantized study still requires reviewed labels/rights, a selected adapter, and a one-shot frozen test run.
