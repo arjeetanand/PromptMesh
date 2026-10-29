@@ -155,6 +155,7 @@
 - [x] Compute the seed-42 validation/test year composition from draft labels and document that 2024 contributes 10 of 18 groups to each held-out split.
 - [x] Apply the user-confirmed actor label convention and reconcile the current 351-row CSV with a full current JSONL draft; preserve the older 246-row JSONL snapshot as historical.
 - [x] Recheck selection and frozen-test gates; full Python suite (76) and UI suite (16) pass.
+- [x] Spot-check five existing non-2024 source groups for core claim/date support; record source-specific review cautions without changing labels or rights fields.
 - [ ] Human-review labels and reuse rights, then curate a balanced cohort before exporting or claiming representative benchmark results.
 
 ## Calibrated inference follow-up — 2026-10-29
