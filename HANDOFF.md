@@ -370,3 +370,10 @@
 - Browser evidence: the current review UI shows the 351-row/117-group packet, zero reviewed and eligible rows, and the actor convention. The training panel labels the bundled 48-example dataset synthetic-only and blocks prompt selection/final benchmarking. `/api/health` returned healthy through the persistent local session; runtime discovery listed only bitsandbytes INT8/NF4, so Quanto is not selectable yet.
 - Pending: install Quanto and `ninja` in the project `.venv` only after user approval, run one synthetic MPS canary with the cached Qwen checkpoint, pin the dependency closure in the environment lock, then restart and verify the Quanto option on port 4004. No real-data quality claim is supported until human labels and reuse rights are reviewed.
 - Delivery: branch `codex/promptmesh-validation-selection`, commit `d9d3a15`, pushed to [PR #2](https://github.com/arjeetanand/PromptMesh/pull/2), which is open and targets `main`; it has not been merged. The guarded `./run.sh` restart left PromptMesh healthy at `http://127.0.0.1:4004` (PID 78625). The in-app Fine-tune page reloaded with API connected and the draft review gates visible.
+
+## Current workflow verification — 2026-10-29
+
+- Re-ran the existing full suite: 81 Python tests and 16 Node UI tests passed. Python emitted existing `datetime.utcnow()` deprecation warnings from `app.py:912` and `core/security.py:121`.
+- The live Fine-tune review page at `http://127.0.0.1:4004/#finetune` showed API connected, 351 draft rows across 117 groups, zero reviewed labels, and zero export-eligible groups. The accessibility tree exposes names for organization/year/claim fields, per-variant decisions, reuse status/evidence, and save/export actions. No review was saved.
+- Chrome DevTools MCP is not configured, so no axe scan or screen-reader announcement check was run. Earlier targeted manual layout and contrast checks remain the available evidence; whole-workspace assistive-technology verification is open.
+- No training or benchmark job ran. The source packet remains unreviewed and rights-unresolved; real-data model-quality and quantized-quality results are still unavailable.

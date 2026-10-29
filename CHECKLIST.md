@@ -142,6 +142,7 @@
 - [x] Announce the selected source title, date, and review guidance when the user changes source groups.
 - [x] Add a regression check for the polite, atomic live region; all 15 UI tests pass.
 - [x] Restart the app on port 4004 and confirm the Fine-tune page reports API connected.
+- [x] Recheck the live review form and current suites: labeled source and reuse controls are present; all 81 Python and 16 UI tests pass.
 - [ ] Verify the announcement with a screen reader and run axe; neither was run in this browser check.
 
 ## Synthetic adapter provenance — 2026-10-29
