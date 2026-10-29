@@ -430,6 +430,7 @@ training or prompt evolution runs, choose **Run in background** to close the
 progress dialog and keep working in PromptMesh. The top bar shows progress and
 status; select it to reopen progress or view completed results. Keep the
 browser tab open while the job runs. Run
+`.venv/bin/python -m unittest discover -s tests -q` for the Python suite and
 `node --test tests/ui_background_jobs.test.cjs` for the background-progress
 regression checks.
 
