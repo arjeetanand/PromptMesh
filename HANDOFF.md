@@ -517,7 +517,7 @@
 - Verification: all 47 pins matched the current `.venv`; `pip check` reported no broken requirements. Five focused lock-verifier tests and all 97 Python tests passed; the UI suite passed all 20 tests; Python compilation, JavaScript and launcher syntax, and `git diff --check` passed.
 - This validates the existing environment only. No fresh virtual environment or packages were installed; a clean install has not been proven, and the app requirements remain unpinned.
 - Delivery: verifier commit `789bf33` is committed on `codex/promptmesh-validation-selection` for existing PR #2 targeting `main`. No clean install was run.
-- Next: after approval, create a disposable environment under `/private/tmp`, install the documented app requirements plus the training lock, and run the verifier, `pip check`, and import smoke checks. Do not replace the active `.venv` or download model weights.
+- Follow-up: the approved disposable clean-install verification is recorded below. The general application requirements remain unpinned.
 
 ## Public-source candidate expansion — 2026-10-29
 
@@ -591,3 +591,13 @@
 - At 390px, the browser showed the API connected, 423 rows / 141 groups / 0 reviewed / 0 excluded / 0 export-eligible, and a disabled export action. A targeted DOM audit found names for all 55 visible controls, no duplicate IDs, no visible images missing `alt`, 11 live regions, and no console errors. No review data was saved.
 - This does not replace a screen-reader trial or automated axe scan; both remain open. No training, prompt selection, benchmark, or quantized inference ran. Human label and reuse-rights review remain the next data gate.
 - Next: have a human complete the source/label/reuse review, then export an authorized cohort and run the leakage-safe prompt/LoRA comparison before quantized inference.
+
+## Fresh training environment install — 2026-10-29
+
+- Created a disposable Python 3.12.13 / macOS ARM64 virtual environment under `/private/tmp`; installed `requirements.txt` together with `requirements-training-macos-arm64.lock`. The installation completed without fetching model weights or changing the project `.venv`.
+- In that environment, `python -m training.verify_lock` matched all 47 exact pins, `python -m pip check` found no broken requirements, and imports succeeded for the app and training stack, including PyTorch 2.14.1, Transformers 5.21.0, PEFT 0.21.2, TRL 1.16.0, and bitsandbytes 0.50.0.
+- `python -m unittest discover -s tests`: 107 passed. Tests emitted existing `datetime.utcnow()` deprecation warnings at `app.py:916` and `core/security.py:121`; no test failed.
+- This confirms the documented install path for the current Python 3.12.13 / macOS ARM64 dependency resolution. `requirements.txt` remains unpinned, so future package resolution is not guaranteed to reproduce it. The lock is platform-specific.
+- No model checkpoint was loaded; no dataset, review decision, export, training, or benchmark artifact changed.
+- Delivery: docs update is on `codex/promptmesh-validation-selection` for existing PR #2 targeting `main`; the branch was at `e46cfee` before this follow-up. No merge.
+- Next: human-review source labels, variants, and reuse rights before any real-data training, benchmark, or quantization claim. Full screen-reader and axe checks also remain open.

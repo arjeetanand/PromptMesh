@@ -115,7 +115,8 @@
 - [x] Pin the current Python 3.12 / macOS ARM64 LoRA/SFT and bitsandbytes dependency closure; verify every lock pin matches the active `.venv` and `pip check` passes.
 - [x] Add a repeatable read-only verifier for exact package pins and the lock's Python/platform target; test normalization, duplicates, mismatch reporting, and platform rejection.
 - [x] Run the verifier against the active `.venv`: all 47 pins match, and `pip check` reports no broken requirements.
-- [ ] Install the local training lock into a clean environment and confirm setup before treating it as a freshly reproduced environment.
+- [x] Install `requirements.txt` and the training lock into a disposable Python 3.12.13 / macOS ARM64 environment; verify 47 exact pins, `pip check`, dependency imports, and all 107 Python tests without downloading model weights.
+- [ ] Consider pinning the general application requirements separately; the current clean install confirms today's resolution, not future reproducibility.
 
 ## Whole-workspace UI audit — 2026-10-29
 

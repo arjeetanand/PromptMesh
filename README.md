@@ -385,7 +385,10 @@ general application dependencies in `requirements.txt` remain unpinned. The
 standalone quantization install remains
 `pip install -r requirements-quantization.txt` on other supported environments.
 The verifier checks exact installed versions and refuses other Python/platform
-targets; it does not replace a clean-environment install check.
+targets. A fresh Python 3.12.13 / macOS ARM64 environment installed both files
+successfully on 2026-10-29; lock verification, `pip check`, dependency imports,
+and all 107 Python unit tests passed. Because app dependencies remain unpinned,
+this confirms the current install path, not a repeatable future resolution.
 
 On Windows, create the environment with `python -m venv .venv` and activate it
 with `.venv\Scripts\activate` before installing requirements.
@@ -484,10 +487,12 @@ The Fine-tune page surfaces the training, selection, and benchmark environments
 separately and labels legacy runs when their environment was not recorded. This
 is run provenance, and the local training stack has an exact macOS ARM64 snapshot in
 `requirements-training-macos-arm64.lock`. The rest of `requirements.txt` is
-still unpinned, and the lock has not been validated by installing into a clean
-environment. Run `python -m training.verify_lock` and `python -m pip check` to
-confirm that an existing macOS ARM64 Python 3.12 environment matches the
-snapshot; these checks do not prove a fresh installation succeeds.
+still unpinned. On 2026-10-29, installing both files into a fresh Python 3.12.13
+macOS ARM64 environment succeeded; all 47 pins matched, `pip check` reported no
+broken requirements, dependency imports succeeded, and 107 Python unit tests
+passed. This verifies the current install path but does not pin future versions
+of the general app dependencies. Run `python -m training.verify_lock` and
+`python -m pip check` to validate an existing macOS ARM64 Python 3.12 environment.
 
 After reviewing labels using the versioned annotation guide, fill
 `training/datasets/<dataset_id>.card.json` from the template. Validation and
