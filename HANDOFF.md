@@ -391,8 +391,8 @@
 
 ## MPS quantization smoke and reproducibility audit — 2026-10-29
 
-- Runtime identity: the live API and an approved host-context probe of the project `.venv` report MPS available. The default sandboxed shell reports CPU, so its device result is not representative of the app process. Runtime: macOS 26.7.1 arm64, Python 3.12.13, Torch 2.14.1, Transformers 5.21.0, PEFT 0.21.2, TRL 1.16.0, bitsandbytes 0.50.0. Quanto and `ninja` are absent.
-- Ran an in-memory smoke using cached Qwen/Qwen3-0.6B revision `c1899de289a0`, validation-only synthetic adapter `67eb726005d4434181b3c95512ca0577`, and one fixed fictional input. All arms used the extraction prompt, deterministic generation, and the app's 128-token limit; no dataset rows, provider calls, benchmark reservation, or report files were used.
+- Runtime identity: the live API and an approved host-context probe of the project `.venv` report MPS available. The default sandboxed shell reports CPU, so its device result is not representative of the app process. Runtime: macOS 26.7.1 arm64, Python 3.12.13, Torch 2.14.1, Transformers 5.21.0, PEFT 0.21.2, TRL 1.16.0, bitsandbytes 0.50.0. Quanto and `ninja` are absent. The source revision during the smoke was `5253efc975ac43fcb05e466d47b45d5c61ded72b`, with a clean tree.
+- Ran an in-memory smoke using cached Qwen/Qwen3-0.6B revision `c1899de289a0`, validation-only synthetic adapter `67eb726005d4434181b3c95512ca0577` (adapter hash prefix `ea9c29c2d681`), and one fixed fictional input. All arms used the extraction prompt, deterministic generation, and the app's 128-token limit; no dataset rows, provider calls, benchmark reservation, or report files were used.
 
 | Arm | Load seconds | Inference seconds | Generated tokens | Tokens/sec | Model footprint bytes | JSON keys valid |
 |---|---:|---:|---:|---:|---:|---|
