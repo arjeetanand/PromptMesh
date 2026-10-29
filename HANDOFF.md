@@ -490,3 +490,12 @@
 - Limitations remain: no human-reviewed benchmark, quantized quality comparison, or actual memory result exists. MPS cannot provide a peak through the exposed PyTorch API, and the CUDA allocator metric may exclude third-party allocations.
 - Delivery: implementation commit `8e6107e` is on `codex/promptmesh-validation-selection` for existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2), targeting `main`. No merge.
 - Next action: review labels and source reuse rights before the real training and frozen quantized comparison.
+
+## Year-aware review queue — 2026-10-29
+
+- Added a proposed-event-year filter to the Fine-tune review queue. The selector and Previous/Next navigation now share the same interleaved group order; switching years warns before discarding unsaved review edits. The filter only narrows navigation and does not select a 72-group cohort or change label, reuse-rights, or export decisions.
+- Reconciled `training/datasets/README.md` with the current ignored draft: 381 rows / 127 groups, split 267/57/57 rows across 89/19/19 groups. The draft has 65 groups proposed for 2024, 13 for 2021, 12 for each other dated year, and one undated. All remain unreviewed.
+- Verification: all 89 Python tests and 19 Node UI tests pass; `node --check static/app.js`, `bash -n run.sh`, and `git diff --check` pass. Browser check on port 4004 at 1440px, 768px, and 390px had API connected and no horizontal overflow. The 2024 filter displayed 65 groups and navigation stayed within that year; switching to All years followed the interleaved order. Queue remained at 0 reviewed / 0 excluded / 0 export-eligible. No review decision was saved.
+- Delivery: commit `de8bf4d0972fc19f2463ba0f695500741aefbf1f` is pushed to `codex/promptmesh-validation-selection`. It updates the existing PR #2 branch, whose recorded target is `main`; the GitHub API could not refresh PR state this turn (`error connecting to api.github.com`). No merge.
+- Limitations: no human-reviewed or rights-cleared benchmark exists, and no cohort has been selected. The exported year distribution must be checked before claiming balance. A full screen-reader/axe audit and automated visual inspector were not completed; the inspector's Chrome process exited early. App remains available at `http://127.0.0.1:4004/#finetune` via `./run.sh`.
+- Next action: review the candidate labels and reuse terms, then make an explicit reviewed cohort selection before reporting evaluation or quantization results.
