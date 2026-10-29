@@ -496,7 +496,7 @@ is run provenance, and the local training stack has an exact macOS ARM64 snapsho
 `requirements-training-macos-arm64.lock`. The rest of `requirements.txt` is
 still unpinned. On 2026-10-29, installing both files into a fresh Python 3.12.13
 macOS ARM64 environment succeeded; all 47 pins matched, `pip check` reported no
-broken requirements, dependency imports succeeded, and 108 Python unit tests
+broken requirements, dependency imports succeeded, and 109 Python unit tests
 passed. This verifies the current install path but does not pin future versions
 of the general app dependencies. Run `python -m training.verify_lock` and
 `python -m pip check` to validate an existing macOS ARM64 Python 3.12 environment.
@@ -533,6 +533,9 @@ browser tab open while the job runs. Run
 `.venv/bin/python -m unittest discover -s tests -q` for the Python suite and
 `node --test tests/ui_background_jobs.test.cjs` for the background-progress
 regression checks.
+The Python suite includes a mocked successful LoRA job path that checks the
+saved validation-only manifest and local-only loader arguments without loading
+checkpoint weights; it verifies orchestration, not model quality.
 
 The Fine-tune page shows schema readiness, example and source-group counts,
 train/validation/reserved-test sizes, and a short SHA-256 dataset fingerprint.

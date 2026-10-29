@@ -57,6 +57,120 @@ class TrainingRunnerProvenanceTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "cached base-model revision"):
                 _resolve_cached_base_revision()
 
+    def test_lora_runner_saves_a_validation_only_manifest_after_training(self):
+        import torch
+
+        from training.manifest import training_configuration_sha256
+
+        rows = [
+            {
+                "group_id": f"source-{index}",
+                "input": f"Source fact {index}.",
+                "output": {
+                    "organization": f"Org {index}",
+                    "year": 2024,
+                    "claim": f"claim {index}",
+                },
+            }
+            for index in range(60)
+        ]
+        dataset_hash = "d" * 64
+        base_metrics = {"record_exact_match": 0.2}
+        adapter_metrics = {"record_exact_match": 0.8}
+        base_model = types.SimpleNamespace(to=lambda device: types.SimpleNamespace(device=device))
+        tokenizer = object()
+        trainer_instances = []
+
+        class FakePromptRegistry:
+            def load_with_metadata(self, *_args):
+                return {"template": "Extract {{text}}"}
+
+        class FakeTrainer:
+            def __init__(self, model, args, train_dataset, eval_dataset, **_kwargs):
+                self.model = model
+                self.train_dataset = train_dataset
+                self.eval_dataset = eval_dataset
+                self.state = types.SimpleNamespace(log_history=[{"loss": 1.2}, {"eval_loss": 0.7}])
+                self.trained = False
+                trainer_instances.append(self)
+
+            def train(self):
+                self.trained = True
+
+            def save_model(self, output_dir):
+                adapter_dir = Path(output_dir)
+                adapter_dir.mkdir(parents=True, exist_ok=True)
+                (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+
+        class Jobs:
+            def __init__(self):
+                self.updates = []
+
+            def update(self, job_id, changes):
+                self.updates.append((job_id, changes))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runs_dir = root / "runs"
+            benchmark_dir = root / "benchmarks"
+            prompt_root = root / "prompts"
+            (prompt_root / "extraction").mkdir(parents=True)
+            (prompt_root / "extraction" / "v1.yaml").write_text("prompt: v1\n", encoding="utf-8")
+            jobs = Jobs()
+            revision = "c" * 40
+            with (
+                patch.object(runner, "RUNS_DIR", runs_dir),
+                patch.object(runner, "BENCHMARKS_DIR", benchmark_dir),
+                patch.object(runner, "load_dataset_snapshot", return_value=(rows, dataset_hash)),
+                patch.object(runner, "_resolve_cached_base_revision", return_value=revision),
+                patch.object(runner, "_score_validation", side_effect=[base_metrics, adapter_metrics]) as score,
+                patch("prompts.registry.PROMPT_BASE_PATH", prompt_root),
+                patch("prompts.registry.PromptRegistry", FakePromptRegistry),
+                patch("training.runner.runtime_metadata", return_value={"device": "cpu", "packages": {"torch": "test"}}),
+                patch("transformers.AutoModelForCausalLM.from_pretrained", return_value=base_model) as load_model,
+                patch("transformers.AutoTokenizer.from_pretrained", return_value=tokenizer) as load_tokenizer,
+                patch("trl.SFTTrainer", FakeTrainer),
+                patch("torch.backends.mps.is_available", return_value=False),
+                patch("torch.cuda.is_available", return_value=False),
+            ):
+                runner.run_lora_training(
+                    "training-job",
+                    types.SimpleNamespace(dataset_id="reviewed", learning_rate=0.0002, epochs=1, lora_rank=8),
+                    jobs,
+                )
+            result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "training-job" and "result" in changes)
+            manifest_path = runs_dir / result["run_id"] / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            splits = split_dataset(rows)
+            self.assertEqual(jobs.updates[-1][1]["status"], "completed")
+            self.assertTrue(trainer_instances[0].trained)
+            self.assertEqual(len(trainer_instances[0].train_dataset), len(splits["train"]))
+            self.assertEqual(len(trainer_instances[0].eval_dataset), len(splits["validation"]))
+            self.assertEqual(score.call_count, 2)
+            self.assertEqual(manifest["metrics_split"], "validation")
+            self.assertFalse(manifest["test_split_used"])
+            self.assertEqual(manifest["split_counts"], runner.split_counts(splits))
+            self.assertEqual(manifest["metrics"], {"base": base_metrics, "adapter": adapter_metrics})
+            self.assertEqual(
+                manifest["training_configuration_sha256"],
+                training_configuration_sha256(manifest["training_configuration"]),
+            )
+            self.assertEqual(manifest["base_revision"], revision)
+            self.assertIs(manifest["training_configuration"]["model_load"]["local_files_only"], True)
+            load_model.assert_called_once_with(
+                BASE_MODEL_ID,
+                revision=revision,
+                dtype=torch.float32,
+                trust_remote_code=False,
+                local_files_only=True,
+            )
+            load_tokenizer.assert_called_once_with(
+                BASE_MODEL_ID,
+                revision=revision,
+                trust_remote_code=False,
+                local_files_only=True,
+            )
+
 
 class TrainingManifestConfigurationTests(unittest.TestCase):
     def test_training_manifest_snapshot_records_effective_trainer_and_lora_settings(self):

@@ -324,3 +324,17 @@
 - [x] Bump frozen report schema to v11 and document the fingerprint inputs.
 - [x] Verify the focused frozen benchmark suite (19 tests); full-suite verification is recorded in the handoff.
 - [ ] Re-run matched evaluation after human review and rights clearance; the current source packet remains unreviewed and synthetic results remain workflow-only.
+
+## LoRA runner success-path regression — 2026-10-29
+
+- [x] Exercise the successful training orchestration with mocked model/trainer objects; verify train/validation dataset wiring, local-only loader arguments, adapter persistence, and the schema-v5 validation-only manifest digest without loading checkpoint weights.
+- [x] Run the training test module: 29 tests passed.
+- [ ] Run and evaluate a new LoRA adapter on a human-reviewed, rights-cleared benchmark; the mock test does not establish model quality.
+
+## Live Fine-tune verification — 2026-10-29
+
+- [x] Verify the current checkout is healthy on port 4004 and the Fine-tune page reports API connected.
+- [x] Check the page at 1600px and 390px CSS widths; document and body widths match the viewport, and the mobile navigation collapses to an accessible menu button.
+- [x] Confirm the review queue still has 423 candidates / 141 source groups / 0 reviewed labels / 0 eligible groups; no review decision was saved.
+- [x] Confirm the browser console has no errors or warnings.
+- [ ] Complete a screen-reader and automated axe audit; visual/DOM checks do not replace either.
