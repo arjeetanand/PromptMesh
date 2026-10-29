@@ -1,6 +1,7 @@
 import json
 import hashlib
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -19,7 +20,9 @@ from training.datasets import (
     split_dataset,
 )
 from training.metrics import score_predictions
+from training.holdout_registry import create_holdout_identity, reserve_holdout
 from training.registry import artifact_tree_sha256, get_adapter_path, get_benchmark_adapter, list_adapters
+from training import runner
 from training.runner import BASE_MODEL_ID, _resolve_cached_base_revision
 
 
@@ -72,6 +75,52 @@ class TrainingDatasetTests(unittest.TestCase):
     def test_dataset_ids_cannot_escape_the_local_dataset_directory(self):
         with self.assertRaises(ValueError):
             dataset_path("../outside")
+
+    def test_lora_runner_rejects_old_test_groups_moved_into_training(self):
+        with tempfile.TemporaryDirectory() as data_dir, tempfile.TemporaryDirectory() as benchmark_dir:
+            rows = self._write_reviewed_dataset(data_dir, count=200)
+            original_test = split_dataset(rows)["test"]
+            old_test_groups = {row["group_id"] for row in original_test}
+            data_path = Path(data_dir) / "reviewed.jsonl"
+            original_bytes = data_path.read_bytes()
+            original_digest = hashlib.sha256(original_bytes).hexdigest()
+            reservation = {
+                "schema_version": 2,
+                "dataset_id": "reviewed",
+                "dataset_sha256": original_digest,
+                "reserved_at": "2026-10-29T00:00:00+00:00",
+            }
+            identity = create_holdout_identity(original_test)
+            reserve_holdout(
+                Path(benchmark_dir),
+                Path(benchmark_dir) / "reviewed" / original_digest / "reservation.json",
+                reservation,
+                identity,
+            )
+
+            changed_rows = [row | {"output": dict(row["output"])} for row in rows]
+            for index, group_id in enumerate(sorted(old_test_groups)):
+                next(row for row in changed_rows if row["group_id"] == group_id)["output"]["year"] = 1000 + index
+            changed_bytes = "".join(json.dumps(row) + "\n" for row in changed_rows).encode("utf-8")
+            data_path.write_bytes(changed_bytes)
+
+            class Jobs:
+                def __init__(self):
+                    self.updates = []
+
+                def update(self, job_id, changes):
+                    self.updates.append((job_id, changes))
+
+            jobs = Jobs()
+            with patch("training.datasets.DATASET_DIR", Path(data_dir)), \
+                 patch.object(runner, "BENCHMARKS_DIR", Path(benchmark_dir)), \
+                 patch.object(runner, "_resolve_cached_base_revision") as resolve_revision:
+                with self.assertLogs(runner.logger, level="ERROR"):
+                    with self.assertRaisesRegex(ValueError, "previously used in a final-test holdout"):
+                        runner.run_lora_training("training-job", types.SimpleNamespace(dataset_id="reviewed"), jobs)
+
+            resolve_revision.assert_not_called()
+            self.assertEqual(jobs.updates[-1][1]["status"], "failed")
 
     def test_dataset_snapshot_hashes_the_exact_bytes_that_were_parsed(self):
         with tempfile.TemporaryDirectory() as temp_dir:

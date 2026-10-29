@@ -53,12 +53,14 @@ from training.datasets import (
     split_strategy,
 )
 from training.benchmark import (
+    BENCHMARKS_DIR,
     MAX_PROMPT_CANDIDATES,
     load_prompt_selection,
     run_frozen_benchmark,
     run_prompt_selection,
     validate_prompt_template,
 )
+from training.holdout_registry import assert_rows_unseen
 from training.runner import run_lora_training, training_runtime
 from training.quantization import quantization_runtime
 from training.registry import get_benchmark_adapter, list_adapters
@@ -505,7 +507,8 @@ async def start_training(request: FineTuneRequest, bg: BackgroundTasks, http_req
         missing = ", ".join(runtime["missing"])
         raise HTTPException(status_code=503, detail=f"Local training dependencies are missing: {missing}")
     try:
-        split_dataset(load_dataset(request.dataset_id))
+        splits = split_dataset(load_dataset(request.dataset_id))
+        assert_rows_unseen(splits["train"] + splits["validation"], BENCHMARKS_DIR, "LoRA training/validation data")
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Training dataset not found") from exc
     except (OSError, ValueError) as exc:

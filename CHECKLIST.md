@@ -190,6 +190,8 @@
 - [x] Recheck the ignored packet files: the review CSV and current JSONL each contain 381 rows / 127 groups, all rows still need human review, reviewed-label/note fields are blank, the CSV has no per-row reviewer/timestamp columns, and no benchmark/selection report artifact exists under `training/`.
 - [x] Scan every variant for actor/year presence; source-check and correct three draft actor-name expansions and one missing input year, regenerate the ignored JSONL mirror, and keep all review/rights states pending.
 - [x] Source-audit 25 groups from the 2024-heavy batch against official pages and all three variants; correct the NASA contract event year, EPA recipient scope, and grammar/date notes without marking any row reviewed.
+- [x] Persist hashed final-test source-group/input identities across dataset versions and reject overlap before training, validation selection, or another frozen test; legacy reservations require the exact original dataset snapshot to be safely indexed.
+- [x] Cover duplicate dataset IDs, training-only edits, changed event-year splits, renamed groups with repeated inputs, legacy reservations, and disjoint data in benchmark regressions.
 - [ ] Human-review source fidelity, actor/year/claim labels, every variant, and reuse terms before exporting a dataset or making benchmark claims.
 
 ## MPS quantization smoke — 2026-10-29
@@ -206,5 +208,13 @@
 - [x] Add a keyboard-visible skip link to the main workspace and keep in-page fragments from redirecting the active app route.
 - [x] Add regression coverage for the skip-link target and route preservation; all 81 Python tests and 17 Node UI tests pass, JavaScript and launcher syntax checks pass, and `git diff --check` is clean.
 - [x] In the browser, Tab focuses the skip link and Enter moves focus to the workspace while Fine-tune remains selected; no review was saved.
-- [ ] Recheck the final served stylesheet and page after restarting the local app; the desktop browser reports the Mac is locked and cannot reach the restarted service.
+- [x] Recheck the final served page after restarting the local app; the in-app browser reports API connected and the updated holdout disclosure is visible.
 - [ ] Complete the full screen-reader and axe audit.
+
+## Cross-version final-test reuse guard — 2026-10-29
+
+- [x] Persist hashed source-group and normalized-input identities for frozen tests; block known test identities from later training, validation selection, or final-test use across dataset versions.
+- [x] Safely index older reservation/report artifacts only when their exact original dataset snapshot is still available; otherwise fail closed.
+- [x] Verify with 88 Python tests, 17 Node UI tests, Python/JavaScript/launcher syntax checks, and `git diff --check`.
+- [x] Restart the app on port 4004 and confirm the Fine-tune page is connected and discloses the exact-match limitation.
+- [ ] Human-review the 381-row / 127-group source packet and reuse terms before training or benchmark claims.

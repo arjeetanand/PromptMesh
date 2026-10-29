@@ -132,7 +132,13 @@ class FrozenBenchmarkTests(unittest.TestCase):
         return result["selection_id"], jobs
 
     def test_prompt_selection_uses_validation_gold_and_persists_hashes(self):
-        selection_id, jobs = self._select_prompt()
+        with patch.object(benchmark, "assert_rows_unseen", wraps=benchmark.assert_rows_unseen) as unseen_check:
+            selection_id, jobs = self._select_prompt()
+        unseen_check.assert_called_once()
+        self.assertEqual(
+            unseen_check.call_args.args[0],
+            benchmark.split_dataset(self.rows)["train"] + benchmark.split_dataset(self.rows)["validation"],
+        )
         selection = benchmark.load_prompt_selection(selection_id)
 
         self.assertEqual(selection["metrics_split"], "validation")
@@ -146,6 +152,40 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertEqual(result["environment"]["device"], "cpu")
         self.assertEqual(len(selection["selection_sha256"]), 64)
         self.assertNotIn("Private source text", json.dumps(selection))
+
+    def test_prompt_selection_rejects_a_prior_test_group_moved_into_training(self):
+        original_test = benchmark.split_dataset(self.rows)["test"]
+        old_test_groups = {row["group_id"] for row in original_test}
+        identity = benchmark._test_holdout_identity(original_test)
+        benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "b" * 64, "c" * 32, identity)
+
+        changed_rows = [row | {"output": dict(row["output"])} for row in self.rows]
+        for index, group_id in enumerate(sorted(old_test_groups)):
+            next(row for row in changed_rows if row["group_id"] == group_id)["output"]["year"] = 1000 + index
+        changed_bytes = "".join(json.dumps(row) + "\n" for row in changed_rows).encode("utf-8")
+        changed_digest = hashlib.sha256(changed_bytes).hexdigest()
+        (self.dataset_dir / "reviewed.jsonl").write_bytes(changed_bytes)
+        card_path = self.dataset_dir / "reviewed.card.json"
+        card = json.loads(card_path.read_text(encoding="utf-8"))
+        card["dataset_sha256"] = changed_digest
+        card_path.write_text(json.dumps(card), encoding="utf-8")
+        self.adapter_manifest["dataset_sha256"] = changed_digest
+        (self.runs_dir / self.adapter_run_id / "manifest.json").write_text(
+            json.dumps(self.adapter_manifest), encoding="utf-8"
+        )
+
+        request = types.SimpleNamespace(
+            dataset_id="reviewed",
+            adapter_run_id=self.adapter_run_id,
+            candidate_prompts=["Custom extractor:\n{{text}}"],
+        )
+        jobs = JobRecorder()
+        with patch.object(benchmark, "_load_local_model", side_effect=AssertionError("selection model must not load")) as load_model:
+            with self.assertLogs(benchmark.logger, level="ERROR"):
+                with self.assertRaisesRegex(ValueError, "previously used in a final-test holdout"):
+                    benchmark.run_prompt_selection("selection-reuse-job", request, jobs)
+
+        load_model.assert_not_called()
 
     def test_paired_exact_match_interval_weights_examples_within_resampled_groups(self):
         gold = {"organization": "Northstar", "year": 2024, "claim": "opened a lab"}
@@ -252,7 +292,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
-            self.assertEqual(report["schema_version"], 5)
+            self.assertEqual(report["schema_version"], 6)
             self.assertEqual(report["metrics_split"], "test")
             self.assertEqual(report["split_strategy"], "group-year-stratified-v1")
             self.assertFalse(report["test_split_used_for_selection"])
@@ -274,6 +314,13 @@ class FrozenBenchmarkTests(unittest.TestCase):
             self.assertEqual(lora_delta["reference"], "Base · validation-selected prompt")
             self.assertEqual(report["test_examples"], 30)
             self.assertEqual(report["test_source_groups"], 30)
+            self.assertEqual(report["test_holdout_identity"]["version"], 1)
+            self.assertEqual(report["test_holdout_identity"]["method"], "SHA-256 of normalized source-group IDs and input text")
+            self.assertEqual(
+                report["test_holdout_identity"]["sha256"],
+                benchmark._test_holdout_identity(benchmark.split_dataset(self.rows)["test"])["sha256"],
+            )
+            self.assertEqual(report["test_holdout_identity"]["unique_inputs"], 30)
             self.assertEqual(report["adapter_environment"]["python_version"], "3.12-test")
             self.assertEqual(report["adapter_environment"]["source_revision"], "a" * 40)
             self.assertFalse(report["adapter_environment"]["source_dirty"])
@@ -380,6 +427,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             "selected_prompt_sha256": report["selected_prompt_sha256"],
             "dataset_sha256": report["dataset_sha256"],
             "benchmark_card_sha256": report["benchmark_card_sha256"],
+            "test_holdout_identity_sha256": report["test_holdout_identity"]["sha256"],
             "quantization_methods": ["bnb_nf4", "quanto_int8_w8a8"],
             "calibration": {
                 "method": "quanto-w8a8-v1",
@@ -501,11 +549,109 @@ class FrozenBenchmarkTests(unittest.TestCase):
 
     def test_only_one_process_can_reserve_the_frozen_holdout(self):
         path = benchmark._reservation_path("reviewed", self.dataset_digest)
-        benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "b" * 64, "c" * 32)
+        identity = benchmark._test_holdout_identity(benchmark.split_dataset(self.rows)["test"])
+        benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "b" * 64, "c" * 32, identity)
 
         self.assertTrue(path.is_file())
         with self.assertRaisesRegex(ValueError, "already reserved"):
-            benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "d" * 64, "e" * 32)
+            benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "d" * 64, "e" * 32, identity)
+
+    def test_test_groups_cannot_be_reused_under_another_dataset_id(self):
+        test_rows = benchmark.split_dataset(self.rows)["test"]
+        identity = benchmark._test_holdout_identity(test_rows)
+        benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "b" * 64, "c" * 32, identity)
+
+        with self.assertRaisesRegex(ValueError, "already reserved"):
+            benchmark._reject_reserved_benchmark("reviewed_copy", "d" * 64, identity)
+
+        renamed_rows = [row | {"group_id": f"copy-{row['group_id']}"} for row in test_rows]
+        renamed_identity = benchmark._test_holdout_identity(renamed_rows)
+        with self.assertRaisesRegex(ValueError, "already reserved"):
+            benchmark._reject_reserved_benchmark("reviewed_copy", "e" * 64, renamed_identity)
+
+    def test_changing_training_rows_does_not_reopen_the_same_final_test(self):
+        original_splits = benchmark.split_dataset(self.rows)
+        train_groups = {row["group_id"] for row in original_splits["train"]}
+        changed_rows = [row | {"output": dict(row["output"])} for row in self.rows]
+        changed_train_row = next(row for row in changed_rows if row["group_id"] in train_groups)
+        changed_train_row["input"] += " Revised training-only wording."
+        changed_content = "".join(json.dumps(row) + "\n" for row in changed_rows).encode("utf-8")
+        changed_digest = hashlib.sha256(changed_content).hexdigest()
+        changed_splits = benchmark.split_dataset(changed_rows)
+        self.assertNotEqual(changed_digest, self.dataset_digest)
+
+        original_identity = benchmark._test_holdout_identity(original_splits["test"])
+        changed_identity = benchmark._test_holdout_identity(changed_splits["test"])
+        self.assertEqual(original_identity["sha256"], changed_identity["sha256"])
+        benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "b" * 64, "c" * 32, original_identity)
+
+        with self.assertRaisesRegex(ValueError, "already reserved"):
+            benchmark._reject_reserved_benchmark("reviewed", changed_digest, changed_identity)
+
+    def test_legacy_reservation_is_indexed_before_another_dataset_can_use_its_holdout(self):
+        legacy_path = benchmark._reservation_path("reviewed", self.dataset_digest)
+        legacy_path.parent.mkdir(parents=True)
+        legacy_path.write_text(json.dumps({
+            "schema_version": 1,
+            "dataset_id": "reviewed",
+            "dataset_sha256": self.dataset_digest,
+        }), encoding="utf-8")
+        identity = benchmark._test_holdout_identity(benchmark.split_dataset(self.rows)["test"])
+
+        with self.assertRaisesRegex(ValueError, "already reserved"):
+            benchmark._reject_reserved_benchmark("reviewed_copy", "d" * 64, identity)
+
+        registry = self.benchmarks_dir / ".holdout-registry.sqlite3"
+        self.assertTrue(registry.is_file())
+        self.assertEqual(registry.stat().st_mode & 0o777, 0o600)
+
+    def test_unmappable_legacy_reservation_fails_closed(self):
+        legacy_path = benchmark._reservation_path("reviewed", self.dataset_digest)
+        legacy_path.parent.mkdir(parents=True)
+        legacy_path.write_text(json.dumps({
+            "schema_version": 1,
+            "dataset_id": "reviewed",
+            "dataset_sha256": self.dataset_digest,
+        }), encoding="utf-8")
+        changed_rows = [row | {"input": row["input"] + " revised"} for row in self.rows]
+        changed_content = "".join(json.dumps(row) + "\n" for row in changed_rows).encode("utf-8")
+        (self.dataset_dir / "reviewed.jsonl").write_bytes(changed_content)
+        identity = benchmark._test_holdout_identity(benchmark.split_dataset(self.rows)["test"])
+
+        with self.assertRaisesRegex(ValueError, "original snapshot"):
+            benchmark._reject_reserved_benchmark("reviewed_copy", "d" * 64, identity)
+
+    def test_previously_tested_groups_cannot_move_into_train_or_validation(self):
+        original_splits = benchmark.split_dataset(self.rows)
+        old_test_groups = {row["group_id"] for row in original_splits["test"]}
+        identity = benchmark._test_holdout_identity(original_splits["test"])
+        benchmark._reserve_frozen_benchmark("reviewed", self.dataset_digest, "b" * 64, "c" * 32, identity)
+
+        changed_rows = [row | {"output": dict(row["output"])} for row in self.rows]
+        for index, group_id in enumerate(sorted(old_test_groups)):
+            next(row for row in changed_rows if row["group_id"] == group_id)["output"]["year"] = 1000 + index
+        changed_splits = benchmark.split_dataset(changed_rows)
+        new_test_groups = {row["group_id"] for row in changed_splits["test"]}
+        new_train_groups = {row["group_id"] for row in changed_splits["train"]}
+        self.assertFalse(old_test_groups & new_test_groups)
+        self.assertTrue(old_test_groups.issubset(new_train_groups))
+
+        with self.assertRaisesRegex(ValueError, "previously used in a final-test holdout"):
+            benchmark.assert_rows_unseen(
+                changed_splits["train"] + changed_splits["validation"],
+                self.benchmarks_dir,
+                "Training/validation data",
+            )
+
+        renamed_rows = [row | {"group_id": f"renamed-{row['group_id']}"} for row in original_splits["test"]]
+        with self.assertRaisesRegex(ValueError, "previously used in a final-test holdout"):
+            benchmark.assert_rows_unseen(renamed_rows, self.benchmarks_dir, "Training/validation data")
+
+        independent_rows = [
+            {"group_id": f"independent-{index}", "input": f"Independent new source {index}."}
+            for index in range(12)
+        ]
+        benchmark.assert_rows_unseen(independent_rows, self.benchmarks_dir, "Training/validation data")
 
 
 if __name__ == "__main__":

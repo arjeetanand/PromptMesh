@@ -178,6 +178,16 @@ Smaller datasets use the deterministic group-hash split. Both policies use seed
 42 and are recorded in adapter, selection, and benchmark provenance. This
 controls year coverage, not organization, topic, or source-type balance.
 
+PromptMesh stores SHA-256 fingerprints of final-test source-group IDs and
+normalized input text in a private local registry. Before training, validation
+selection, or another final run, it blocks any previously tested identity from
+entering train/validation or a later test set, even under a new dataset ID.
+Keep source-group IDs stable across versions; whitespace- and case-normalized
+exact input matches also catch re-exports with renamed groups. This does not
+detect paraphrases whose IDs and wording both change. Older reservations are
+indexed only when their original dataset snapshot still matches; otherwise the
+gate fails closed.
+
 Open **Fine-tune → Review source candidates** to review one source group at a
 time. Compare every phrasing with its linked source, edit the labels, and record
 reuse permission separately with its evidence. The queue is loopback-only and

@@ -27,13 +27,13 @@ Tasks and checkpoints are tracked in the repository's existing `CHECKLIST.md`.
 - [x] UI labels distinguish validation metrics from historical exposed test results and reserved final-test counts; prompt evolution identifies its heuristic optimization scores.
 - [x] Regression checks cover validation-only LoRA scoring and prompt-evolution score provenance.
 - [x] Local LoRA training scores validation only; prompt selection scores validation only; the frozen evaluator uses the test split only after selection.
-- [x] A frozen report cannot be rerun with a different prompt selection or adapter for the same dataset fingerprint.
+- [x] A frozen report cannot be rerun with a different prompt selection or adapter for the same dataset fingerprint; source-group and input identities cannot be reused across dataset versions.
 
 ### Phase 2: Human-reviewed benchmark and matched comparison
 
 3. **Benchmark provenance:** validate the user-authored card against exact dataset bytes and require a local review attestation and complete counts before selection/evaluation. Both validation and test splits need the minimum size. Templates are ready; no reviewed dataset has been supplied, and the card cannot independently prove the review occurred.
 4. **Validation prompt selector:** compare `extraction/v1` plus up to three candidate prompts on grouped validation rows using exact match, field accuracy, and JSON-valid rate. Save a hash-checked selection record with adapter/data/card/model provenance.
-5. **Frozen benchmark runner:** reserve the dataset version before scoring; compare base+initial prompt, base+validation-selected prompt, and LoRA+the same selected prompt on the identical untouched test rows. Save aggregate metrics, source-group bootstrap intervals, split/model/tokenizer/prompt/adapter/data/card hashes, device and inference settings. Use only cached pinned weights. If a run fails after reservation, create a new dataset version before another final run.
+5. **Frozen benchmark runner:** reserve the test source-group and input identities before scoring; compare base+initial prompt, base+validation-selected prompt, and LoRA+the same selected prompt on the identical untouched test rows. Save aggregate metrics, source-group bootstrap intervals, split/model/tokenizer/prompt/adapter/data/card hashes, device and inference settings. Use only cached pinned weights. A failed or completed holdout cannot be reused by changing only its dataset ID or training rows; the next final run needs disjoint source groups and inputs.
 6. **Benchmark UI and report:** add validation-selection and final-report controls to Fine-tune; show the test report as a separate frozen result.
 
 ### Checkpoint: quality evidence

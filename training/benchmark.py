@@ -14,6 +14,13 @@ from pathlib import Path
 from prompts.registry import PROMPT_BASE_PATH, PromptRegistry
 from training.datasets import SPLIT_SEED, benchmark_card_status, load_dataset_snapshot, split_dataset, split_strategy
 from training.environment import runtime_metadata
+from training.holdout_registry import (
+    DEFAULT_BENCHMARKS_DIR,
+    assert_rows_unseen,
+    create_holdout_identity as _test_holdout_identity,
+    reject_used_holdout,
+    reserve_holdout,
+)
 from training.metrics import score_predictions
 from training.quantization import (
     CALIBRATION_GROUP_LIMIT,
@@ -31,7 +38,7 @@ from training.runner import BASE_MODEL_ID, _generate
 
 
 SELECTIONS_DIR = Path(__file__).parent / "selections"
-BENCHMARKS_DIR = Path(__file__).parent / "benchmarks"
+BENCHMARKS_DIR = DEFAULT_BENCHMARKS_DIR
 MAX_PROMPT_CANDIDATES = 3
 SELECTION_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 logger = logging.getLogger(__name__)
@@ -256,6 +263,9 @@ def run_prompt_selection(job_id, request, jobs):
         validation_rows = splits["validation"]
         if not validation_rows:
             raise ValueError("The validation split is empty")
+        assert_rows_unseen(
+            splits["train"] + validation_rows, BENCHMARKS_DIR, "Training/validation data"
+        )
         metadata = PromptRegistry().load_with_metadata("extraction", "v1")
         initial_prompt = metadata["template"]
         initial_prompt_source_hash = hashlib.sha256(
@@ -469,24 +479,34 @@ def _reservation_path(dataset_id, dataset_digest):
     return _benchmark_report_path(dataset_id, dataset_digest).with_name("reservation.json")
 
 
-def _reject_reserved_benchmark(dataset_id, dataset_digest):
-    if _reservation_path(dataset_id, dataset_digest).exists():
+def _reject_reserved_benchmark(dataset_id, dataset_digest, holdout_identity):
+    reservation_path = _reservation_path(dataset_id, dataset_digest)
+    if reservation_path.is_symlink():
+        raise ValueError("Frozen test reservation path is invalid")
+    if reservation_path.exists():
         raise ValueError("A frozen test run is already reserved and may have accessed this holdout; create a new dataset version before another run")
+    reject_used_holdout(BENCHMARKS_DIR, holdout_identity)
 
 
-def _reserve_frozen_benchmark(dataset_id, dataset_digest, configuration_digest, selection_id):
+def _reserve_frozen_benchmark(dataset_id, dataset_digest, configuration_digest, selection_id, holdout_identity):
     reservation = {
-        "schema_version": 1,
+        "schema_version": 2,
         "dataset_id": dataset_id,
         "dataset_sha256": dataset_digest,
         "configuration_sha256": configuration_digest,
         "selection_id": selection_id,
+        "holdout_identity_version": holdout_identity["version"],
+        "holdout_identity_sha256": holdout_identity["sha256"],
+        "test_source_groups": holdout_identity["source_groups"],
+        "test_examples": holdout_identity["examples"],
         "reserved_at": datetime.now(timezone.utc).isoformat(),
     }
-    try:
-        _write_private_json(_reservation_path(dataset_id, dataset_digest), reservation)
-    except FileExistsError as exc:
-        raise ValueError("A frozen test run is already reserved and may have accessed this holdout; create a new dataset version before another run") from exc
+    reserve_holdout(
+        BENCHMARKS_DIR,
+        _reservation_path(dataset_id, dataset_digest),
+        reservation,
+        holdout_identity,
+    )
 
 
 def _complete_report(report):
@@ -527,7 +547,11 @@ def run_frozen_benchmark(job_id, request, jobs):
             raise ValueError("The reserved final-test split is below the minimum example or source-group count")
         splits = split_dataset(rows)
         test_rows = splits["test"]
+        holdout_identity = _test_holdout_identity(test_rows)
         train_rows = splits["train"]
+        assert_rows_unseen(
+            train_rows + splits["validation"], BENCHMARKS_DIR, "Training/validation data"
+        )
         test_groups = len({row["group_id"] for row in test_rows})
         if len(test_rows) != readiness["final_test_examples"] or test_groups != readiness["final_test_source_groups"]:
             raise ValueError("Dataset changed while preparing the final test split")
@@ -557,6 +581,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             "selected_prompt_sha256": selection["selected_prompt_sha256"],
             "dataset_sha256": dataset_digest,
             "benchmark_card_sha256": card_status["card_sha256"],
+            "test_holdout_identity_sha256": holdout_identity["sha256"],
         }
         if quantization_methods:
             configuration["quantization_methods"] = quantization_methods
@@ -581,7 +606,7 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "completed_at": datetime.now(timezone.utc).isoformat(),
             })
             return
-        _reject_reserved_benchmark(selection["dataset_id"], dataset_digest)
+        _reject_reserved_benchmark(selection["dataset_id"], dataset_digest, holdout_identity)
 
         quant_runtime = None
         if quantization_methods:
@@ -626,7 +651,9 @@ def run_frozen_benchmark(job_id, request, jobs):
         base_model, tokenizer, device, torch, _ = _load_local_model(adapter)
         _synchronize_device(torch, device)
         base_load_seconds = time.perf_counter() - base_load_started
-        _reserve_frozen_benchmark(selection["dataset_id"], dataset_digest, configuration_digest, request.selection_id)
+        _reserve_frozen_benchmark(
+            selection["dataset_id"], dataset_digest, configuration_digest, request.selection_id, holdout_identity
+        )
         jobs.update(job_id, {"progress": 15, "stage": "scoring_frozen_test"})
         baseline_predictions, _, baseline_seconds = _measure_generation(
             base_model, tokenizer, baseline_prompt, test_rows, torch, device
@@ -748,7 +775,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             _clear_device_cache(quantized_torch, quantized_device)
 
         report = {
-            "schema_version": 5,
+            "schema_version": 6,
             "status": "completed",
             "dataset_id": selection["dataset_id"],
             "dataset_sha256": dataset_digest,
@@ -771,6 +798,12 @@ def run_frozen_benchmark(job_id, request, jobs):
             "split_strategy": current_split_strategy,
             "test_examples": len(test_rows),
             "test_source_groups": test_groups,
+            "test_holdout_identity": {
+                "version": holdout_identity["version"],
+                "method": "SHA-256 of normalized source-group IDs and input text",
+                "sha256": holdout_identity["sha256"],
+                "unique_inputs": holdout_identity["unique_inputs"],
+            },
             "inference": {"max_new_tokens": 128, "do_sample": False, "temperature": None},
             "performance": {
                 "base_full_precision_load_seconds": round(base_load_seconds, 4),

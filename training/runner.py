@@ -17,6 +17,7 @@ from training.datasets import (
     split_strategy,
 )
 from training.environment import runtime_metadata
+from training.holdout_registry import DEFAULT_BENCHMARKS_DIR as BENCHMARKS_DIR, assert_rows_unseen
 from training.metrics import score_predictions
 from training.registry import RUNS_DIR, artifact_tree_sha256
 
@@ -107,6 +108,9 @@ def run_lora_training(job_id, request, jobs):
 
         rows, dataset_hash = load_dataset_snapshot(request.dataset_id)
         splits = split_dataset(rows)
+        assert_rows_unseen(
+            splits["train"] + splits["validation"], BENCHMARKS_DIR, "LoRA training/validation data"
+        )
         counts = split_counts(splits)
         prompt_version = "v1"
         prompt = PromptRegistry().load_with_metadata("extraction", prompt_version)["template"]
