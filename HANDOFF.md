@@ -461,3 +461,11 @@
 - No human review, model training, prompt selection, frozen benchmark, or quantization run used the draft packet. Keep the 381-row review and source-reuse gate open.
 - Delivery: implementation commit `695680b813ff0740d34bc04d41a33425c5b040bf` is pushed on `codex/promptmesh-validation-selection`. Verified existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2) is OPEN and targets `main`. It remains unmerged.
 - The app is live at `http://127.0.0.1:4004`. The guarded launcher reported healthy, but its detached process did not persist in this command environment; a persistent foreground Uvicorn session now serves the browser verification.
+
+## Workspace navigation focus — 2026-10-29
+
+- Sidebar, in-app, and fragment navigation now move focus to the selected page's `h1`, which has `tabindex="-1"`; the initial route does not move focus. This gives keyboard and assistive-technology users context after a workspace transition.
+- Added a Node regression covering focusable headings, visible keyboard focus, sidebar navigation, initial-load behavior, and fragment changes. Verification: 88 Python tests and 18 Node UI tests pass; Python/JavaScript/launcher syntax checks and `git diff --check` pass.
+- Live browser check at `http://127.0.0.1:4004/#finetune`: pressed Enter on Overview; the accessibility tree reported focus on the `Your model lab` heading, and the blue focus ring was visible. The API remained connected; no review decision was saved.
+- A full screen-reader and axe audit remains pending. This browser check verifies focus movement and accessible-tree state only.
+- Delivery: commit `6bdf60a026b5a8f0645109b0588180b856cd723c` is on `codex/promptmesh-validation-selection`; it is being pushed to existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2), which targets `main`. No merge.
