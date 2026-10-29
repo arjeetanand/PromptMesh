@@ -656,7 +656,7 @@
 
 ## Live browser and delivery recheck — 2026-10-29
 
-- The working tree was clean at `8013acb` on `codex/promptmesh-validation-selection`; the two local commits after the last known remote-tracking ref (`c511fa6`) are not confirmed on GitHub.
+- At the start of this recheck, the working tree was clean at `8013acb`. All local branch updates since the last known remote-tracking ref (`c511fa6`) remain unconfirmed on GitHub.
 - Reopened the current Fine-tune page at `http://127.0.0.1:4004/#finetune` in a persistent local session. It reports API connected and shows the unchanged review packet: 423 candidates, 141 source groups, 0 labels reviewed, and 0 export-eligible groups. The 48-row synthetic dataset and saved demo adapters are clearly marked workflow-only. No review or training action was submitted.
 - Retried the user-authorized push; GitHub port 443 timed out after about 75 seconds. The Code Review GitHub connection was also unavailable, so PR #2's current head, base, and checks could not be refreshed. It was previously verified to target `main`; no merge occurred.
 - Remaining: update PR #2 when GitHub connectivity returns; complete human source, label, and reuse review; run the real matched benchmark and quantized comparison; finish screen-reader and axe audits.
