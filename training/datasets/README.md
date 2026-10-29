@@ -55,23 +55,29 @@ For the current seed-42 split, one workable planning shape is 67 source groups
 with three distinct, label-consistent examples per group; that yields 30
 examples across 10 groups in each held-out split. Check the app's readiness
 report after annotation because counts depend on group membership.
-The local public-source review packet has 351 draft rows across 117 groups.
-Its current split policy yields 243 training rows, 54 validation rows across
-18 groups, and 54 test rows across 18 groups. Each group has three controlled
-phrasings of one source claim; these are not independent facts. The proposed
-years are still imbalanced: 66 groups are from 2024, ten each from 2020, 2021,
-2022, 2023, and 2025, and one is undated. The packet remains review-only and
-is not representative. Review each source, label, split, and reuse condition
-before using any examples.
+The local public-source review packet has 381 draft rows across 127 groups.
+Its current split policy yields 267 training rows and 57 rows across 19 groups
+in each held-out split. Each group has three controlled phrasings of one source
+claim; these are not independent facts. Proposed years are still imbalanced:
+66 groups are from 2024, 12 each from 2020, 2021, 2022, 2023, and 2025, and one
+is undated. The packet remains review-only and is not representative. Review
+each source, label, split, and reuse condition before using any examples.
+
+After curation, one year-balanced pilot target would use 12 source groups from
+each year 2020–2025, selecting 12 of the 66 proposed 2024 groups. With three
+variants per group and seed 42, that 72-group target projects to 50/11/11
+train/validation/test groups (150/33/33 rows). This is only a planning
+projection over unreviewed labels, not a benchmark result or representativeness
+claim.
 
 The current seed-42 split projection from those **unreviewed proposed years**
 is:
 
 | Split | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Undated |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Train groups | 6 | 7 | 7 | 7 | 46 | 7 | 1 |
-| Validation groups | 2 | 2 | 1 | 1 | 10 | 2 | 0 |
-| Test groups | 2 | 1 | 2 | 2 | 10 | 1 | 0 |
+| Train groups | 8 | 9 | 9 | 8 | 46 | 8 | 1 |
+| Validation groups | 2 | 2 | 1 | 2 | 10 | 2 | 0 |
+| Test groups | 2 | 1 | 2 | 2 | 10 | 2 | 0 |
 
 This preview is structural only, not the eventual reviewed benchmark composition.
 Both held-out sets are dominated by 2024, and some year slices contain only one

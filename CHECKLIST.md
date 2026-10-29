@@ -177,3 +177,13 @@
 - [x] Add four Node regression checks for LoRA/evolution progress dismissal, reopening, completion status, and results navigation.
 - [x] Verify tab navigation and responsive header behavior in the browser.
 - [x] Include the navigation and background-job follow-up in PR #1 targeting `main`.
+
+## Public-source review packet expansion — 2026-10-29
+
+- [x] Add ten proposed source groups for 2020–2025: WHO pandemic characterization, OpenAI GPT-3 few-shot study, GitHub Copilot technical preview, NASA Perseverance landing, OpenAI ChatGPT research preview, NASA Artemis I launch, Meta LLaMA research release, ISRO Chandrayaan-3 landing, OpenAI GPT-5 introduction, and Alibaba Qwen3 introduction.
+- [x] Keep all new rows as drafts and retain source-specific cautions for event dates, actor granularity, gated access, page updates, and company-reported model claims.
+- [x] Regenerate the ignored schema-shaped JSONL mirror and validate the current 381-row / 127-group packet, three variants per group, blank review fields, unresolved reuse states, HTTPS source URLs, and parser acceptance.
+- [x] Recompute the seed-42 projection: 267/57/57 rows across 89/19/19 groups; 2024 accounts for 10 of 19 groups in each held-out split.
+- [x] Document a possible 72-group year-balanced planning cohort (12 groups per year from 2020–2025; choose 12 of the 66 proposed 2024 groups only after review), projecting to 150/33/33 rows across 50/11/11 groups.
+- [x] Refresh the review workbench at `http://127.0.0.1:4004/#finetune`; it displays 381 rows / 127 groups / 0 reviewed / 0 excluded / 0 eligible, the year counts, and a disabled export action. No decision was saved.
+- [ ] Human-review source fidelity, actor/year/claim labels, every variant, and reuse terms before exporting a dataset or making benchmark claims.

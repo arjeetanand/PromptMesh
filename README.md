@@ -151,14 +151,22 @@ Single-group slices display their metrics without an interval. Group counts
 are per slice, so a source with claims from multiple event years can appear in
 more than one year.
 
-A local, git-ignored public-source review packet has 351 unreviewed draft rows
-in 117 source groups. Each group contains three phrasings of one source claim,
+A local, git-ignored public-source review packet has 381 unreviewed draft rows
+in 127 source groups. Each group contains three phrasings of one source claim,
 not three independent facts. It covers 2020–2025 with one undated group; 66
-groups are dated 2024, so this is still not a representative benchmark. Every
-candidate label and reuse decision remains pending human review, and the packet
-does not establish model-quality gains. In the current draft split projection,
-10 of 18 groups in both validation and test are from 2024; this projection uses
-unreviewed proposed years and must not be presented as benchmark composition.
+groups are dated 2024 and 12 each are dated 2020, 2021, 2022, 2023, and 2025.
+This is still not a representative benchmark. Every candidate label and reuse
+decision remains pending human review, and the packet does not establish
+model-quality gains. The current draft split projects 57 rows across 19 groups
+to each held-out split, with 10 of 19 groups from 2024; these unreviewed years
+must not be presented as benchmark composition.
+
+A possible year-balanced pilot, after human review and rights confirmation,
+would use 12 groups from each year 2020–2025 (selecting 12 of the 66 proposed
+2024 groups). With three variants per group and seed 42, the current split
+algorithm projects 150/33/33 rows across 50/11/11 train/validation/test groups.
+This is a planning projection only; it does not establish label quality,
+reuse permission, or representativeness.
 
 For datasets with at least 30 source groups, the split keeps each group intact
 and stratifies by its event-year signature. Signatures with at least three
