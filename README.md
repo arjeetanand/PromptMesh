@@ -235,14 +235,15 @@ A defensible current résumé line is:
 
 Pair it with this evidence qualifier until the real corpus is reviewed:
 
-> Validated synthetic-data training and workflow controls, and recorded a single-input MPS inference smoke; real-data quality and performance results are pending human label and reuse review.
+> Ran a one-epoch MPS LoRA smoke on 36 synthetic training rows and 6 validation rows; verified the schema-v5 configuration digest and live settings disclosure. A separate single-input MPS quantization canary is workflow evidence only; real-data quality and latency results await human label and reuse review.
 
 In interviews, explain that source-related paraphrases stay together, prompt
 and model selection use validation, and the final test is reserved for matched
 arms. NF4 and INT8 are post-training inference paths; optional W8A8 activation
 calibration uses label-free training inputs. QLoRA training is not implemented.
-The current MPS measurements are a single synthetic smoke, not an accuracy or
-stable throughput result.
+The single-input MPS quantization canary is not an accuracy or stable
+throughput result; the one-epoch synthetic LoRA metrics are not model-quality
+evidence.
 
 ## Quantization, calibration, and QLoRA
 

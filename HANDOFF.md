@@ -550,7 +550,17 @@
 - Added an accessible expandable configuration disclosure to training results and saved-adapter rows. Legacy adapters say their effective settings were not recorded.
 - Frozen report schema v10 embeds the adapter configuration, includes its digest in the report configuration fingerprint, and renders the same settings disclosure in benchmark results.
 - Verification: 103 Python tests and 21 UI tests passed; Python compilation, JavaScript syntax, launcher syntax, and `git diff --check` passed.
-- Browser: the fresh Edge Fine-tune page at 1185px has no document overflow or console errors. The locally saved adapters are legacy and correctly show the missing-settings note. The new disclosure is covered by the UI fixture; no schema-v5 adapter exists for live result rendering. Edge's 390px viewport override still leaves the page at 1185px.
-- No model was loaded or trained in this change. Human review of candidate labels and reuse terms, a real schema-v5 run, a clean-lock installation, and real matched benchmark/quantization measurements remain open.
+- Browser: the fresh Edge Fine-tune page at 1185px had no document overflow or console errors. The previously saved adapters were legacy and correctly showed the missing-settings note; a follow-on schema-v5 smoke and live result disclosure are recorded below. Edge's 390px viewport override still leaves the page at 1185px.
+- No model was loaded or trained during this implementation-only change. Human review of candidate labels and reuse terms, a clean-lock installation, and real matched benchmark/quantization measurements remain open.
 - Next: review and rights-clear the public-source packet, then train a schema-v5 adapter on the reviewed split and run the validation-selected, frozen matched study.
 - Delivery: implementation commit `0836d5f` is on `codex/promptmesh-validation-selection`, the branch for existing PR #2 targeting `main`; no merge.
+
+## Live schema-v5 training smoke — 2026-10-29
+
+- The updated server initially was not loaded: a first synthetic run produced an older schema-v4 manifest. The guarded launcher restarted the project-owned process, but that detached process exited when the command returned, so PromptMesh was started in a persistent foreground Uvicorn session on port 4004 (PID 19515).
+- Completed a one-epoch local run on `entity_extraction_demo` with Qwen/Qwen3-0.6B on MPS: 36 training rows, 6 validation rows, 6 final-test rows reserved, and 35.8 seconds elapsed. Validation exact match was 50.0%, field accuracy 83.3%, and valid JSON 100%; these synthetic results are workflow evidence only, not model-quality evidence. The final test was not scored.
+- The resulting local adapter run `1bc8d7cebab34ff4bc648c385b04a1ea` has manifest schema v5. Its configuration digest validates; the snapshot records one epoch, LoRA rank 8 / alpha 16, float32, bf16/fp16 false, local-only weight loading, and remote code disabled.
+- The live training result shows the complete TRL trainer, PEFT LoRA, and model-loading settings in an accessible disclosure. The saved-adapter list also exposes the configuration. The 423-row source-review packet remains at 0 reviewed labels and 0 eligible groups.
+- The separate earlier run `51ce874d57b6411e8f0cadb8578a61e1` remains a schema-v4 legacy adapter from the stale server; it was not deleted or used for any benchmark.
+- Mobile viewport verification and the human-reviewed, rights-cleared training/benchmark remain open.
+- Next: review source labels and reuse rights, then export the authorized dataset and run validation selection before the matched frozen comparison.

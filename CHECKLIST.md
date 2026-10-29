@@ -283,5 +283,13 @@
 - [x] Embed the adapter settings in frozen reports and include their digest in the benchmark configuration fingerprint; bump the frozen report schema to v10.
 - [x] Full Python suite (103) and Node UI suite (21) pass; Python compilation, JavaScript/shell syntax, and `git diff --check` pass.
 - [x] Inspect the updated Fine-tune page in Edge at 1185px: no overflow or console errors; existing adapters are clearly labeled as legacy.
-- [ ] Inspect the configuration disclosure on a schema-v5 adapter at mobile width; no schema-v5 run exists yet and Edge's viewport override did not apply.
+- [ ] Inspect the configuration disclosure on a schema-v5 adapter at mobile width; the schema-v5 smoke exists, but Edge's 390px viewport override did not apply.
 - [ ] Human-review the 423-row public-source packet and reuse terms before creating a real training dataset or benchmark.
+
+## Live schema-v5 training smoke — 2026-10-29
+
+- [x] Run one local SFT epoch on the synthetic demo: 36 train rows, 6 validation rows, and 6 reserved final-test rows; the final test was not scored.
+- [x] Verify the saved adapter manifest is schema v5 and its full training-configuration digest validates; precision is float32 with bf16/fp16 disabled and local-only weight loading.
+- [x] Verify the live training result and saved-adapter row expose the effective trainer, LoRA, and model-loading settings.
+- [x] Confirm the review packet remains at 423 candidates, 0 reviewed labels, and 0 eligible groups.
+- [ ] Run a schema-v5 fine-tune on a human-reviewed, rights-cleared dataset after review is complete.
