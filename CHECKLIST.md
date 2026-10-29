@@ -290,6 +290,7 @@
 
 - [x] Run one local SFT epoch on the synthetic demo: 36 train rows, 6 validation rows, and 6 reserved final-test rows; the final test was not scored.
 - [x] Verify the saved adapter manifest is schema v5 and its full training-configuration digest validates; precision is float32 with bf16/fp16 disabled and local-only weight loading.
+- [x] Keep saved-adapter tokenizer and model loading local-only, preserve the pinned base revision, and cover both loader arguments with a regression test.
 - [x] Verify the live training result and saved-adapter row expose the effective trainer, LoRA, and model-loading settings.
 - [x] Confirm the review packet remains at 423 candidates, 0 reviewed labels, and 0 eligible groups.
 - [ ] Run a schema-v5 fine-tune on a human-reviewed, rights-cleared dataset after review is complete.

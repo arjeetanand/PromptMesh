@@ -560,6 +560,42 @@ class AdapterRegistryTests(unittest.TestCase):
 
 
 class TrainingRunnerTests(unittest.TestCase):
+    def test_saved_adapter_loading_uses_only_the_local_pinned_model(self):
+        import torch
+
+        from training.model import TrainedAdapterModel
+
+        class LoadedModel:
+            def to(self, _device):
+                return self
+
+            def eval(self):
+                return self
+
+        manifest = {"base_model": BASE_MODEL_ID, "base_revision": "c" * 40}
+        with (
+            patch("training.model.get_adapter_path", return_value=(Path("adapter"), manifest)),
+            patch("transformers.AutoTokenizer.from_pretrained", return_value=object()) as load_tokenizer,
+            patch("peft.AutoPeftModelForCausalLM.from_pretrained", return_value=LoadedModel()) as load_adapter,
+            patch("torch.backends.mps.is_available", return_value=False),
+            patch("torch.cuda.is_available", return_value=False),
+        ):
+            TrainedAdapterModel("a" * 32)._load()
+
+        load_tokenizer.assert_called_once_with(
+            BASE_MODEL_ID,
+            trust_remote_code=False,
+            local_files_only=True,
+            revision="c" * 40,
+        )
+        load_adapter.assert_called_once_with(
+            Path("adapter"),
+            dtype=torch.float32,
+            trust_remote_code=False,
+            local_files_only=True,
+            revision="c" * 40,
+        )
+
     def test_float32_training_config_disables_automatic_mixed_precision(self):
         from peft import LoraConfig
         from trl import SFTConfig

@@ -501,11 +501,12 @@ inference for that dataset version, including after an interrupted run. A failed
 run may have consumed the holdout, so create a new dataset version before
 another final run.
 
-Both local benchmark endpoints use `local_files_only` with the adapter's pinned
-checkpoint revision; they do not download weights or send dataset rows to a
-provider. The pinned model must already be cached. Prompt evolution remains a
-separate LLM-judge heuristic workflow; copy a candidate from it into the
-validation-selection form to score it against gold labels.
+Saved-adapter inference and both local benchmark endpoints use
+`local_files_only`; benchmark runs also use the adapter's pinned checkpoint
+revision. The model must already be cached. The benchmark endpoints do not send
+dataset rows to a provider. Prompt evolution remains a separate LLM-judge
+heuristic workflow; copy a candidate from it into the validation-selection form
+to score it against gold labels.
 
 Every workspace page includes a Back to overview control. While local LoRA
 training or prompt evolution runs, choose **Run in background** to close the

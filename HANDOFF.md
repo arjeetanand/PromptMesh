@@ -564,3 +564,11 @@
 - The separate earlier run `51ce874d57b6411e8f0cadb8578a61e1` remains a schema-v4 legacy adapter from the stale server; it was not deleted or used for any benchmark.
 - Mobile viewport verification and the human-reviewed, rights-cleared training/benchmark remain open.
 - Next: review source labels and reuse rights, then export the authorized dataset and run validation selection before the matched frozen comparison.
+
+## Saved-adapter offline loading — 2026-10-29
+
+- The one-epoch smoke log included the Hugging Face Hub warning about unauthenticated requests. In the installed Hub client, that warning is surfaced from an HTTP response header, so at least one Hub response reached the process. The training path itself resolves the cached snapshot and loads model/tokenizer with `local_files_only=True`; the exact caller for the earlier response was not captured, so its request and payload are unknown.
+- The separate saved-adapter inference loader had no offline flag. Added `local_files_only=True` to both its tokenizer and adapter-model loads while preserving the manifest's pinned revision. Its caller is the trained-model registry used by evaluation and other model workflows.
+- Added a regression that checks the local-only flags and pinned revision on both loads. Verification passed: 104 Python tests, 21 UI tests, Python compilation, JavaScript syntax, launcher syntax, and `git diff --check`. The warning alone does not establish that dataset text or model weights were sent.
+- The live browser accessibility tree still shows PromptMesh at `http://127.0.0.1:4004/#finetune` with API connected and the review queue unchanged at 423 candidates / 141 groups / 0 reviewed / 0 export-eligible. The project-owned listener is still on port 4004. The updated saved-adapter load was verified with mocked loader calls, not by a live inference request.
+- Remaining: reproduce the smoke under a request trace if exact attribution is needed; human label/reuse review, real-data benchmark, and mobile-width verification are still pending.
