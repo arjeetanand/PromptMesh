@@ -573,7 +573,7 @@
 - Verification: all 107 Python `unittest` cases and all 21 Node UI tests passed. Python compilation, JavaScript syntax, `run.sh` syntax, and `git diff --check` passed. The live browser on port 4004 showed API connected, the updated host-diverse copy, and the unchanged 423 / 141 / 0 review summary; export remained disabled. No review decision or export was submitted.
 - Browser layout: default 1600px viewport had no document overflow. A requested 390px override was reported as 487 CSS px by the browser, where export fields collapsed to one column and document width matched the viewport; the default viewport was restored. Exact 390px verification remains pending.
 - No training, prompt selection, final benchmark, or quantized inference ran. Human label review and source-specific reuse clearance remain required before any model-quality claim.
-- Delivery: implementation and documentation are on `codex/promptmesh-validation-selection` for existing PR #2 targeting `main`; the PR remains open and was not merged.
+- Delivery: host-diverse implementation commit `f5c0719` is on `codex/promptmesh-validation-selection` for existing PR #2 targeting `main`; the PR remains open and was not merged.
 - Next: review the source labels, variants, and reuse terms, then inspect the selected cohort and actual split composition before training or evaluating on it.
 
 ## Saved-adapter offline loading — 2026-10-29
