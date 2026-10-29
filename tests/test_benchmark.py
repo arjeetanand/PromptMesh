@@ -392,15 +392,19 @@ class FrozenBenchmarkTests(unittest.TestCase):
 
         request = types.SimpleNamespace(selection_id=selection_id, adapter_run_id=self.adapter_run_id)
         fake_torch = types.SimpleNamespace(__version__="test")
-        with patch.object(benchmark, "_load_local_model", return_value=(object(), FakeTokenizer(), "cpu", fake_torch, {})) as load_model, \
+        inference_environment = {
+            "device": "cpu", "source_revision": "c" * 40, "source_dirty": False,
+            "packages": {"torch": "test"},
+        }
+        with patch("torch.backends.mps.is_available", return_value=False), \
+             patch("torch.cuda.is_available", return_value=False), \
+             patch.object(benchmark, "_load_local_model", return_value=(object(), FakeTokenizer(), "cpu", fake_torch, {})) as load_model, \
              patch.object(benchmark, "_generate", side_effect=generate), \
-             patch.object(benchmark, "runtime_metadata", return_value={
-                 "device": "cpu", "source_revision": "c" * 40, "source_dirty": False,
-             }):
+             patch.object(benchmark, "runtime_metadata", return_value=inference_environment):
             benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
-            self.assertEqual(report["schema_version"], 10)
+            self.assertEqual(report["schema_version"], 11)
             self.assertEqual(report["adapter_training_configuration"], self.adapter_manifest["training_configuration"])
             self.assertEqual(report["metrics_split"], "test")
             self.assertEqual(report["split_strategy"], "group-year-stratified-v1")
@@ -446,6 +450,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             self.assertEqual(report["environment"]["device"], "cpu")
             self.assertEqual(report["environment"]["source_revision"], "c" * 40)
             self.assertFalse(report["environment"]["source_dirty"])
+            self.assertEqual(report["environment"], inference_environment)
             self.assertEqual(report["metrics"]["lora_validation_selected_prompt"]["record_exact_match_95ci"]["method"], "source-group bootstrap percentile interval")
             report_path = self.benchmarks_dir / "reviewed" / self.dataset_digest / "final.json"
             reservation_path = self.benchmarks_dir / "reviewed" / self.dataset_digest / "reservation.json"
@@ -455,6 +460,22 @@ class FrozenBenchmarkTests(unittest.TestCase):
             load_model.reset_mock()
             benchmark.run_frozen_benchmark("benchmark-job-repeat", request, jobs)
             self.assertEqual(load_model.call_count, 0, "same frozen config should return its existing report without rerunning test inference")
+
+        changed_environment = inference_environment | {"packages": {"torch": "changed"}}
+        with patch.object(benchmark, "runtime_metadata", return_value=changed_environment), \
+             patch.object(benchmark, "_load_local_model", side_effect=AssertionError("runtime mismatch must be rejected before model loading")), \
+             patch.object(benchmark, "_generate", side_effect=AssertionError("runtime mismatch must be rejected before test inference")):
+            with self.assertLogs(benchmark.logger, level="ERROR"):
+                with self.assertRaisesRegex(ValueError, "final report already exists"):
+                    benchmark.run_frozen_benchmark("benchmark-job-runtime-change", request, jobs)
+
+        with patch.object(benchmark.platform, "processor", return_value="different processor"), \
+             patch.object(benchmark, "runtime_metadata", return_value=inference_environment), \
+             patch.object(benchmark, "_load_local_model", side_effect=AssertionError("hardware mismatch must be rejected before model loading")), \
+             patch.object(benchmark, "_generate", side_effect=AssertionError("hardware mismatch must be rejected before test inference")):
+            with self.assertLogs(benchmark.logger, level="ERROR"):
+                with self.assertRaisesRegex(ValueError, "final report already exists"):
+                    benchmark.run_frozen_benchmark("benchmark-job-hardware-change", request, jobs)
 
         other_selection_id, _ = self._select_prompt("Different candidate:\n{{text}}")
         other_request = types.SimpleNamespace(selection_id=other_selection_id, adapter_run_id=self.adapter_run_id)
@@ -510,7 +531,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             "version": "0.50.0-test",
             "backends": {"bitsandbytes": "0.50.0-test", "optimum-quanto": "0.2.7-test"},
             "device": "cpu",
-            "methods": [{"id": "bnb_nf4"}, {"id": "quanto_int8_w8a8"}],
+            "methods": [{"id": "bnb_int8"}, {"id": "bnb_nf4"}, {"id": "quanto_int8_w8a8"}],
             "calibration_note": "Quanto uses training-only inputs.",
         }
         with patch.object(benchmark, "quantization_runtime", return_value=runtime), \
@@ -541,6 +562,17 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertEqual(report["quantized_inference"]["calibration"]["examples"], 16)
         self.assertEqual(report["quantized_inference"]["calibration"]["source_groups"], 16)
         calibration_fingerprint = report["quantized_inference"]["calibration"]["input_sha256"]
+        quantization_runtime = benchmark._quantization_runtime_configuration(
+            ["bnb_nf4", "quanto_int8_w8a8"], runtime
+        )
+        int8_configuration = benchmark._quantization_runtime_configuration(["bnb_int8"], runtime)
+        self.assertEqual(int8_configuration["methods"][0]["compute_dtype"], "not applicable")
+        self.assertEqual(int8_configuration["methods"][0]["llm_int8_threshold"], 6.0)
+        self.assertEqual(quantization_runtime["backends"], runtime["backends"])
+        self.assertEqual(quantization_runtime["methods"][0]["compute_dtype"], "float32")
+        self.assertTrue(quantization_runtime["methods"][0]["double_quantization"])
+        self.assertEqual(quantization_runtime["methods"][1]["weights"], "qint8")
+        self.assertEqual(quantization_runtime["methods"][1]["activations"], "qint8")
         expected_configuration = {
             "report_schema_version": benchmark.FROZEN_REPORT_SCHEMA_VERSION,
             "selection_sha256": report["selection_sha256"],
@@ -552,7 +584,14 @@ class FrozenBenchmarkTests(unittest.TestCase):
             "benchmark_card_sha256": report["benchmark_card_sha256"],
             "test_holdout_identity_sha256": report["test_holdout_identity"]["sha256"],
             "performance_protocol": benchmark.BENCHMARK_TIMING_PROTOCOL,
+            "inference_environment": report["environment"],
+            "inference_hardware": {
+                "device": report["hardware"]["device"],
+                "machine": report["hardware"]["machine"],
+                "processor": report["hardware"]["processor"],
+            },
             "quantization_methods": ["bnb_nf4", "quanto_int8_w8a8"],
+            "quantization_runtime": quantization_runtime,
             "calibration": {
                 "method": "quanto-w8a8-v1",
                 "split": "train",
@@ -577,6 +616,16 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertEqual(quantized_delta["estimate"], 0.0)
         self.assertEqual(quantized_delta["reference"], "Full-precision LoRA control")
         self.assertIn("not QLoRA", report["quantized_inference"]["adapter_training_method"])
+
+        changed_runtime = runtime | {
+            "backends": runtime["backends"] | {"bitsandbytes": "0.51.0-test"},
+        }
+        with patch.object(benchmark, "quantization_runtime", return_value=changed_runtime), \
+             patch.object(benchmark, "_load_local_model", side_effect=AssertionError("runtime mismatch must be rejected before model loading")), \
+             patch.object(benchmark, "_generate", side_effect=AssertionError("runtime mismatch must be rejected before test inference")):
+            with self.assertLogs(benchmark.logger, level="ERROR"):
+                with self.assertRaisesRegex(ValueError, "final report already exists"):
+                    benchmark.run_frozen_benchmark("quantized-runtime-change", request, jobs)
 
     def test_quanto_loader_merges_the_pinned_local_adapter_before_calibration(self):
         events = []

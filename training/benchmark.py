@@ -44,7 +44,7 @@ SELECTIONS_DIR = Path(__file__).parent / "selections"
 BENCHMARKS_DIR = DEFAULT_BENCHMARKS_DIR
 MAX_PROMPT_CANDIDATES = 3
 SELECTION_ID_RE = re.compile(r"^[a-f0-9]{32}$")
-FROZEN_REPORT_SCHEMA_VERSION = 10
+FROZEN_REPORT_SCHEMA_VERSION = 11
 BENCHMARK_TIMING_PROTOCOL = {
     "version": "cold-first-request-warm-scored-pass-v1",
     "cold_first_request": "Fresh model load: one request on the first frozen test input before its scored pass; output is discarded. Reused model arms do not repeat this measurement.",
@@ -59,6 +59,41 @@ logger = logging.getLogger(__name__)
 def _json_digest(value):
     content = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _quantization_runtime_configuration(methods, runtime):
+    available = {item["id"]: item for item in runtime.get("methods", [])}
+    versions = runtime.get("backends", {})
+    backends = {}
+    settings = []
+    for method in methods:
+        details = QUANTIZATION_METHODS[method]
+        resolved = available.get(method)
+        if not resolved:
+            raise ValueError(f"The selected quantization method is unavailable: {method}")
+        backend = details["backend"]
+        version = versions.get(backend) or resolved.get("backend_version")
+        if not version:
+            raise ValueError(f"The selected quantization backend version is unavailable: {backend}")
+        backends[backend] = version
+        settings.append({
+            "id": method,
+            **details,
+            "backend_version": version,
+            "device": runtime["device"],
+            "load_in_8bit": method == "bnb_int8",
+            "load_in_4bit": method == "bnb_nf4",
+            "compute_dtype": (
+                "INT8 linear; FP32 remainder"
+                if method == QUANTO_INT8_METHOD
+                else "float16" if method == "bnb_nf4" and runtime["device"] in ("mps", "cuda")
+                else "float32" if method == "bnb_nf4" else "not applicable"
+            ),
+            "double_quantization": method == "bnb_nf4",
+            "llm_int8_threshold": 6.0 if method == "bnb_int8" else None,
+            **({"weights": "qint8", "activations": "qint8"} if method == QUANTO_INT8_METHOD else {}),
+        })
+    return {"device": runtime["device"], "backends": backends, "methods": settings}
 
 
 def _write_private_json(path, value):
@@ -690,6 +725,25 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "momentum": CALIBRATION_MOMENTUM,
                 "prompt_sha256": _prompt_sha256(selected_prompt),
             }
+        quant_runtime = None
+        quantization_configuration = None
+        if quantization_methods:
+            quant_runtime = quantization_runtime()
+            available_methods = {item["id"] for item in quant_runtime.get("methods", [])}
+            if not quant_runtime["available"] or not set(quantization_methods).issubset(available_methods):
+                raise ValueError(quant_runtime.get("reason") or "The requested quantization backend is unavailable")
+            runtime_device = quant_runtime["device"]
+            quantization_configuration = _quantization_runtime_configuration(quantization_methods, quant_runtime)
+        else:
+            import torch
+
+            runtime_device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
+        inference_environment = runtime_metadata(runtime_device)
+        inference_hardware = {
+            "device": runtime_device,
+            "machine": platform.machine(),
+            "processor": platform.processor() or None,
+        }
         configuration = {
             "report_schema_version": FROZEN_REPORT_SCHEMA_VERSION,
             "selection_sha256": selection["selection_sha256"],
@@ -701,9 +755,12 @@ def run_frozen_benchmark(job_id, request, jobs):
             "benchmark_card_sha256": card_status["card_sha256"],
             "test_holdout_identity_sha256": holdout_identity["sha256"],
             "performance_protocol": BENCHMARK_TIMING_PROTOCOL,
+            "inference_environment": inference_environment,
+            "inference_hardware": inference_hardware,
         }
         if quantization_methods:
             configuration["quantization_methods"] = quantization_methods
+            configuration["quantization_runtime"] = quantization_configuration
         if QUANTO_INT8_METHOD in quantization_methods:
             configuration["calibration"] = {
                 "method": "quanto-w8a8-v1",
@@ -726,13 +783,6 @@ def run_frozen_benchmark(job_id, request, jobs):
             })
             return
         _reject_reserved_benchmark(selection["dataset_id"], dataset_digest, holdout_identity)
-
-        quant_runtime = None
-        if quantization_methods:
-            quant_runtime = quantization_runtime()
-            available_methods = {item["id"] for item in quant_runtime.get("methods", [])}
-            if not quant_runtime["available"] or not set(quantization_methods).issubset(available_methods):
-                raise ValueError(quant_runtime.get("reason") or "The requested quantization backend is unavailable")
 
         baseline_prompt = next(item["prompt"] for item in selection["candidates"] if item["id"] == "extraction/v1")
 
@@ -768,6 +818,8 @@ def run_frozen_benchmark(job_id, request, jobs):
         jobs.update(job_id, {"progress": 5, "stage": "loading_local_base_model"})
         base_load_started = time.perf_counter()
         base_model, tokenizer, device, torch, _ = _load_local_model(adapter)
+        if device != runtime_device:
+            raise ValueError("Full-precision inference resolved to a different device than the benchmark configuration")
         _synchronize_device(torch, device)
         base_load_seconds = time.perf_counter() - base_load_started
         _reserve_frozen_benchmark(
@@ -843,6 +895,9 @@ def run_frozen_benchmark(job_id, request, jobs):
         _clear_device_cache(torch, device)
 
         quantized_variants = []
+        quantization_settings = {
+            item["id"]: item for item in (quantization_configuration or {}).get("methods", [])
+        }
         for index, method in enumerate(quantization_methods):
             jobs.update(job_id, {
                 "progress": 65 + int(25 * index / max(len(quantization_methods), 1)),
@@ -875,23 +930,7 @@ def run_frozen_benchmark(job_id, request, jobs):
                 QUANTIZATION_METHODS[method]["label"],
             )
             quantized_variants.append({
-                "id": method,
-                **QUANTIZATION_METHODS[method],
-                "backend": QUANTIZATION_METHODS[method]["backend"],
-                "backend_version": quant_runtime.get("backends", {}).get(
-                    QUANTIZATION_METHODS[method]["backend"], quant_runtime.get("version", "unknown")
-                ),
-                "device": quantized_device,
-                "activation_bits": QUANTIZATION_METHODS[method]["activation_bits"],
-                "quant_type": QUANTIZATION_METHODS[method]["quant_type"],
-                "compute_dtype": (
-                    "INT8 linear; FP32 remainder"
-                    if method == QUANTO_INT8_METHOD
-                    else "float16" if quantized_device in ("mps", "cuda") else "float32"
-                ),
-                "double_quantization": method == "bnb_nf4",
-                "llm_int8_threshold": 6.0 if method == "bnb_int8" else None,
-                "calibration_required": QUANTIZATION_METHODS[method]["calibration_required"],
+                **quantization_settings[method],
                 "calibration_seconds": (
                     round(quantization_metadata["calibration_seconds"], 4)
                     if "calibration_seconds" in quantization_metadata else None
@@ -952,12 +991,10 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "memory_note": "CUDA allocator peaks may omit allocations made outside PyTorch. MPS reports before/after Metal-driver allocation snapshots, including cached allocations, not a peak; CPU has no device-memory value. Model footprint is separate from runtime memory. Warm latency percentiles come from one scored pass and are not repeated-run throughput measurements.",
             },
             "hardware": {
-                "device": device,
-                "machine": platform.machine(),
-                "processor": platform.processor() or None,
+                **inference_hardware,
                 "torch_version": str(torch.__version__),
             },
-            "environment": runtime_metadata(device),
+            "environment": inference_environment,
             "metrics": {
                 "base_initial_prompt": {**baseline_metrics, "record_exact_match_95ci": baseline_ci},
                 "base_validation_selected_prompt": {

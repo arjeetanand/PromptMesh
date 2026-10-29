@@ -477,7 +477,7 @@ cannot independently prove that a human reviewed the labels. The UI states this
 limit beside readiness and selection controls.
 
 Schema-v5 adapter manifests, schema-v2 validation prompt-selection records,
-and schema-v10 frozen benchmark reports record the Python, platform, machine,
+and schema-v11 frozen benchmark reports record the Python, platform, machine,
 device, and installed versions of the training and inference packages, plus
 the PromptMesh Git revision and whether its working tree was dirty when each
 stage finished. Adapter manifests also snapshot the effective TRL SFT settings,
@@ -485,7 +485,10 @@ PEFT LoRA settings, and float32 local-only model-loading configuration. Older
 schema-v4 adapters remain loadable for inference, but cannot be selected for a
 new frozen benchmark because their full training configuration was not saved.
 Frozen reports carry the adapter configuration and include its digest in the
-configuration fingerprint.
+configuration fingerprint. The frozen-report fingerprint also binds the
+inference environment and processor/device identity; quantized reports bind
+the selected backend versions and effective quantization settings before any
+existing report can be reused.
 Both source fields are `null` when Git metadata is unavailable.
 The Fine-tune page surfaces the training, selection, and benchmark environments
 separately and labels legacy runs when their environment was not recorded. This
@@ -493,7 +496,7 @@ is run provenance, and the local training stack has an exact macOS ARM64 snapsho
 `requirements-training-macos-arm64.lock`. The rest of `requirements.txt` is
 still unpinned. On 2026-10-29, installing both files into a fresh Python 3.12.13
 macOS ARM64 environment succeeded; all 47 pins matched, `pip check` reported no
-broken requirements, dependency imports succeeded, and 107 Python unit tests
+broken requirements, dependency imports succeeded, and 108 Python unit tests
 passed. This verifies the current install path but does not pin future versions
 of the general app dependencies. Run `python -m training.verify_lock` and
 `python -m pip check` to validate an existing macOS ARM64 Python 3.12 environment.

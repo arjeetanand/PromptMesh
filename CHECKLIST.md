@@ -315,3 +315,12 @@
 - [x] Verify the live Apple card at `http://127.0.0.1:4004/#finetune`: terms link is visible, reuse status remains “Not confirmed,” and the queue remains 423 rows / 141 groups / 0 reviewed / 0 eligible.
 - [x] Keep launcher state under a stable `/tmp/promptmesh-<uid>` path so changing `TMPDIR` does not lose process ownership; keep the app available on port 4004.
 - [ ] Human-review source labels and source-specific terms; no reuse permission or benchmark quality result is confirmed.
+
+## Frozen benchmark runtime fingerprint — 2026-10-29
+
+- [x] Include the inference environment and processor/device identity in the frozen-report configuration fingerprint before cache lookup.
+- [x] Include selected quantization backend versions and effective method settings; use the same recorded settings in the report variants.
+- [x] Reject runtime or backend changes before loading a model or running test inference; keep cache reuse for an identical configuration.
+- [x] Bump frozen report schema to v11 and document the fingerprint inputs.
+- [x] Verify the focused frozen benchmark suite (19 tests); full-suite verification is recorded in the handoff.
+- [ ] Re-run matched evaluation after human review and rights clearance; the current source packet remains unreviewed and synthetic results remain workflow-only.
