@@ -76,6 +76,9 @@ test("skip link reaches the workspace without redirecting the active app tab", (
   context.window.location.hash = "#evaluate";
   onHashChange();
   assert.deepEqual(activations, [["finetune", false], ["evaluate", false]]);
+  context.window.location.hash = "#unknown";
+  onHashChange();
+  assert.deepEqual(activations, [["finetune", false], ["evaluate", false], ["overview", false]]);
 });
 
 test("synthetic adapter metrics keep their workflow-only context", () => {

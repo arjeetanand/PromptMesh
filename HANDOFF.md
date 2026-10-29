@@ -406,7 +406,7 @@
 
 ## Keyboard skip navigation — 2026-10-29
 
-- Added a keyboard-visible skip link before the app frame. Its `#workspace` target is programmatically focusable, and the hash router now ignores non-tab fragments so the selected page is preserved.
+- Added a keyboard-visible skip link before the app frame. Its `#workspace` target is programmatically focusable, and the hash router preserves the selected page for this anchor while retaining the Overview fallback for unknown fragments.
 - Added a focused Node regression for the target and route behavior. The full Python suite passes (81 tests) and the UI suite passes (17 tests); JavaScript and launcher syntax checks and `git diff --check` pass. Python emitted existing `datetime.utcnow()` deprecation warnings.
 - Browser check before the restart: Tab focused the skip link; Enter changed the hash to `#workspace`, focused the main workspace, and kept Fine-tune selected. No review data was saved.
 - The guarded `./run.sh` command reported port 4004 healthy in its command environment, but the embedded browser returned `ERR_CONNECTION_REFUSED`; a later listener check found no process on port 4004. CUA also reports the Mac is locked. The final served CSS and live page could not be checked after that restart. Resume by unlocking the Mac, starting the app through its desktop project terminal, and repeating the keyboard check.
