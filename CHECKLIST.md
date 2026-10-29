@@ -73,7 +73,7 @@
 - [x] Open PR #2 targeting `main` after verifying PR #1 was already merged; leave PR #2 unmerged.
 - [x] Add optional bitsandbytes LLM.int8 and NF4 runtime configuration and Fine-tune controls for a quantized inference comparison.
 - [x] Run a fixed synthetic backend canary before reserving test data; record matched test metrics, grouped intervals, load/inference time, generated-token rate, and model footprint.
-- [x] Explain that bitsandbytes methods do not use an offline calibration corpus; keep AWQ/GPTQ calibration and QLoRA training explicitly separate.
+- [x] Explain that bitsandbytes methods do not use offline calibration; distinguish Quanto W8A8 post-training calibration from QLoRA training and leave AWQ/GPTQ out.
 - [x] Define `organization` as the claim actor in extraction prompt definition 1.1.0 and the annotation guide.
 - [x] Prepare a private 246-row public-source candidate review packet across 82 source groups with source URLs, draft labels, unresolved rights status, and reviewer fields; keep it outside the loadable dataset directory.
 - [x] Add 15 official-source candidate groups dated 2020, 2021, 2022, 2023, and 2025 to extend the packet’s year coverage.
@@ -86,7 +86,7 @@
 - [x] Check Fine-tune at 1440px and 390px in Edge; the document has no horizontal overflow or browser console errors.
 - [x] Verify adapter-attached NF4/INT8 generation on MPS with one synthetic canary input; this confirms the hardware path only, not benchmark quality.
 - [ ] Supply and human-review an authorized real dataset, train a new schema-v4 adapter, and run a real frozen benchmark; no model-quality result exists yet.
-- [ ] Run the quantized comparison on that reviewed corpus; no real quality result or calibration experiment has been produced.
+- [ ] Run the calibrated quantized comparison on a human-reviewed corpus; no real-data quality result exists.
 
 ## Local candidate review workbench
 
@@ -153,8 +153,19 @@
 ## Draft benchmark split audit — 2026-10-29
 
 - [x] Compute the seed-42 validation/test year composition from draft labels and document that 2024 contributes 10 of 18 groups to each held-out split.
+- [x] Apply the user-confirmed actor label convention and reconcile the current 351-row CSV with a full current JSONL draft; preserve the older 246-row JSONL snapshot as historical.
 - [x] Recheck selection and frozen-test gates; full Python suite (76) and UI suite (16) pass.
 - [ ] Human-review labels and reuse rights, then curate a balanced cohort before exporting or claiming representative benchmark results.
+
+## Calibrated inference follow-up — 2026-10-29
+
+- [x] Add optional Quanto INT8 weight + INT8 activation PTQ beside bitsandbytes inference, merging the full-precision LoRA adapter before quantization.
+- [x] Calibrate on at most one input-only example per training source group; exclude labels, validation, and test inputs and record hashes, split, sampling seed, momentum, and timings.
+- [x] Add API and Fine-tune controls, mixed-backend report provenance, calibrated result timing, and regressions for train-only sample selection, loader order, matched test rows, and UI rendering.
+- [x] Full Python suite passes (81) and Node UI suite passes (16); Python compilation, JavaScript syntax, launcher syntax, and `git diff --check` pass.
+- [x] Verify the local API health and quantization runtime on port 4004: the service is healthy and exposes bitsandbytes INT8/NF4; Quanto is absent from the current `.venv`.
+- [x] Recheck the browser review workbench: it shows 351 draft rows / 117 source groups / 0 reviewed labels / 0 eligible groups and the actor-label rule; synthetic data remains blocked from benchmark selection.
+- [ ] After approval, install `optimum-quanto==0.2.7` and `ninja` in `.venv`; run a synthetic local MPS calibration/inference canary with the cached checkpoint, update the environment lock, restart the app, and verify the enabled Quanto option in the browser.
 
 ## Navigation and background-job follow-up
 

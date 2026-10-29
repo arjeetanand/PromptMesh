@@ -45,23 +45,27 @@ def _resolve_cached_base_revision():
     return snapshot.name
 
 
+def _model_inputs(model, tokenizer, prompt_template, row):
+    from core.types import render_prompt
+
+    prompt = render_prompt(prompt_template, {"text": row["input"]})
+    prompt += "\nReturn only a JSON object with exactly these keys: organization, year, claim. Use null for missing fields."
+    return tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt}],
+        tokenize=True,
+        add_generation_prompt=True,
+        return_tensors="pt",
+        enable_thinking=False,
+    ).to(next(model.parameters()).device)
+
+
 def _generate(model, tokenizer, prompt_template, rows, max_new_tokens=128, return_token_counts=False):
     import torch
-
-    from core.types import render_prompt
 
     outputs = []
     token_counts = []
     for row in rows:
-        prompt = render_prompt(prompt_template, {"text": row["input"]})
-        prompt += "\nReturn only a JSON object with exactly these keys: organization, year, claim. Use null for missing fields."
-        inputs = tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}],
-            tokenize=True,
-            add_generation_prompt=True,
-            return_tensors="pt",
-            enable_thinking=False,
-        ).to(next(model.parameters()).device)
+        inputs = _model_inputs(model, tokenizer, prompt_template, row)
         input_length = inputs["input_ids"].shape[-1]
         with torch.inference_mode():
             generated = model.generate(

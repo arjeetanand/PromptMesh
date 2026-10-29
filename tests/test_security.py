@@ -309,7 +309,7 @@ class ApiBoundaryTests(unittest.TestCase):
         def complete(job_id, _request, jobs):
             jobs.update(job_id, {"status": "completed", "progress": 100, "result": {"report": {"metrics_split": "test"}}})
 
-        quant_runtime = {"available": True, "methods": [{"id": "bnb_nf4"}]}
+        quant_runtime = {"available": True, "methods": [{"id": "bnb_nf4"}, {"id": "quanto_int8_w8a8"}]}
         with patch.object(promptmesh_app, "load_prompt_selection", return_value=selection), \
              patch.object(promptmesh_app, "load_dataset_snapshot", return_value=(rows, dataset_digest)), \
              patch.object(promptmesh_app, "benchmark_card_status", return_value=card), \
@@ -327,7 +327,7 @@ class ApiBoundaryTests(unittest.TestCase):
 
             response = self.client.post(
                 "/api/training/benchmarks",
-                json={"selection_id": selection_id, "adapter_run_id": adapter_id, "quantization_methods": ["bnb_nf4"]},
+                json={"selection_id": selection_id, "adapter_run_id": adapter_id, "quantization_methods": ["bnb_nf4", "quanto_int8_w8a8"]},
                 headers=headers,
             )
 
@@ -336,7 +336,7 @@ class ApiBoundaryTests(unittest.TestCase):
         self.assertEqual(job.status_code, 200)
         self.assertEqual(job.json()["result"]["report"]["metrics_split"], "test")
         run_benchmark.assert_called_once()
-        self.assertEqual(run_benchmark.call_args.args[1].quantization_methods, ["bnb_nf4"])
+        self.assertEqual(run_benchmark.call_args.args[1].quantization_methods, ["bnb_nf4", "quanto_int8_w8a8"])
 
     def test_frozen_benchmark_rejects_duplicate_or_unavailable_quantization_methods(self):
         headers = {"Authorization": f"Bearer {promptmesh_app.API_KEY}"}

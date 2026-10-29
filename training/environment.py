@@ -14,6 +14,7 @@ RUNTIME_PACKAGES = (
     "datasets",
     "accelerate",
     "bitsandbytes",
+    "optimum-quanto",
 )
 
 

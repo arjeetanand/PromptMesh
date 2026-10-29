@@ -962,9 +962,12 @@ function updateBenchmarkControls() {
   });
   const quantizationNote = $("quantizationRuntimeNote");
   if (!quantization.available) {
-    quantizationNote.textContent = quantization.reason || "Optional bitsandbytes quantization is unavailable in this local environment.";
+    quantizationNote.textContent = quantization.reason || "Optional local quantization backends are unavailable in this environment.";
   } else {
-    quantizationNote.textContent = "bitsandbytes " + quantization.version + " · " + quantization.device + ". Select either or both before the final test run.";
+    const backends = Object.entries(quantization.backends || {})
+      .map(([name, version]) => name + " " + version)
+      .join(" · ") || ((quantization.backend || "Quantization backend") + " " + (quantization.version || ""));
+    quantizationNote.textContent = backends + " · " + quantization.device + ". Select methods before the final test run.";
   }
   $("promptSelectionSubmit").disabled = state.jobBusy || !state.trainingRuntime?.available || !cardReady || !validationReady || !testReady || !compatible.length || !promptValid || finalAlreadyRun;
   $("runFrozenBenchmarkBtn").disabled = state.jobBusy || !state.trainingRuntime?.available || !selectionMatches || !validationReady || !testReady || finalAlreadyRun;
@@ -1448,14 +1451,23 @@ function displayFrozenBenchmark(report, created = true) {
     const controlPerformance = report.performance?.lora_full_precision || {};
     const control = quantizationMetricCard("Full-precision LoRA control", controlMetrics, controlPerformance);
     const variants = quantized.variants.map((variant) => {
-      const quantDetails = variant.id === "bnb_nf4" ? "double quantization" : "outlier threshold " + variant.llm_int8_threshold;
+      const quantDetails = variant.id === "quanto_int8_w8a8"
+        ? "8-bit activations · train-split calibration"
+        : variant.id === "bnb_nf4" ? "double quantization" : "outlier threshold " + variant.llm_int8_threshold;
       return quantizationMetricCard(
       variant.label + " · " + variant.weight_bits + "-bit · " + quantDetails + " · " + variant.compute_dtype,
       variant.metrics,
       variant
       );
     }).join("");
-    const note = "Calibration: not required for bitsandbytes INT8/NF4. Adapter training: " + quantized.adapter_training_method + " Backend: " + quantized.backend + " " + quantized.backend_version + ". Model footprint is not peak device memory.";
+    const calibration = quantized.calibration;
+    const calibrationNote = calibration
+      ? "Calibration: " + calibration.examples + " input-only examples from " + calibration.source_groups + " training groups; no labels, validation rows, or test rows were used."
+      : "Calibration: not required for bitsandbytes INT8/NF4.";
+    const backendVersions = Object.entries(quantized.backend_versions || {})
+      .map(([name, version]) => name + " " + version)
+      .join(" · ") || (quantized.backend + " " + (quantized.backend_version || ""));
+    const note = calibrationNote + " Adapter training: " + quantized.adapter_training_method + " Backends: " + backendVersions + ". Model footprint is not peak device memory.";
     $("frozenBenchmarkMetrics").innerHTML = metricCards
       + timingNote
       + "<div class=\"quantization-report-heading\"><h4>Quantized adapter inference</h4><p>Matched test quality and single-run resource measurements. " + escapeHTML(note) + "</p></div>"
@@ -1529,6 +1541,12 @@ function quantizationMetricCard(label, metrics = {}, performance = {}) {
     : "—";
   const seconds = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) + " s" : "—";
   const rate = Number.isFinite(Number(performance.tokens_per_second)) ? Number(performance.tokens_per_second).toFixed(2) + " tok/s" : "—";
+  const calibration = Number.isFinite(performance.calibration_seconds)
+    ? "<div><small>Calibration</small><strong>" + seconds(performance.calibration_seconds) + "</strong></div>"
+    : "";
+  const quantization = Number.isFinite(performance.quantization_seconds)
+    ? "<div><small>Quantize + freeze</small><strong>" + seconds(performance.quantization_seconds) + "</strong></div>"
+    : "";
   return "<article class=\"training-metric\"><span>" + escapeHTML(label) + "</span>"
     + "<div><small>Record exact match</small><strong>" + formatPercent(metrics.record_exact_match) + "</strong></div>"
     + "<div><small>Field accuracy</small><strong>" + formatPercent(metrics.field_accuracy) + "</strong></div>"
@@ -1537,6 +1555,8 @@ function quantizationMetricCard(label, metrics = {}, performance = {}) {
     + pairedDeltaMarkup(metrics)
     + "<div><small>Load</small><strong>" + seconds(performance.load_seconds) + "</strong></div>"
     + "<div><small>Inference</small><strong>" + seconds(performance.inference_seconds) + "</strong></div>"
+    + calibration
+    + quantization
     + "<div><small>Generation</small><strong>" + rate + "</strong></div>"
     + "<div><small>Model footprint</small><strong>" + footprint + "</strong></div>"
     + goldYearSlicesMarkup(metrics.by_gold_year)

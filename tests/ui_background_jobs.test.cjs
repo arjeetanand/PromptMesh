@@ -286,6 +286,25 @@ test("quantized benchmark cards show task metrics, resource measurements, and th
   assert.match(html, /2 source groups · 6 examples/);
   assert.match(html, /Group counts are per year slice/);
   assert.match(html, /unavailable \(&lt;2 groups\)/);
+  report.quantized_inference.backend = "mixed";
+  report.quantized_inference.backend_version = null;
+  report.quantized_inference.backend_versions = { bitsandbytes: "0.50.0", "optimum-quanto": "0.2.7" };
+  report.quantized_inference.calibration_required = true;
+  report.quantized_inference.calibration = { examples: 16, source_groups: 16, split: "train", input_only: true, labels_used: false };
+  report.quantized_inference.variants.push({
+    id: "quanto_int8_w8a8", label: "Quanto INT8 weights + INT8 activations", weight_bits: 8,
+    activation_bits: 8, compute_dtype: "INT8 linear; FP32 remainder", calibration_required: true,
+    calibration_seconds: 1.25, quantization_seconds: 0.5,
+    metrics: { record_exact_match: 0.4, field_accuracy: 0.6, json_valid_rate: 0.8 },
+    load_seconds: 2, inference_seconds: 4, tokens_per_second: 8, model_footprint_bytes: 400000000
+  });
+  context.report = JSON.stringify(report);
+  vm.runInContext("displayFrozenBenchmark(JSON.parse(report))", context);
+  const calibratedHtml = elements.get("frozenBenchmarkMetrics").innerHTML;
+  assert.match(calibratedHtml, /Quanto INT8 weights \+ INT8 activations · 8-bit · 8-bit activations · train-split calibration/);
+  assert.match(calibratedHtml, /Calibration: 16 input-only examples from 16 training groups/);
+  assert.match(calibratedHtml, /Calibration<\/small><strong>1\.25 s/);
+  assert.match(calibratedHtml, /optimum-quanto 0\.2\.7/);
   delete report.performance.timing_method;
   context.report = JSON.stringify(report);
   vm.runInContext("displayFrozenBenchmark(JSON.parse(report))", context);

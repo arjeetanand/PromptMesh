@@ -15,7 +15,17 @@ from prompts.registry import PROMPT_BASE_PATH, PromptRegistry
 from training.datasets import SPLIT_SEED, benchmark_card_status, load_dataset_snapshot, split_dataset, split_strategy
 from training.environment import runtime_metadata
 from training.metrics import score_predictions
-from training.quantization import QUANTIZATION_METHODS, bitsandbytes_config, quantization_runtime
+from training.quantization import (
+    CALIBRATION_GROUP_LIMIT,
+    CALIBRATION_MOMENTUM,
+    CALIBRATION_SEED,
+    QUANTO_INT8_METHOD,
+    QUANTIZATION_METHODS,
+    apply_quanto_int8_calibration,
+    bitsandbytes_config,
+    quantization_runtime,
+    select_calibration_rows,
+)
 from training.registry import get_benchmark_adapter
 from training.runner import BASE_MODEL_ID, _generate
 
@@ -91,7 +101,13 @@ def load_prompt_selection(selection_id):
     return selection
 
 
-def _load_local_model(manifest, adapter_path=None, quantization_method=None):
+def _load_local_model(
+    manifest,
+    adapter_path=None,
+    quantization_method=None,
+    calibration_rows=None,
+    calibration_prompt=None,
+):
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -104,7 +120,26 @@ def _load_local_model(manifest, adapter_path=None, quantization_method=None):
         trust_remote_code=False,
         local_files_only=True,
     )
-    if quantization_method:
+    calibration_metadata = {}
+    if quantization_method == QUANTO_INT8_METHOD:
+        if not adapter_path or calibration_prompt is None:
+            raise ValueError("Quanto calibration requires the selected LoRA adapter and prompt")
+        if not calibration_rows:
+            raise ValueError("Quanto calibration requires training-split inputs")
+        from peft import AutoPeftModelForCausalLM
+
+        model = AutoPeftModelForCausalLM.from_pretrained(
+            adapter_path,
+            revision=revision,
+            dtype=torch.float32,
+            trust_remote_code=False,
+            local_files_only=True,
+        )
+        model = model.merge_and_unload(safe_merge=True).to(device).eval()
+        calibration_metadata = apply_quanto_int8_calibration(
+            model, tokenizer, calibration_prompt, calibration_rows, torch, device
+        )
+    elif quantization_method:
         model_dtype = torch.float16 if device in ("mps", "cuda") else torch.float32
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
@@ -141,7 +176,7 @@ def _load_local_model(manifest, adapter_path=None, quantization_method=None):
         model = model.eval()
     else:
         model = model.to(device).eval()
-    return model, tokenizer, device, torch
+    return model, tokenizer, device, torch, calibration_metadata
 
 
 def _prompt_sha256(template):
@@ -235,7 +270,7 @@ def run_prompt_selection(job_id, request, jobs):
             validate_prompt_template(candidate["prompt"])
 
         jobs.update(job_id, {"progress": 5, "stage": "loading_local_model"})
-        model, tokenizer, device, torch = _load_local_model(adapter)
+        model, tokenizer, device, torch, _ = _load_local_model(adapter)
         scored = []
         for index, candidate in enumerate(candidates):
             jobs.update(job_id, {
@@ -492,6 +527,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             raise ValueError("The reserved final-test split is below the minimum example or source-group count")
         splits = split_dataset(rows)
         test_rows = splits["test"]
+        train_rows = splits["train"]
         test_groups = len({row["group_id"] for row in test_rows})
         if len(test_rows) != readiness["final_test_examples"] or test_groups != readiness["final_test_source_groups"]:
             raise ValueError("Dataset changed while preparing the final test split")
@@ -505,6 +541,14 @@ def run_frozen_benchmark(job_id, request, jobs):
         }
         if quantization_methods:
             configuration["quantization_methods"] = quantization_methods
+        if QUANTO_INT8_METHOD in quantization_methods:
+            configuration["calibration"] = {
+                "method": "quanto-w8a8-v1",
+                "split": "train",
+                "group_limit": CALIBRATION_GROUP_LIMIT,
+                "seed": CALIBRATION_SEED,
+                "momentum": CALIBRATION_MOMENTUM,
+            }
         configuration_digest = _json_digest(configuration)
         existing = _existing_report(selection["dataset_id"], dataset_digest, configuration_digest)
         if existing:
@@ -528,6 +572,24 @@ def run_frozen_benchmark(job_id, request, jobs):
 
         baseline_prompt = next(item["prompt"] for item in selection["candidates"] if item["id"] == "extraction/v1")
         selected_prompt = selection["selected_prompt"]
+        calibration_rows = None
+        calibration_record = None
+        if any(QUANTIZATION_METHODS[method]["calibration_required"] for method in quantization_methods):
+            calibration_rows = select_calibration_rows(train_rows)
+            calibration_record = {
+                "method": "Quanto post-training static W8A8",
+                "split": "train",
+                "examples": len(calibration_rows),
+                "source_groups": len({row["group_id"] for row in calibration_rows}),
+                "input_sha256": _json_digest(calibration_rows),
+                "input_only": True,
+                "labels_used": False,
+                "selection": "one input per source group; deterministic sample",
+                "seed": CALIBRATION_SEED,
+                "group_limit": CALIBRATION_GROUP_LIMIT,
+                "momentum": CALIBRATION_MOMENTUM,
+                "prompt_sha256": _prompt_sha256(selected_prompt),
+            }
 
         # Exercise every selected backend with a fixed synthetic input before reserving the one-shot test split.
         for index, method in enumerate(quantization_methods):
@@ -536,8 +598,12 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "stage": "checking_quantized_backend",
                 "message": "Checking the selected quantized backend using a fixed synthetic prompt.",
             })
-            canary_model, canary_tokenizer, canary_device, canary_torch = _load_local_model(
-                adapter, adapter_path, quantization_method=method
+            canary_model, canary_tokenizer, canary_device, canary_torch, _ = _load_local_model(
+                adapter,
+                adapter_path,
+                quantization_method=method,
+                calibration_rows=calibration_rows if method == QUANTO_INT8_METHOD else None,
+                calibration_prompt=selected_prompt if method == QUANTO_INT8_METHOD else None,
             )
             try:
                 if canary_device != quant_runtime["device"]:
@@ -556,7 +622,7 @@ def run_frozen_benchmark(job_id, request, jobs):
 
         jobs.update(job_id, {"progress": 5, "stage": "loading_local_base_model"})
         base_load_started = time.perf_counter()
-        base_model, tokenizer, device, torch = _load_local_model(adapter)
+        base_model, tokenizer, device, torch, _ = _load_local_model(adapter)
         _synchronize_device(torch, device)
         base_load_seconds = time.perf_counter() - base_load_started
         _reserve_frozen_benchmark(selection["dataset_id"], dataset_digest, configuration_digest, request.selection_id)
@@ -583,7 +649,7 @@ def run_frozen_benchmark(job_id, request, jobs):
 
         jobs.update(job_id, {"progress": 55, "stage": "scoring_frozen_adapter"})
         adapter_load_started = time.perf_counter()
-        adapted_model, adapter_tokenizer, _, _ = _load_local_model(adapter, adapter_path)
+        adapted_model, adapter_tokenizer, _, _, _ = _load_local_model(adapter, adapter_path)
         _synchronize_device(torch, device)
         adapter_load_seconds = time.perf_counter() - adapter_load_started
         adapter_footprint = _model_footprint_bytes(adapted_model)
@@ -623,8 +689,12 @@ def run_frozen_benchmark(job_id, request, jobs):
                 "message": f"Scoring {QUANTIZATION_METHODS[method]['label']} on the same frozen test rows.",
             })
             quantized_load_started = time.perf_counter()
-            quantized_model, quantized_tokenizer, quantized_device, quantized_torch = _load_local_model(
-                adapter, adapter_path, quantization_method=method
+            quantized_model, quantized_tokenizer, quantized_device, quantized_torch, quantization_metadata = _load_local_model(
+                adapter,
+                adapter_path,
+                quantization_method=method,
+                calibration_rows=calibration_rows if method == QUANTO_INT8_METHOD else None,
+                calibration_prompt=selected_prompt if method == QUANTO_INT8_METHOD else None,
             )
             _synchronize_device(quantized_torch, quantized_device)
             quantized_load_seconds = time.perf_counter() - quantized_load_started
@@ -645,13 +715,29 @@ def run_frozen_benchmark(job_id, request, jobs):
             quantized_variants.append({
                 "id": method,
                 **QUANTIZATION_METHODS[method],
-                "backend": "bitsandbytes",
-                "backend_version": quant_runtime["version"],
+                "backend": QUANTIZATION_METHODS[method]["backend"],
+                "backend_version": quant_runtime.get("backends", {}).get(
+                    QUANTIZATION_METHODS[method]["backend"], quant_runtime.get("version", "unknown")
+                ),
                 "device": quantized_device,
-                "compute_dtype": "float16" if quantized_device in ("mps", "cuda") else "float32",
+                "activation_bits": QUANTIZATION_METHODS[method]["activation_bits"],
+                "quant_type": QUANTIZATION_METHODS[method]["quant_type"],
+                "compute_dtype": (
+                    "INT8 linear; FP32 remainder"
+                    if method == QUANTO_INT8_METHOD
+                    else "float16" if quantized_device in ("mps", "cuda") else "float32"
+                ),
                 "double_quantization": method == "bnb_nf4",
                 "llm_int8_threshold": 6.0 if method == "bnb_int8" else None,
-                "calibration_required": False,
+                "calibration_required": QUANTIZATION_METHODS[method]["calibration_required"],
+                "calibration_seconds": (
+                    round(quantization_metadata["calibration_seconds"], 4)
+                    if "calibration_seconds" in quantization_metadata else None
+                ),
+                "quantization_seconds": (
+                    round(quantization_metadata["quantization_seconds"], 4)
+                    if "quantization_seconds" in quantization_metadata else None
+                ),
                 "load_seconds": round(quantized_load_seconds, 4),
                 **_generation_performance(token_counts, inference_seconds),
                 "model_footprint_bytes": model_footprint,
@@ -661,7 +747,7 @@ def run_frozen_benchmark(job_id, request, jobs):
             _clear_device_cache(quantized_torch, quantized_device)
 
         report = {
-            "schema_version": 4,
+            "schema_version": 5,
             "status": "completed",
             "dataset_id": selection["dataset_id"],
             "dataset_sha256": dataset_digest,
@@ -717,10 +803,15 @@ def run_frozen_benchmark(job_id, request, jobs):
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         if quantization_methods:
+            backend_versions = {
+                variant["backend"]: variant["backend_version"] for variant in quantized_variants
+            }
             report["quantized_inference"] = {
-                "backend": "bitsandbytes",
-                "backend_version": quant_runtime["version"],
-                "calibration_required": False,
+                "backend": next(iter(backend_versions)) if len(backend_versions) == 1 else "mixed",
+                "backend_version": next(iter(backend_versions.values())) if len(backend_versions) == 1 else None,
+                "backend_versions": backend_versions,
+                "calibration_required": calibration_record is not None,
+                "calibration": calibration_record,
                 "calibration_note": quant_runtime["calibration_note"],
                 "adapter_training_method": "Full-precision LoRA + SFT; this inference comparison is not QLoRA training.",
                 "variants": quantized_variants,

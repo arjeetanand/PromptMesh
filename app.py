@@ -326,7 +326,7 @@ class PromptSelectionRequest(BaseModel):
 class FrozenBenchmarkRequest(BaseModel):
     selection_id: str = Field(min_length=32, max_length=32)
     adapter_run_id: str = Field(min_length=32, max_length=32)
-    quantization_methods: List[Literal["bnb_int8", "bnb_nf4"]] = Field(default_factory=list, max_items=2)
+    quantization_methods: List[Literal["bnb_int8", "bnb_nf4", "quanto_int8_w8a8"]] = Field(default_factory=list, max_items=3)
 
 
 class CandidateReviewRowRequest(BaseModel):

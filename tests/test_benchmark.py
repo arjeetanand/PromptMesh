@@ -1,5 +1,6 @@
 import hashlib
 import json
+import sys
 import tempfile
 import types
 import unittest
@@ -120,7 +121,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
                 return [json.dumps(row["output"]) for row in rows]
             return ["not json"] * len(rows)
 
-        with patch.object(benchmark, "_load_local_model", return_value=(object(), object(), "cpu", types.SimpleNamespace(__version__="test"))), \
+        with patch.object(benchmark, "_load_local_model", return_value=(object(), object(), "cpu", types.SimpleNamespace(__version__="test"), {})), \
              patch.object(benchmark, "_generate", side_effect=generate), \
              patch.object(benchmark, "runtime_metadata", return_value={
                  "device": "cpu", "source_revision": "b" * 40, "source_dirty": True,
@@ -243,7 +244,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
 
         request = types.SimpleNamespace(selection_id=selection_id, adapter_run_id=self.adapter_run_id)
         fake_torch = types.SimpleNamespace(__version__="test")
-        with patch.object(benchmark, "_load_local_model", return_value=(object(), FakeTokenizer(), "cpu", fake_torch)) as load_model, \
+        with patch.object(benchmark, "_load_local_model", return_value=(object(), FakeTokenizer(), "cpu", fake_torch, {})) as load_model, \
              patch.object(benchmark, "_generate", side_effect=generate), \
              patch.object(benchmark, "runtime_metadata", return_value={
                  "device": "cpu", "source_revision": "c" * 40, "source_dirty": False,
@@ -251,7 +252,7 @@ class FrozenBenchmarkTests(unittest.TestCase):
             benchmark.run_frozen_benchmark("benchmark-job", request, jobs)
             first_result = next(changes["result"] for job_id, changes in jobs.updates if job_id == "benchmark-job" and "result" in changes)
             report = first_result["report"]
-            self.assertEqual(report["schema_version"], 4)
+            self.assertEqual(report["schema_version"], 5)
             self.assertEqual(report["metrics_split"], "test")
             self.assertEqual(report["split_strategy"], "group-year-stratified-v1")
             self.assertFalse(report["test_split_used_for_selection"])
@@ -299,20 +300,32 @@ class FrozenBenchmarkTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "final report already exists"):
                     benchmark.run_frozen_benchmark("benchmark-job-sweep", other_request, jobs)
 
-    def test_quantized_inference_is_measured_on_the_same_test_rows_and_marked_calibration_free(self):
+    def test_quantized_inference_uses_matched_test_rows_and_train_only_calibration(self):
         selection_id, _ = self._select_prompt()
         jobs = JobRecorder()
         fake_torch = types.SimpleNamespace(__version__="test")
         generated_inputs = []
         loader_calls = []
+        calibration_calls = []
+        train_groups = {row["group_id"] for row in benchmark.split_dataset(self.rows)["train"]}
 
         class FakeModel:
             def get_memory_footprint(self):
                 return 123456
 
-        def load_model(_manifest, _adapter_path=None, quantization_method=None):
+        def load_model(_manifest, _adapter_path=None, quantization_method=None, **kwargs):
             loader_calls.append(quantization_method)
-            return FakeModel(), FakeTokenizer(), "cpu", fake_torch
+            calibration_rows = kwargs.get("calibration_rows")
+            if quantization_method == "quanto_int8_w8a8":
+                calibration_calls.append(calibration_rows)
+                self.assertTrue(calibration_rows)
+                self.assertTrue(all(row["group_id"] in train_groups for row in calibration_rows))
+                self.assertTrue(all(set(row) == {"group_id", "input"} for row in calibration_rows))
+                return FakeModel(), FakeTokenizer(), "cpu", fake_torch, {
+                    "calibration_seconds": 0.25,
+                    "quantization_seconds": 0.5,
+                }
+            return FakeModel(), FakeTokenizer(), "cpu", fake_torch, {}
 
         def generate(_model, _tokenizer, prompt, rows, max_new_tokens=128, return_token_counts=False):
             generated_inputs.append((max_new_tokens, [row.get("group_id") for row in rows]))
@@ -327,14 +340,15 @@ class FrozenBenchmarkTests(unittest.TestCase):
         request = types.SimpleNamespace(
             selection_id=selection_id,
             adapter_run_id=self.adapter_run_id,
-            quantization_methods=["bnb_nf4"],
+            quantization_methods=["bnb_nf4", "quanto_int8_w8a8"],
         )
         runtime = {
             "available": True,
             "version": "0.50.0-test",
+            "backends": {"bitsandbytes": "0.50.0-test", "optimum-quanto": "0.2.7-test"},
             "device": "cpu",
-            "methods": [{"id": "bnb_nf4"}],
-            "calibration_note": "No calibration corpus used.",
+            "methods": [{"id": "bnb_nf4"}, {"id": "quanto_int8_w8a8"}],
+            "calibration_note": "Quanto uses training-only inputs.",
         }
         with patch.object(benchmark, "quantization_runtime", return_value=runtime), \
              patch.object(benchmark, "_load_local_model", side_effect=load_model), \
@@ -345,12 +359,21 @@ class FrozenBenchmarkTests(unittest.TestCase):
         variant = report["quantized_inference"]["variants"][0]
         self.assertEqual(report["environment"]["device"], "cpu")
         self.assertIn("torch", report["environment"]["packages"])
-        self.assertEqual(loader_calls, ["bnb_nf4", None, None, "bnb_nf4"])
+        self.assertEqual(loader_calls, ["bnb_nf4", "quanto_int8_w8a8", None, None, "bnb_nf4", "quanto_int8_w8a8"])
         self.assertEqual(generated_inputs[0], (8, [None]))
         self.assertEqual(generated_inputs[-1][1], generated_inputs[-2][1])
         self.assertEqual(report["metrics_split"], "test")
-        self.assertFalse(report["quantized_inference"]["calibration_required"])
+        self.assertTrue(report["quantized_inference"]["calibration_required"])
         self.assertFalse(variant["calibration_required"])
+        quanto_variant = report["quantized_inference"]["variants"][1]
+        self.assertTrue(quanto_variant["calibration_required"])
+        self.assertEqual(quanto_variant["calibration_seconds"], 0.25)
+        self.assertEqual(quanto_variant["quantization_seconds"], 0.5)
+        self.assertEqual(report["quantized_inference"]["calibration"]["split"], "train")
+        self.assertEqual(report["quantized_inference"]["calibration"]["examples"], 16)
+        self.assertEqual(report["quantized_inference"]["calibration"]["source_groups"], 16)
+        self.assertEqual(len(calibration_calls), 2)
+        self.assertEqual(calibration_calls[0], calibration_calls[1])
         self.assertEqual(variant["model_footprint_bytes"], 123456)
         self.assertEqual(variant["generated_tokens"], 60)
         self.assertEqual(variant["metrics"]["record_exact_match"], 1.0)
@@ -360,13 +383,92 @@ class FrozenBenchmarkTests(unittest.TestCase):
         self.assertEqual(quantized_delta["reference"], "Full-precision LoRA control")
         self.assertIn("not QLoRA", report["quantized_inference"]["adapter_training_method"])
 
+    def test_quanto_loader_merges_the_pinned_local_adapter_before_calibration(self):
+        events = []
+        tokenizer = object()
+        calibration_rows = [{"group_id": "train-1", "input": "Training source"}]
+        manifest = {
+            "base_model": "Qwen/Qwen3-0.6B",
+            "base_revision": "base-revision",
+            "tokenizer_revision": "tokenizer-revision",
+        }
+
+        class FakeTokenizerLoader:
+            @staticmethod
+            def from_pretrained(*args, **kwargs):
+                events.append(("tokenizer", args, kwargs))
+                return tokenizer
+
+        class FakeModel:
+            def merge_and_unload(self, **kwargs):
+                events.append(("merge", kwargs))
+                return self
+
+            def to(self, device):
+                events.append(("device", device))
+                return self
+
+            def eval(self):
+                events.append("eval")
+                return self
+
+        class FakePeftLoader:
+            @staticmethod
+            def from_pretrained(*args, **kwargs):
+                events.append(("adapter", args, kwargs))
+                return FakeModel()
+
+        fake_torch = types.ModuleType("torch")
+        fake_torch.float16 = "float16"
+        fake_torch.float32 = "float32"
+        fake_torch.backends = types.SimpleNamespace(
+            mps=types.SimpleNamespace(is_available=lambda: False),
+        )
+        fake_torch.cuda = types.SimpleNamespace(is_available=lambda: False)
+        fake_transformers = types.ModuleType("transformers")
+        fake_transformers.AutoModelForCausalLM = object
+        fake_transformers.AutoTokenizer = FakeTokenizerLoader
+        fake_peft = types.ModuleType("peft")
+        fake_peft.AutoPeftModelForCausalLM = FakePeftLoader
+        metadata = {"calibration_seconds": 0.2, "quantization_seconds": 0.4}
+
+        with patch.dict(sys.modules, {
+            "torch": fake_torch,
+            "transformers": fake_transformers,
+            "peft": fake_peft,
+        }), patch.object(benchmark, "apply_quanto_int8_calibration", return_value=metadata) as calibrate:
+            model, loaded_tokenizer, device, torch, result_metadata = benchmark._load_local_model(
+                manifest,
+                Path("/private/local-adapter"),
+                quantization_method="quanto_int8_w8a8",
+                calibration_rows=calibration_rows,
+                calibration_prompt="Extract {{text}}",
+            )
+
+        self.assertEqual(loaded_tokenizer, tokenizer)
+        self.assertEqual(device, "cpu")
+        self.assertIs(torch, fake_torch)
+        self.assertIs(result_metadata, metadata)
+        self.assertIn(("merge", {"safe_merge": True}), events)
+        self.assertIn(("device", "cpu"), events)
+        tokenizer_call = next(event for event in events if isinstance(event, tuple) and event[0] == "tokenizer")
+        self.assertEqual(tokenizer_call[2]["revision"], "tokenizer-revision")
+        self.assertTrue(tokenizer_call[2]["local_files_only"])
+        adapter_call = next(event for event in events if isinstance(event, tuple) and event[0] == "adapter")
+        self.assertEqual(adapter_call[1], (Path("/private/local-adapter"),))
+        self.assertEqual(adapter_call[2]["revision"], "base-revision")
+        self.assertTrue(adapter_call[2]["local_files_only"])
+        calibrate.assert_called_once_with(
+            model, tokenizer, "Extract {{text}}", calibration_rows, fake_torch, "cpu"
+        )
+
     def test_failed_test_inference_reserves_holdout_and_blocks_retry(self):
         selection_id, _ = self._select_prompt()
         request = types.SimpleNamespace(selection_id=selection_id, adapter_run_id=self.adapter_run_id)
         jobs = JobRecorder()
         fake_torch = types.SimpleNamespace(__version__="test")
 
-        with patch.object(benchmark, "_load_local_model", return_value=(object(), object(), "cpu", fake_torch)), patch.object(benchmark, "_generate", side_effect=RuntimeError("inference failed")):
+        with patch.object(benchmark, "_load_local_model", return_value=(object(), object(), "cpu", fake_torch, {})), patch.object(benchmark, "_generate", side_effect=RuntimeError("inference failed")):
             with self.assertLogs(benchmark.logger, level="ERROR"):
                 with self.assertRaisesRegex(RuntimeError, "inference failed"):
                     benchmark.run_frozen_benchmark("benchmark-job-fail", request, jobs)

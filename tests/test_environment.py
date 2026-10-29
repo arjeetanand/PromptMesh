@@ -28,6 +28,7 @@ class RuntimeMetadataTests(unittest.TestCase):
         self.assertFalse(details["source_dirty"])
         self.assertEqual(details["packages"]["transformers"], "transformers-version")
         self.assertIsNone(details["packages"]["bitsandbytes"])
+        self.assertEqual(details["packages"]["optimum-quanto"], "optimum-quanto-version")
 
     def test_source_state_reads_commit_and_dirty_status_without_exposing_paths(self):
         output = "# branch.oid " + "b" * 40 + "\n# branch.head feature\n1 .M N... 100644 100644 100644 abc def file.py\n"

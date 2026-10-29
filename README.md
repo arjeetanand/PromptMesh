@@ -73,8 +73,8 @@ Features:
 These scores are useful for reviewing prompt iterations, not a gold-label benchmark.
 Classification and verification use task-specific weights; other task types use
 the general completeness-weighted score. The bundled LoRA dataset is synthetic
-workflow data. Optional bitsandbytes LLM.int8 and NF4 are available in the
-frozen inference comparison when the local runtime supports them.
+workflow data. Optional bitsandbytes LLM.int8/NF4 and Quanto W8A8 are available
+in the frozen inference comparison when their local runtimes support them.
 
 ---
 
@@ -132,9 +132,10 @@ and model selection, keep the final test untouched, and compare the base model,
 prompt-only baseline, and LoRA adapter on identical test examples. Report task
 metrics with uncertainty alongside latency and memory. A quantized-inference
 comparison should use the same frozen test set and declare the hardware/backend.
-The optional INT8/NF4 comparison records quality, latency, generated-token rate,
-and model footprint beside the full-precision LoRA control. Model footprint is
-not peak device memory. New reports synchronize MPS/CUDA around timed
+The optional INT8/NF4/Quanto comparison records quality, calibration provenance
+where applicable, latency, generated-token rate, and model footprint beside
+the full-precision LoRA control. Model footprint is not peak device memory.
+New reports synchronize MPS/CUDA around timed
 generation and count the generated token IDs directly; CPU timing uses its
 synchronous execution. The report records this method, but each arm still gets
 one cold pass, so these numbers are not a throughput benchmark.
@@ -184,31 +185,40 @@ to assistive technology.
 
 ## Quantization, calibration, and QLoRA
 
-The frozen benchmark can optionally compare the full-precision LoRA adapter
-with that same adapter loaded over bitsandbytes LLM.int8 or 4-bit NF4 weights.
-All selected variants use the same validation-selected prompt and reserved test
-rows. Model revisions stay pinned and load from the local cache. Install the
-optional backend into the project environment with:
+The frozen benchmark can compare a full-precision LoRA adapter with three
+inference-only quantization choices. All selected variants use the same
+validation-selected prompt and reserved test rows. Model revisions stay pinned
+and load from the local cache. Install the optional backends in the project
+environment with:
 
 ```bash
 pip install -r requirements-quantization.txt
 ```
 
-This comparison does not use a calibration dataset: bitsandbytes quantizes
-weights on load, and LLM.int8 handles outlier activations at runtime. NF4 is a
-4-bit NormalFloat format, not ordinary signed INT4; the implementation enables
-double quantization. AWQ/GPTQ are separate post-training quantization workflows
-that need representative calibration inputs. If added, calibration must use
-training-split examples only and record the split fingerprint; validation and
-test rows must stay out of calibration.
+| Method | What is quantized | Calibration |
+| --- | --- | --- |
+| bitsandbytes LLM.int8 | 8-bit weights; outlier activations are handled at runtime | No offline calibration data |
+| bitsandbytes NF4 | 4-bit NormalFloat weights with double quantization | No offline calibration data |
+| Optimum Quanto W8A8 | 8-bit weights and activations after merging the LoRA adapter | One label-free input from each of up to 16 training source groups |
 
-The adapter in this workflow is trained with full-precision LoRA/SFT. Loading
-it over an INT8/NF4 base measures quantized adapter inference; it is not QLoRA
-training. QLoRA would require training the adapter while the frozen base is
-loaded in 4-bit NF4, which is not implemented here. The tracked demo dataset is
-synthetic, so its output is workflow evidence only and cannot support a model
-quality claim. Fine-tune results, saved adapter cards, and model selectors keep
-that synthetic status beside the displayed metrics.
+Quanto uses the direct library API because the Transformers integration only
+supports weight-only quantization. PromptMesh loads the pinned adapter locally,
+merges it into the base model, applies INT8 weight and activation quantization,
+calibrates activation ranges on deterministic training-split inputs, then
+freezes the quantized model. The report records the calibration input
+fingerprint, prompt hash, split, group and example counts, package versions,
+quantization time, and calibration time. Validation and final-test inputs and
+labels are excluded from calibration. MPS placement is supported by Quanto,
+but optimized matrix kernels are CUDA-specific; the app measures MPS behavior
+and does not promise a speedup. Quanto is in maintenance mode.
+
+The adapter in this workflow is trained with full-precision LoRA/SFT. These
+arms measure post-training quantized inference; they are not QLoRA training.
+QLoRA would train the adapter while the frozen base is loaded in 4-bit NF4 and
+is not implemented here. The tracked demo dataset is synthetic, so its output
+is workflow evidence only and cannot support a model-quality claim. Fine-tune
+results, saved adapter cards, and model selectors keep that synthetic status
+beside the displayed metrics.
 
 ---
 
