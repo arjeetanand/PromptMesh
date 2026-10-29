@@ -361,5 +361,7 @@
 
 - [x] Add official publisher/agency terms or reuse-policy references to the 72 draft-selected pilot groups (12/year, 2020–2025; 40 source hosts; 216 variants); validate every URL as HTTPS.
 - [x] Compare against the private pre-change CSV backup; confirm only `reuse_terms_url` changed and the packet remains 423 rows / 141 groups / 0 reviewed / 0 eligible.
+- [x] Verify the current local API is healthy and reports 423 rows / 141 groups / 72 terms-linked groups / 0 reviewed / 0 eligible; run all 109 Python and 23 UI tests.
 - [x] Record the unresolved Netflix terms scope for human review; make no automatic permission or exclusion decision.
+- [ ] Visually verify the refreshed Fine-tune page; the browser-control bridge is unavailable, so API health is not rendered-page proof.
 - [ ] Review source fidelity, all variants, and applicable reuse terms; export only after human review and permission evidence.
