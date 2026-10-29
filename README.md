@@ -389,7 +389,7 @@ standalone quantization install remains
 The verifier checks exact installed versions and refuses other Python/platform
 targets. A fresh Python 3.12.13 / macOS ARM64 environment installed both files
 successfully on 2026-10-29; lock verification, `pip check`, dependency imports,
-and all 107 Python unit tests passed. Because app dependencies remain unpinned,
+and all 109 Python unit tests passed. Because app dependencies remain unpinned,
 this confirms the current install path, not a repeatable future resolution.
 
 On Windows, create the environment with `python -m venv .venv` and activate it

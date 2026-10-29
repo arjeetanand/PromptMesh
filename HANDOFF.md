@@ -631,3 +631,11 @@
 - Delivery: commit `c04cccf` is pushed to `origin/codex/promptmesh-validation-selection`, updating existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2), previously verified to target `main`. The current GitHub API refresh failed with `error connecting to api.github.com`; no merge occurred.
 - Remaining: a human must review the source claims and reuse terms before export or real evaluation. There is still no real-data benchmark or measured quantized quality result. Full screen-reader and axe audits remain open.
 - Next: complete source/label/reuse review, create the reviewed dataset, then run validation-selected prompt/LoRA evaluation and the matched quantized study on a fresh frozen test set.
+
+## Fresh training environment recheck — 2026-10-29
+
+- Recreated `/private/tmp/promptmesh-clean-install-20261029` with Python 3.12.13 on macOS ARM64 and installed `requirements.txt` plus `requirements-training-macos-arm64.lock` after the sandbox could not resolve the package index; the approved network-enabled retry succeeded.
+- `training.verify_lock` matched all 47 exact pins, `pip check` reported no broken requirements, and imports succeeded for the app and training stack, including PyTorch 2.14.1, Transformers 5.21.0, PEFT 0.21.2, TRL 1.16.0, and bitsandbytes 0.50.0.
+- The full Python suite passed: 109 tests. Existing `datetime.utcnow()` deprecation warnings remain at `app.py:916` and `core/security.py:121`; imports also emit PyTorch's macOS distributed-redirect note.
+- No model weights were downloaded, and the project `.venv`, source packet, review decisions, datasets, training artifacts, and benchmark reports were not changed.
+- Remaining: `requirements.txt` is unpinned, so future general-app dependency resolution may differ; no human-reviewed benchmark or model-quality result is established.
