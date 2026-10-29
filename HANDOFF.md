@@ -647,3 +647,9 @@
 - Verification: all 23 Node UI tests passed, including modal state, focus cycling, close actions, and breakpoint focus transfer; app/test JavaScript syntax and `git diff --check` passed. The live Fine-tune page at `http://127.0.0.1:4004/#finetune` showed API connected; the browser accessibility tree confirmed the concise announcement after switching from Apple to Google LaMDA and back. The queue remains 423 candidates / 141 groups / 0 reviewed / 0 eligible; no review was saved.
 - The in-app browser rendered the narrow mobile layout at about 399 px wide. With the drawer open, the accessibility tree contained the drawer but omitted the skip link and workspace; repeated Tab reached the internal Close control, and Escape returned focus to the menu button. The live page still showed 423 candidates / 141 groups / 0 reviewed / 0 eligible, with no review saved.
 - Remaining: no actual screen-reader session or axe scan was run. Human label and reuse review remains necessary before any real benchmark, LoRA comparison, or quantized quality claim.
+
+## Delivery and clean-install retry — 2026-10-29
+
+- Accessibility changes are committed locally as `d1800e7` on `codex/promptmesh-validation-selection`. The push to update the existing PR targeting `main` timed out while connecting to GitHub; the commit is safe locally, but the PR's current head and checks are unverified. No merge occurred.
+- The user-approved disposable venv `/private/tmp/promptmesh-fresh-setup-20261029` was created, but PyPI connections timed out before the first dependency installed (`fastapi` is absent). No package was added to the project `.venv`; the earlier successful fresh-install verification remains recorded above.
+- Next: retry the push and, if a repeat install is still needed, the package resolution after outbound access recovers. Human review of labels and reuse terms remains the data gate before real model-quality or quantization claims.

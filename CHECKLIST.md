@@ -348,3 +348,4 @@
 - [x] Verify the live Fine-tune page and source-group announcement in the browser; the queue remains 423 candidates / 141 groups / 0 reviewed / 0 eligible, and no review was saved.
 - [x] Verify the open drawer in the narrow in-app browser: background and skip link disappear from the accessibility tree, Tab wraps to Close, and Escape restores focus to the menu button.
 - [ ] Run a screen-reader session and automated axe audit.
+- [ ] Push the task branch to update the existing PR targeting `main`; GitHub timed out before confirming the push.
