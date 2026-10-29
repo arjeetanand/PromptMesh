@@ -213,12 +213,47 @@ def _reviewed_group_year(group):
 def _balanced_export_preview(rows, eligible_groups):
     from training import datasets
 
+    candidate_group_metadata = {}
+    for group in eligible_groups:
+        group_id = group["group_id"]
+        try:
+            source_host = datasets.source_host_from_url(group["source_url"])
+        except ValueError as exc:
+            return {
+                "ready": False,
+                "examples": 0,
+                "source_groups": 0,
+                "validation_examples": 0,
+                "validation_source_groups": 0,
+                "final_test_examples": 0,
+                "final_test_source_groups": 0,
+                "years": list(datasets.YEAR_BALANCED_COHORT_YEARS),
+                "groups_per_year": datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR,
+                "selected_group_ids": [],
+                "reason": str(exc),
+            }
+        candidate_group_metadata[group_id] = {
+            "year": _reviewed_group_year(group),
+            "source_host": source_host,
+            "source_url": group["source_url"],
+        }
     candidate_group_years = {
-        group["group_id"]: _reviewed_group_year(group)
-        for group in eligible_groups
+        group_id: metadata["year"]
+        for group_id, metadata in candidate_group_metadata.items()
+    }
+    selection_metadata = {
+        group_id: {"year": metadata["year"], "source_host": metadata["source_host"]}
+        for group_id, metadata in candidate_group_metadata.items()
     }
     candidate_counts = {
         str(year): sum(candidate_year == year for candidate_year in candidate_group_years.values())
+        for year in datasets.YEAR_BALANCED_COHORT_YEARS
+    }
+    candidate_host_counts = {
+        str(year): len({
+            metadata["source_host"] for metadata in candidate_group_metadata.values()
+            if metadata["year"] == year
+        })
         for year in datasets.YEAR_BALANCED_COHORT_YEARS
     }
     preview = {
@@ -232,11 +267,17 @@ def _balanced_export_preview(rows, eligible_groups):
         "years": list(datasets.YEAR_BALANCED_COHORT_YEARS),
         "groups_per_year": datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR,
         "candidate_groups_by_year": candidate_counts,
+        "candidate_source_hosts_by_year": candidate_host_counts,
         "selected_group_ids": [],
         "candidate_group_years": [
             {"group_id": group_id, "year": candidate_group_years[group_id]}
             for group_id in sorted(candidate_group_years)
         ],
+        "candidate_group_metadata": [
+            {"group_id": group_id, **candidate_group_metadata[group_id]}
+            for group_id in sorted(candidate_group_metadata)
+        ],
+        "selected_source_hosts_by_year": {},
     }
     missing_years = [
         year for year in datasets.YEAR_BALANCED_COHORT_YEARS
@@ -251,12 +292,20 @@ def _balanced_export_preview(rows, eligible_groups):
         preview["reason"] = f"Balanced pilot needs {required} reviewed, rights-cleared groups per year (2020–2025). Current groups: {counts}."
         return preview
     try:
-        selected_group_ids = datasets.select_year_balanced_groups(candidate_group_years)
+        selected_group_ids = datasets.select_year_host_diverse_groups(selection_metadata)
     except ValueError as exc:
         preview["reason"] = str(exc)
         return preview
 
     preview["selected_group_ids"] = selected_group_ids
+    preview["selected_source_hosts_by_year"] = {
+        str(year): len({
+            candidate_group_metadata[group_id]["source_host"]
+            for group_id in selected_group_ids
+            if candidate_group_metadata[group_id]["year"] == year
+        })
+        for year in datasets.YEAR_BALANCED_COHORT_YEARS
+    }
     selected_rows = _reviewed_dataset_rows(rows, set(selected_group_ids))
     split_preview = _export_preview(selected_rows)
     preview.update(split_preview)
@@ -264,11 +313,17 @@ def _balanced_export_preview(rows, eligible_groups):
         "years": list(datasets.YEAR_BALANCED_COHORT_YEARS),
         "groups_per_year": datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR,
         "candidate_groups_by_year": candidate_counts,
+        "candidate_source_hosts_by_year": candidate_host_counts,
         "selected_group_ids": selected_group_ids,
         "candidate_group_years": [
             {"group_id": group_id, "year": candidate_group_years[group_id]}
             for group_id in sorted(candidate_group_years)
         ],
+        "candidate_group_metadata": [
+            {"group_id": group_id, **candidate_group_metadata[group_id]}
+            for group_id in sorted(candidate_group_metadata)
+        ],
+        "selected_source_hosts_by_year": preview["selected_source_hosts_by_year"],
     })
     return preview
 
@@ -391,7 +446,7 @@ def export_reviewed_dataset(dataset_id, reviewer_role, cohort_mode="all_eligible
                 "reuse_evidence": group["reuse_evidence"].strip(),
             })
         card = {
-            "schema_version": 2 if cohort_mode == "balanced_year_12" else 1,
+            "schema_version": 3 if cohort_mode == "balanced_year_12" else 1,
             "dataset_id": dataset_id,
             "dataset_sha256": digest,
             "task": "entity_extraction",
@@ -403,8 +458,9 @@ def export_reviewed_dataset(dataset_id, reviewer_role, cohort_mode="all_eligible
             "grouping": {
                 "unit": "one public source document or source fact per group_id",
                 "policy": (
-                    "Select 12 source groups per reviewed year (2020–2025) using the deterministic SHA-256 year-balanced-v1 rule; "
-                    "keep each source group intact and omit eligible groups outside the selected cohort."
+                    "Select 12 source groups per reviewed year (2020–2025), maximizing distinct normalized source hosts "
+                    "with the deterministic SHA-256 year-host-diverse-v1 rule; choose one eligible group per host before "
+                    "repeating hosts when possible, keep each group intact, and omit eligible groups outside the cohort."
                     if cohort_mode == "balanced_year_12"
                     else "Keep all included variants from one source fact in the same group; excluded variants are omitted."
                 ),
@@ -428,11 +484,11 @@ def export_reviewed_dataset(dataset_id, reviewer_role, cohort_mode="all_eligible
         }
         if cohort_mode == "balanced_year_12":
             card["cohort"] = {
-                "strategy": datasets.YEAR_BALANCED_COHORT,
+                "strategy": datasets.YEAR_HOST_DIVERSE_COHORT,
                 "seed": datasets.YEAR_BALANCED_COHORT_SEED,
                 "groups_per_year": datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR,
                 "years": list(datasets.YEAR_BALANCED_COHORT_YEARS),
-                "candidate_group_years": preview["candidate_group_years"],
+                "candidate_group_metadata": preview["candidate_group_metadata"],
                 "selected_group_ids": selected_group_ids,
             }
         card_content = (json.dumps(card, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
@@ -474,13 +530,22 @@ def export_reviewed_dataset(dataset_id, reviewer_role, cohort_mode="all_eligible
             raise
 
         selected_groups_by_year = {}
+        selected_source_hosts_by_year = {}
         if cohort_mode == "balanced_year_12":
             year_by_group = {
-                item["group_id"]: item["year"]
-                for item in preview["candidate_group_years"]
+                item["group_id"]: item
+                for item in preview["candidate_group_metadata"]
             }
             selected_groups_by_year = {
-                str(year): sum(year_by_group[group_id] == year for group_id in selected_group_ids)
+                str(year): sum(year_by_group[group_id]["year"] == year for group_id in selected_group_ids)
+                for year in datasets.YEAR_BALANCED_COHORT_YEARS
+            }
+            selected_source_hosts_by_year = {
+                str(year): len({
+                    year_by_group[group_id]["source_host"]
+                    for group_id in selected_group_ids
+                    if year_by_group[group_id]["year"] == year
+                })
                 for year in datasets.YEAR_BALANCED_COHORT_YEARS
             }
         return {
@@ -493,6 +558,7 @@ def export_reviewed_dataset(dataset_id, reviewer_role, cohort_mode="all_eligible
                 "mode": cohort_mode,
                 "groups_per_year": datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR if cohort_mode == "balanced_year_12" else None,
                 "selected_groups_by_year": selected_groups_by_year,
+                "selected_source_hosts_by_year": selected_source_hosts_by_year,
                 "selection_seed": datasets.YEAR_BALANCED_COHORT_SEED if cohort_mode == "balanced_year_12" else None,
             },
             "splits": split_counts,

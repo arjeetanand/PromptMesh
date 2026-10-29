@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import json
 import os
 import stat
@@ -25,6 +26,49 @@ class ReviewPacketTests(unittest.TestCase):
         self.assertEqual(selected, shuffled)
         self.assertEqual(len(selected), 72)
         self.assertEqual(len(set(selected)), 72)
+
+    def test_host_diverse_selection_maximizes_hosts_and_fills_repeats_round_robin(self):
+        candidates = {
+            f"source-{year}-{index:02d}": {
+                "year": year,
+                "source_host": f"host-{index % 13:02d}.example.org",
+            }
+            for year in datasets.YEAR_BALANCED_COHORT_YEARS
+            for index in range(14)
+        }
+        selected = datasets.select_year_host_diverse_groups(candidates)
+        shuffled = datasets.select_year_host_diverse_groups(dict(reversed(list(candidates.items()))))
+
+        self.assertEqual(selected, shuffled)
+        self.assertEqual(len(selected), 72)
+        self.assertEqual(len(set(selected)), 72)
+        for year in datasets.YEAR_BALANCED_COHORT_YEARS:
+            year_groups = [group_id for group_id in selected if candidates[group_id]["year"] == year]
+            self.assertEqual(len(year_groups), 12)
+            self.assertEqual(len({candidates[group_id]["source_host"] for group_id in year_groups}), 12)
+
+        few_hosts = {
+            f"source-{year}-{index:02d}": {
+                "year": year,
+                "source_host": f"host-{index % 3}.example.org",
+            }
+            for year in datasets.YEAR_BALANCED_COHORT_YEARS
+            for index in range(12)
+        }
+        repeated = datasets.select_year_host_diverse_groups(few_hosts)
+        for year in datasets.YEAR_BALANCED_COHORT_YEARS:
+            counts = {}
+            for group_id in repeated:
+                if few_hosts[group_id]["year"] == year:
+                    host = few_hosts[group_id]["source_host"]
+                    counts[host] = counts.get(host, 0) + 1
+            self.assertEqual(counts, {f"host-{index}.example.org": 4 for index in range(3)})
+
+    def test_host_diverse_selection_rejects_non_https_and_missing_host(self):
+        self.assertEqual(datasets.source_host_from_url("https://www.Example.org/article"), "example.org")
+        for source_url in ("http://example.org/article", "https:///article", "https://user:pass@example.org/article"):
+            with self.subTest(source_url=source_url), self.assertRaisesRegex(ValueError, "HTTPS source URL"):
+                datasets.source_host_from_url(source_url)
 
     def _write_packet(self, directory):
         packet = Path(directory) / "review.csv"
@@ -71,7 +115,7 @@ class ReviewPacketTests(unittest.TestCase):
                         "reviewed_claim": "announced a research project" if eligible and not excluded else "",
                         "review_notes": "Not supported by the source" if excluded else "Checked against the linked source" if eligible else "",
                         "source_title": f"Official source {index}",
-                        "source_url": f"https://example.org/source/{index}",
+                        "source_url": f"https://source-{index // 6}.example.org/source/{index}",
                         "source_date": f"{year}-01-01",
                         "reuse_status": "permission_confirmed" if eligible else "permission_unconfirmed",
                         "reuse_evidence": "CC BY 4.0 license notice" if eligible else "",
@@ -201,15 +245,16 @@ class ReviewPacketTests(unittest.TestCase):
                 {str(year): sum(group_year == year for group_year in year_group_counts.values()) for year in range(2020, 2026)},
                 {str(year): 12 for year in range(2020, 2026)},
             )
-            self.assertEqual(card["schema_version"], 2)
-            self.assertEqual(card["cohort"]["strategy"], datasets.YEAR_BALANCED_COHORT)
-            self.assertEqual(card["cohort"]["candidate_group_years"], preview["candidate_group_years"])
+            self.assertEqual(card["schema_version"], 3)
+            self.assertEqual(card["cohort"]["strategy"], datasets.YEAR_HOST_DIVERSE_COHORT)
+            self.assertEqual(card["cohort"]["candidate_group_metadata"], preview["candidate_group_metadata"])
             self.assertEqual(card["cohort"]["selected_group_ids"], preview["selected_group_ids"])
             self.assertEqual({item["group_id"] for item in card["source"]["references"]}, set(preview["selected_group_ids"]))
-            self.assertEqual(len(card["cohort"]["candidate_group_years"]), 84)
+            self.assertEqual(len(card["cohort"]["candidate_group_metadata"]), 84)
             self.assertEqual(len(card["cohort"]["selected_group_ids"]), 72)
             self.assertEqual(result["cohort"]["mode"], "balanced_year_12")
             self.assertEqual(result["cohort"]["selected_groups_by_year"], {str(year): 12 for year in range(2020, 2026)})
+            self.assertEqual(result["cohort"]["selected_source_hosts_by_year"], {str(year): 12 for year in range(2020, 2026)})
             self.assertTrue(status["card_ready"] and status["validation_ready"] and status["final_test_ready"])
             self.assertEqual(packet_before_export, packet_after_export)
 
@@ -218,8 +263,87 @@ class ReviewPacketTests(unittest.TestCase):
             tampered["cohort"]["selected_group_ids"].reverse()
             card_path.write_text(json.dumps(tampered), encoding="utf-8")
             with patch.object(datasets, "DATASET_DIR", data_dir):
-                with self.assertRaisesRegex(ValueError, "do not match its candidate list"):
+                with self.assertRaisesRegex(ValueError, "does not match its candidates and deterministic rule"):
                     datasets.load_benchmark_card("balanced_sources_v1", rows, digest)
+
+            tampered = json.loads(card_path.read_text(encoding="utf-8"))
+            tampered["cohort"]["selected_group_ids"] = card["cohort"]["selected_group_ids"]
+            reference = tampered["source"]["references"][0]
+            reference["url"] = reference["url"].rstrip("/") + "/tampered"
+            card_path.write_text(json.dumps(tampered), encoding="utf-8")
+            with patch.object(datasets, "DATASET_DIR", data_dir):
+                with self.assertRaisesRegex(ValueError, "source URL does not match its candidate metadata"):
+                    datasets.load_benchmark_card("balanced_sources_v1", rows, digest)
+
+    def test_schema_v2_year_balanced_cards_remain_loadable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data_dir = Path(directory)
+            candidate_group_years = {
+                f"legacy-{year}-{index:02d}": year
+                for year in datasets.YEAR_BALANCED_COHORT_YEARS
+                for index in range(14)
+            }
+            selected = datasets.select_year_balanced_groups(candidate_group_years)
+            rows = [
+                {
+                    "group_id": group_id,
+                    "input": f"Source {group_id} variant {variant}.",
+                    "output": {
+                        "organization": "Example actor",
+                        "year": candidate_group_years[group_id],
+                        "claim": "announced a research project",
+                    },
+                }
+                for group_id in selected
+                for variant in range(3)
+            ]
+            content = "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in rows).encode()
+            digest = hashlib.sha256(content).hexdigest()
+            card = {
+                "schema_version": 2,
+                "dataset_id": "legacy_balanced",
+                "dataset_sha256": digest,
+                "task": "entity_extraction",
+                "source": {
+                    "description": "Human-reviewed public-source entity-extraction examples.",
+                    "authorization_or_license": "Source-level evidence is listed in references.",
+                    "references": [
+                        {"group_id": group_id, "title": group_id, "url": "https://example.org/source", "reuse_evidence": "CC BY 4.0"}
+                        for group_id in selected
+                    ],
+                },
+                "grouping": {"unit": "one public source fact per group", "policy": "Legacy year-balanced cohort."},
+                "annotation": {
+                    "guidelines_version": "entity-extraction-v1",
+                    "review_status": "human_reviewed",
+                    "all_labels_human_reviewed": True,
+                    "total_examples": len(rows),
+                    "reviewed_examples": len(rows),
+                    "total_source_groups": len(selected),
+                    "reviewed_source_groups": len(selected),
+                    "reviewed_at_utc": "2026-10-29T00:00:00Z",
+                    "reviewer_role": "domain reviewer",
+                },
+                "limitations": ["Local review self-attestation."],
+                "cohort": {
+                    "strategy": datasets.YEAR_BALANCED_COHORT,
+                    "seed": datasets.YEAR_BALANCED_COHORT_SEED,
+                    "groups_per_year": datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR,
+                    "years": list(datasets.YEAR_BALANCED_COHORT_YEARS),
+                    "candidate_group_years": [
+                        {"group_id": group_id, "year": candidate_group_years[group_id]}
+                        for group_id in sorted(candidate_group_years)
+                    ],
+                    "selected_group_ids": selected,
+                },
+            }
+            (data_dir / "legacy_balanced.jsonl").write_bytes(content)
+            (data_dir / "legacy_balanced.card.json").write_text(json.dumps(card), encoding="utf-8")
+            with patch.object(datasets, "DATASET_DIR", data_dir):
+                loaded_rows, loaded_digest = datasets.load_dataset_snapshot("legacy_balanced")
+                loaded_card = datasets.load_benchmark_card("legacy_balanced", loaded_rows, loaded_digest)
+
+        self.assertEqual(loaded_card["schema_version"], 2)
 
     def test_export_rolls_back_dataset_if_card_creation_fails(self):
         with tempfile.TemporaryDirectory() as directory:

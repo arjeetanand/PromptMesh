@@ -565,6 +565,17 @@
 - Mobile viewport verification and the human-reviewed, rights-cleared training/benchmark remain open.
 - Next: review source labels and reuse rights, then export the authorized dataset and run validation selection before the matched frozen comparison.
 
+## Host-diverse review cohort — 2026-10-29
+
+- Updated the 12-groups-per-reviewed-year pilot to maximize distinct normalized HTTPS hostnames first, then fill remaining slots round-robin across selected hosts. Seed-42 SHA-256 ordering makes host and group selection repeatable. Hostnames are a source-diversity proxy only; subdomains may share an owner, and the method does not balance topics, organizations, or styles.
+- New exports use benchmark-card schema v3 and record candidate group IDs, reviewed years, source hosts and URLs, plus selected IDs. Validation recomputes the selected cohort and checks every selected source reference against its candidate URL. Schema-v2 year-only cards remain loadable.
+- The current ignored draft packet remains 423 rows / 141 groups / 0 reviewed rows / 0 eligible groups. Proposed-year counts are 14 / 16 / 15 / 15 / 65 / 15 for 2020–2025; the 2024 candidates cover 15 normalized hosts. A read-only selection projection yields 12 distinct hosts in each year, using unreviewed proposed labels only. This is not a reviewed cohort or benchmark result.
+- Verification: all 107 Python `unittest` cases and all 21 Node UI tests passed. Python compilation, JavaScript syntax, `run.sh` syntax, and `git diff --check` passed. The live browser on port 4004 showed API connected, the updated host-diverse copy, and the unchanged 423 / 141 / 0 review summary; export remained disabled. No review decision or export was submitted.
+- Browser layout: default 1600px viewport had no document overflow. A requested 390px override was reported as 487 CSS px by the browser, where export fields collapsed to one column and document width matched the viewport; the default viewport was restored. Exact 390px verification remains pending.
+- No training, prompt selection, final benchmark, or quantized inference ran. Human label review and source-specific reuse clearance remain required before any model-quality claim.
+- Delivery: implementation and documentation are on `codex/promptmesh-validation-selection` for existing PR #2 targeting `main`; the PR remains open and was not merged.
+- Next: review the source labels, variants, and reuse terms, then inspect the selected cohort and actual split composition before training or evaluating on it.
+
 ## Saved-adapter offline loading — 2026-10-29
 
 - The one-epoch smoke log included the Hugging Face Hub warning about unauthenticated requests. In the installed Hub client, that warning is surfaced from an HTTP response header, so at least one Hub response reached the process. The training path itself resolves the cached snapshot and loads model/tokenizer with `local_files_only=True`; the exact caller for the earlier response was not captured, so its request and payload are unknown.

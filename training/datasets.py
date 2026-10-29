@@ -3,6 +3,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from core.types import render_prompt
 
@@ -18,6 +19,7 @@ SPLIT_SEED = 42
 GROUP_HASH_SPLIT = "group-hash-v1"
 GROUP_YEAR_SPLIT = "group-year-stratified-v1"
 YEAR_BALANCED_COHORT = "year-balanced-v1"
+YEAR_HOST_DIVERSE_COHORT = "year-host-diverse-v1"
 YEAR_BALANCED_COHORT_SEED = 42
 YEAR_BALANCED_COHORT_YEARS = tuple(range(2020, 2026))
 YEAR_BALANCED_COHORT_GROUPS_PER_YEAR = 12
@@ -141,6 +143,95 @@ def select_year_balanced_groups(candidate_group_years):
     return selected
 
 
+def source_host_from_url(source_url):
+    if not isinstance(source_url, str):
+        raise ValueError("A host-diverse pilot requires an HTTPS source URL")
+    try:
+        parsed = urlsplit(source_url.strip())
+        if parsed.scheme.lower() != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("A host-diverse pilot requires an HTTPS source URL without embedded credentials")
+        host = parsed.hostname.encode("idna").decode("ascii").casefold().rstrip(".")
+    except (UnicodeError, ValueError) as exc:
+        raise ValueError("A host-diverse pilot requires a valid HTTPS source URL") from exc
+    if host.startswith("www."):
+        host = host[4:]
+    if len(host) > 253 or any(
+        not label or len(label) > 63 or label.startswith("-") or label.endswith("-")
+        or not re.fullmatch(r"[a-z0-9-]+", label)
+        for label in host.split(".")
+    ):
+        raise ValueError("A host-diverse pilot requires a valid HTTPS source host")
+    return host
+
+
+def select_year_host_diverse_groups(candidate_group_metadata):
+    """Select 12 groups per reviewed year while maximizing distinct source hosts."""
+    if not isinstance(candidate_group_metadata, dict):
+        raise ValueError("Host-diverse cohort candidates must map groups to reviewed year and source host")
+    for group_id, metadata in candidate_group_metadata.items():
+        if not isinstance(group_id, str) or not group_id.strip() or len(group_id) > 128:
+            raise ValueError("Host-diverse cohort candidates contain an invalid source group")
+        if not isinstance(metadata, dict) or set(metadata) != {"year", "source_host"}:
+            raise ValueError("Host-diverse cohort candidate metadata is malformed")
+        year = metadata["year"]
+        if year is not None and (type(year) is not int or not 1000 <= year <= 9999):
+            raise ValueError("Host-diverse cohort candidate years must be four-digit integers or null")
+        source_host = metadata["source_host"]
+        if not isinstance(source_host, str) or not source_host or source_host != source_host.strip():
+            raise ValueError("Host-diverse cohort candidates require a normalized source host")
+        if source_host_from_url(f"https://{source_host}") != source_host:
+            raise ValueError("Host-diverse cohort candidates require a normalized source host")
+
+    selected = []
+    for year in YEAR_BALANCED_COHORT_YEARS:
+        groups_by_host = {}
+        for group_id, metadata in candidate_group_metadata.items():
+            if metadata["year"] == year:
+                groups_by_host.setdefault(metadata["source_host"], []).append(group_id)
+        group_count = sum(map(len, groups_by_host.values()))
+        target = YEAR_BALANCED_COHORT_GROUPS_PER_YEAR
+        if group_count < target:
+            raise ValueError(f"Year {year} has {group_count} eligible groups; the pilot needs {target}")
+
+        hosts = sorted(
+            groups_by_host,
+            key=lambda host: (
+                hashlib.sha256(
+                    f"{YEAR_BALANCED_COHORT_SEED}:{YEAR_HOST_DIVERSE_COHORT}:{year}:host:{host}".encode("utf-8")
+                ).hexdigest(),
+                host,
+            ),
+        )
+        ranked_hosts = hosts[:target]
+        ranked_groups = {
+            host: sorted(
+                groups_by_host[host],
+                key=lambda group_id: (
+                    hashlib.sha256(
+                        f"{YEAR_BALANCED_COHORT_SEED}:{YEAR_HOST_DIVERSE_COHORT}:{year}:{host}:{group_id}".encode("utf-8")
+                    ).hexdigest(),
+                    group_id,
+                ),
+            )
+            for host in ranked_hosts
+        }
+        year_selection = []
+        depth = 0
+        while len(year_selection) < target:
+            added_group = False
+            for host in ranked_hosts:
+                if depth < len(ranked_groups[host]):
+                    year_selection.append(ranked_groups[host][depth])
+                    added_group = True
+                    if len(year_selection) == target:
+                        break
+            if not added_group:
+                raise ValueError(f"Year {year} cannot fill the {target}-group host-diverse pilot")
+            depth += 1
+        selected.extend(year_selection)
+    return selected
+
+
 def _load_benchmark_card_snapshot(dataset_id, rows, dataset_digest):
     if dataset_id == "entity_extraction_demo":
         raise ValueError("The synthetic demo cannot be used as a final benchmark")
@@ -161,8 +252,8 @@ def _load_benchmark_card_snapshot(dataset_id, rows, dataset_digest):
     if not isinstance(card, dict) or type(card.get("schema_version")) is not int:
         raise ValueError("Benchmark card must be an object with a supported schema version")
     schema_version = card["schema_version"]
-    expected_fields = schema_one_fields | ({"cohort"} if schema_version == 2 else set())
-    if schema_version not in {1, 2} or set(card) != expected_fields:
+    expected_fields = schema_one_fields | ({"cohort"} if schema_version in {2, 3} else set())
+    if schema_version not in {1, 2, 3} or set(card) != expected_fields:
         raise ValueError("Benchmark card fields do not match its schema version")
     if card["dataset_id"] != dataset_id or card["task"] != "entity_extraction":
         raise ValueError("Benchmark card identity or schema version does not match the dataset")
@@ -243,6 +334,77 @@ def _load_benchmark_card_snapshot(dataset_id, rows, dataset_digest):
             or set(reference_group_ids) != set(selected_group_ids)
         ):
             raise ValueError("Balanced cohort source references do not match the selected groups")
+
+    if schema_version == 3:
+        cohort = card["cohort"]
+        cohort_fields = {
+            "strategy", "seed", "groups_per_year", "years", "candidate_group_metadata", "selected_group_ids"
+        }
+        if not isinstance(cohort, dict) or set(cohort) != cohort_fields:
+            raise ValueError("Host-diverse cohort metadata does not match schema version 3")
+        if (
+            cohort["strategy"] != YEAR_HOST_DIVERSE_COHORT
+            or type(cohort["seed"]) is not int
+            or cohort["seed"] != YEAR_BALANCED_COHORT_SEED
+            or type(cohort["groups_per_year"]) is not int
+            or cohort["groups_per_year"] != YEAR_BALANCED_COHORT_GROUPS_PER_YEAR
+            or cohort["years"] != list(YEAR_BALANCED_COHORT_YEARS)
+        ):
+            raise ValueError("Host-diverse cohort strategy, seed, years, or group target is unsupported")
+        candidates = cohort["candidate_group_metadata"]
+        if not isinstance(candidates, list):
+            raise ValueError("Host-diverse cohort candidate metadata must be a list")
+        candidate_group_metadata = {}
+        candidate_source_urls = {}
+        for item in candidates:
+            if not isinstance(item, dict) or set(item) != {"group_id", "year", "source_host", "source_url"}:
+                raise ValueError("Host-diverse cohort candidate metadata is malformed")
+            group_id = item["group_id"]
+            if not isinstance(group_id, str) or group_id in candidate_group_metadata:
+                raise ValueError("Host-diverse cohort candidate group IDs must be unique text")
+            try:
+                source_host = source_host_from_url(item["source_url"])
+            except ValueError as exc:
+                raise ValueError("Host-diverse cohort candidates need valid HTTPS source URLs") from exc
+            if source_host != item["source_host"]:
+                raise ValueError("Host-diverse cohort candidate host does not match its source URL")
+            candidate_group_metadata[group_id] = {"year": item["year"], "source_host": source_host}
+            candidate_source_urls[group_id] = item["source_url"]
+        if list(candidate_group_metadata) != sorted(candidate_group_metadata):
+            raise ValueError("Host-diverse cohort candidate metadata must be sorted by group ID")
+        selected_group_ids = cohort["selected_group_ids"]
+        if (
+            not isinstance(selected_group_ids, list)
+            or any(not isinstance(group_id, str) for group_id in selected_group_ids)
+            or len(selected_group_ids) != len(set(selected_group_ids))
+        ):
+            raise ValueError("Host-diverse cohort selected group IDs must be unique text values")
+        expected_selected = select_year_host_diverse_groups(candidate_group_metadata)
+        if selected_group_ids != expected_selected:
+            raise ValueError("Host-diverse cohort selection does not match its candidates and deterministic rule")
+        if {row["group_id"] for row in rows} != set(selected_group_ids):
+            raise ValueError("Host-diverse cohort selected groups do not match the dataset rows")
+        for row in rows:
+            if row["output"]["year"] != candidate_group_metadata[row["group_id"]]["year"]:
+                raise ValueError("Host-diverse cohort reviewed years differ from the recorded cohort plan")
+        references = source.get("references")
+        if not isinstance(references, list):
+            raise ValueError("Host-diverse cohort source references must list every selected group")
+        reference_by_group = {item.get("group_id"): item for item in references if isinstance(item, dict)}
+        if (
+            len(reference_by_group) != len(references)
+            or set(reference_by_group) != set(selected_group_ids)
+        ):
+            raise ValueError("Host-diverse cohort source references do not match the selected groups")
+        for group_id in selected_group_ids:
+            try:
+                source_host = source_host_from_url(reference_by_group[group_id].get("url"))
+            except ValueError as exc:
+                raise ValueError("Host-diverse cohort references need valid HTTPS source URLs") from exc
+            if source_host != candidate_group_metadata[group_id]["source_host"]:
+                raise ValueError("Host-diverse cohort source host does not match its source reference")
+            if reference_by_group[group_id].get("url") != candidate_source_urls[group_id]:
+                raise ValueError("Host-diverse cohort source URL does not match its candidate metadata")
 
     groups = {row["group_id"] for row in rows}
     expected_counts = {

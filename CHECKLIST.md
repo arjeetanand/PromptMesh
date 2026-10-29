@@ -226,6 +226,15 @@
 - [x] Verify the export choice in the browser at desktop and 390px widths with API connected, no horizontal overflow, the correct per-cohort readiness message, and the export action disabled at zero reviewed/eligible groups; confirm there are no browser console errors.
 - [ ] Human-review labels and reuse rights, then inspect the selected cohort and actual split composition before any model or quantization claim.
 
+## Host-diverse reviewed cohort — 2026-10-29
+
+- [x] Keep the 12-groups-per-year pilot and maximize distinct normalized HTTPS hosts before repeating hosts; use deterministic seed-42 SHA-256 ranking.
+- [x] Record every eligible candidate group ID, reviewed year, normalized host, and source URL plus selected groups in schema-v3 cards; keep schema-v2 year-only cards loadable.
+- [x] Add export/UI regressions for host maximization, deterministic ordering, balanced repeat fill, source URL validation, candidate provenance, and legacy card loading.
+- [x] Verify the live 4004 browser shows the host-diverse explanation, API connected, and 423 rows / 141 groups / 0 reviewed / 0 eligible without saving review data. At the compact browser size actually available (487 CSS px), the document has no horizontal overflow and export fields use one column; the viewport was restored afterward.
+- [ ] Verify at an exact 390 CSS px viewport. The browser's 390px override returned a 487px viewport, so this breakpoint was not confirmed at the requested width.
+- [ ] Review labels, variants, and reuse rights; inspect the real selected host distribution before training or quality claims. Current projection uses unreviewed proposed labels only.
+
 ## Keyboard skip navigation — 2026-10-29
 
 - [x] Add a keyboard-visible skip link to the main workspace and keep in-page fragments from redirecting the active app route.

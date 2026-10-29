@@ -180,15 +180,19 @@ from 2022, 2 from 2023, 10 from 2024, and 2 from 2025. These unreviewed years
 must not be presented as benchmark composition; 2024 accounts for 10 of 21
 groups in each held-out projection.
 
-The export form now offers an explicit year-balanced pilot of 12 eligible
-groups in each reviewed year from 2020–2025. It selects deterministically from
-reviewed years with seed 42 and stores the candidate list and selection in a
-schema-v2 benchmark card. With 72 groups and three variants per group, the
-current split algorithm projects 150/33/33 rows across 50/11/11
-train/validation/test groups. This projection says nothing about the pending
-draft labels or reuse rights; the current packet cannot use this option until
-each year has 12 fully reviewed, reuse-cleared groups. Year balance alone does
-not establish label quality, reuse permission, or representativeness.
+The export form now offers an explicit year-balanced, host-diverse pilot of 12
+eligible groups in each reviewed year from 2020–2025. With seed 42, selection
+maximizes distinct normalized HTTPS hosts in each year, choosing one group per
+host before repeats when possible. A schema-v3 benchmark card records all
+eligible candidate group IDs, reviewed years, source hosts and URLs, plus the
+selected IDs. Existing schema-v2 year-only cards remain loadable. With 72 groups
+and three variants per group, the current split algorithm projects 150/33/33
+rows across 50/11/11 train/validation/test groups. This projection says nothing
+about pending draft labels or reuse rights; the current packet cannot use this
+option until each year has 12 fully reviewed, reuse-cleared groups. Hostnames
+are a limited source-diversity proxy: subdomains can share an owner, and this
+does not balance topic, organization, or writing style or establish
+representativeness.
 
 For datasets with at least 30 source groups, the split keeps each group intact
 and stratifies by its event-year signature. Signatures with at least three
@@ -223,9 +227,10 @@ dataset. The queue filters by proposed event year, and Previous/Next follow the
 same interleaved order as the group selector. Export can include all eligible
 groups or the explicit 12-per-year pilot based on reviewed years. The balanced
 selection is deterministic, happens before splitting, and is recorded in the
-benchmark card; it balances year counts only. `organization` means the named
-actor performing the claim. Changing source groups announces the selected
-source title and review guidance politely to assistive technology.
+benchmark card; hostnames are a source-diversity proxy, not an ownership or
+representativeness measure. `organization` means the named actor performing
+the claim. Changing source groups announces the selected source title and
+review guidance politely to assistive technology.
 
 ### Résumé and interview framing
 

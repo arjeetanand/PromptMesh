@@ -65,22 +65,29 @@ and is not representative. Review each source, label, split, and reuse condition
 before using any examples.
 
 After curation, the export form offers **All eligible groups** or an explicit
-**Year-balanced pilot · 12 per year**. The pilot requires at least 12 eligible
-groups in each reviewed event year 2020–2025. It uses the human-reviewed year,
-not the draft proposal, and excludes undated or mixed-year groups from this
-cohort. Within each year, it chooses 12 groups by SHA-256 order using seed 42
-and the `year-balanced-v1` rule. This selection happens before train/validation/
-test splitting and does not use model outputs or test metrics. The schema-v2
-benchmark card records the full eligible group/year candidate list, rule, seed,
-and selected group IDs so the selection can be reproduced and audited. **All
-eligible groups** remains a separate export option.
+**Year-balanced, host-diverse pilot · 12 per year**. The pilot requires at least
+12 eligible groups in each reviewed event year 2020–2025. It uses the
+human-reviewed year, not the draft proposal, and excludes undated or mixed-year
+groups from this cohort. Within each year, `year-host-diverse-v1` uses SHA-256
+ordering with seed 42 to select one group per normalized HTTPS source host
+before repeating a host when possible. If there are more than 12 hosts, a
+deterministic host ranking chooses 12; if there are fewer, groups are selected
+round-robin across the available hosts to maximize host coverage. The host is
+the URL hostname lowercased with a leading `www.` removed; subdomains may still
+share one publisher or owner. This selection happens before train/validation/
+test splitting and does not use model outputs or test metrics. The schema-v3
+benchmark card records each eligible group ID, reviewed year, normalized host,
+source URL, selection seed, rule, and selected IDs so the selection can be
+reproduced and inspected. **All eligible groups** remains a separate export
+option.
 
 If every selected group has three variants, the 72-group target projects to
 50/11/11 train/validation/test groups (150/33/33 rows). Excluded variants can
 reduce example counts, so readiness computes the actual split before export.
-This pilot balances year counts only; it does not balance source host, topic,
-organization, or writing style and is not a representativeness claim. The
-proposal is only a projection over unreviewed labels until you complete the
+This pilot balances year counts and maximizes exact-host diversity within each
+year. Hostnames are not publisher identities, and the pilot does not balance
+topic, organization, or writing style; it is not a representativeness claim.
+The proposal is only a projection over unreviewed labels until you complete the
 source and reuse review.
 
 The current seed-42 split projection from those **unreviewed proposed years**

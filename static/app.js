@@ -484,7 +484,7 @@ function updateReviewExportControls(packet = state.reviewPacket) {
     readiness.textContent = "The local review packet is unavailable.";
   } else if (preview?.ready) {
     const cohortLabel = cohortMode === "balanced_year_12"
-      ? ` Balanced pilot: ${preview.groups_per_year} reviewed groups per year (2020–2025), chosen by seed 42.`
+      ? ` Host-diverse pilot: ${preview.groups_per_year} reviewed groups per year (2020–2025), seed 42; distinct normalized hosts selected by year: ${Object.entries(preview.selected_source_hosts_by_year || {}).map(([year, count]) => `${year} ${count}`).join(", ")}.`
       : " All eligible groups are included.";
     readiness.textContent = `${preview.examples} reviewed examples across ${preview.source_groups} groups.${cohortLabel} Validation: ${preview.validation_examples} examples / ${preview.validation_source_groups} groups. Final test: ${preview.final_test_examples} examples / ${preview.final_test_source_groups} groups.`;
   } else {
@@ -814,7 +814,7 @@ async function handleExportReviewedDataset() {
     const validation = result.splits.validation;
     const finalTest = result.splits.test;
     const cohortSummary = result.cohort?.mode === "balanced_year_12"
-      ? ` Year-balanced pilot selected ${Object.entries(result.cohort.selected_groups_by_year).map(([year, count]) => `${year}: ${count}`).join(", ")} source groups (seed ${result.cohort.selection_seed}).`
+      ? ` Year-balanced, host-diverse pilot selected ${Object.entries(result.cohort.selected_groups_by_year).map(([year, count]) => `${year}: ${count}`).join(", ")} source groups (seed ${result.cohort.selection_seed}). Distinct normalized source hosts by year: ${Object.entries(result.cohort.selected_source_hosts_by_year || {}).map(([year, count]) => `${year}: ${count}`).join(", ")}.`
       : " All eligible groups were included.";
     $("reviewExportResult").textContent = `Created private dataset ${result.dataset_id}: ${result.examples} examples / ${result.source_groups} groups.${cohortSummary} Validation ${validation.examples}/${validation.source_groups} groups; final test ${finalTest.examples}/${finalTest.source_groups} groups. The self-attested card is ready; no model was trained and the test set was not scored.`;
     showToast("Reviewed dataset and benchmark card created locally.", "success");

@@ -264,6 +264,7 @@ test("reviewed dataset export gates the selected all-eligible or balanced cohort
   cohortSelect.listeners.change({ target: cohortSelect });
   assert.equal(elements.get("reviewExportButton").disabled, false);
   assert.match(elements.get("reviewExportReadiness").textContent, /seed 42/);
+  assert.match(elements.get("reviewExportReadiness").textContent, /Host-diverse pilot/);
 
   vm.runInContext("state.reviewPacketDirty = true; updateReviewExportControls()", context);
   assert.equal(elements.get("reviewExportButton").disabled, true, "unsaved decisions must not be exported");
@@ -307,7 +308,7 @@ test("balanced export sends the explicit cohort choice and reports its selected 
     request = { endpoint, options };
     return {
       dataset_id: "balanced_sources_v1", examples: 216, source_groups: 72,
-      cohort: { mode: "balanced_year_12", selection_seed: 42, selected_groups_by_year: { "2020": 12, "2021": 12, "2022": 12, "2023": 12, "2024": 12, "2025": 12 } },
+      cohort: { mode: "balanced_year_12", selection_seed: 42, selected_groups_by_year: { "2020": 12, "2021": 12, "2022": 12, "2023": 12, "2024": 12, "2025": 12 }, selected_source_hosts_by_year: { "2020": 12, "2021": 12, "2022": 12, "2023": 12, "2024": 12, "2025": 12 } },
       splits: {
         validation: { examples: 33, source_groups: 11 },
         test: { examples: 33, source_groups: 11 }
@@ -320,6 +321,7 @@ test("balanced export sends the explicit cohort choice and reports its selected 
   assert.equal(request.endpoint, "training/review-packet/export");
   assert.equal(JSON.parse(request.options.body).cohort_mode, "balanced_year_12");
   assert.match(elements.get("reviewExportResult").textContent, /2024: 12/);
+  assert.match(elements.get("reviewExportResult").textContent, /Distinct normalized source hosts by year/);
   assert.match(elements.get("reviewExportResult").textContent, /seed 42/);
 });
 
