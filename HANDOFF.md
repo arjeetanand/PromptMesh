@@ -620,4 +620,14 @@
 - Delivery: implementation commit `d2ca77e` is pushed to `codex/promptmesh-validation-selection`, the branch for existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2) targeting `main`. A post-push GitHub API refresh failed with `error connecting to api.github.com`; the PR was previously verified open against `main`. No merge.
 - Launch command: `./run.sh` serves the app on `http://127.0.0.1:4004` (test/preview suffixes remain 5004/6004). The restart attempt found port 4004 occupied by PID 61475 and stopped without killing it because ownership could not be established. The running process was not restarted or browser-verified for this code revision.
 - Remaining: the 423-row public-source packet still requires human source/label/reuse review; there is no real-data benchmark or quantized quality result. Do not present synthetic smoke metrics as model-quality evidence.
-- Next: confirm ownership of the port-4004 listener, restart the app with `./run.sh`, then continue only after the review packet has been human-reviewed and reuse permissions confirmed.
+- Next at that point: confirm ownership of the port-4004 listener and restart the app with `./run.sh`; the later live check is recorded in the following handoff section.
+
+## LoRA runner success-path regression and live Fine-tune check — 2026-10-29
+
+- Added an offline mocked regression for the successful `run_lora_training` path. It verifies train/validation dataset wiring, local-only model/tokenizer arguments, adapter persistence, validation-only metrics, and the schema-v5 training-configuration digest. No model weights were loaded; this validates orchestration and artifact provenance, not quality.
+- Verification: all 109 Python tests passed, including 29 training tests; all 22 Node UI tests passed. Python compilation, `bash -n run.sh`, and `git diff --check` passed.
+- Browser: the Fine-tune page at `http://127.0.0.1:4004/#finetune` reports API connected. At 1600px and 390px CSS widths, document/body widths match the viewport; the mobile sidebar becomes an accessible menu button. The browser reported no errors or warnings. The queue showed 423 rows / 141 source groups / 0 reviewed / 0 excluded / 0 eligible; no review was saved.
+- Runtime: `./run.sh` is serving this checkout on port 4004 in persistent session 24524 (PID 16182). `/api/health` returned `healthy`. Use `./run.sh` to launch; ports 5004 and 6004 were not touched.
+- Delivery: commit `c04cccf` is pushed to `origin/codex/promptmesh-validation-selection`, updating existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2), previously verified to target `main`. The current GitHub API refresh failed with `error connecting to api.github.com`; no merge occurred.
+- Remaining: a human must review the source claims and reuse terms before export or real evaluation. There is still no real-data benchmark or measured quantized quality result. Full screen-reader and axe audits remain open.
+- Next: complete source/label/reuse review, create the reviewed dataset, then run validation-selected prompt/LoRA evaluation and the matched quantized study on a fresh frozen test set.
