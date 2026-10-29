@@ -215,7 +215,7 @@
 - [x] Reconcile the dataset README's packet counts and seed-42 split table against the current ignored draft.
 - [x] Verify 89 Python tests, 19 Node UI tests, JavaScript/launcher syntax, and `git diff --check`.
 - [x] Verify the live review workbench at 1440px, 768px, and 390px with API connected and no horizontal overflow; confirm the packet remains at 0 reviewed / 0 eligible.
-- [ ] Human-review every candidate and its reuse conditions; verify the exported year distribution before describing a cohort as balanced.
+- [ ] For the balanced pilot, review 12 eligible groups per year (72 total) and resolve all three variants plus reuse evidence for each group; inspect the post-review split before claiming benchmark readiness. The current draft-only projection is 216 variants and 150/33/33 train/validation/test examples across 50/11/11 groups before exclusions.
 
 ## Deterministic reviewed-year cohort export — 2026-10-29
 
