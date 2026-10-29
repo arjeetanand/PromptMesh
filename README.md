@@ -173,13 +173,15 @@ model-quality gains. The current draft split projects 57 rows across 19 groups
 to each held-out split, with 2 of 19 groups from 2021 and 9 of 19 from 2024;
 these unreviewed years must not be presented as benchmark composition.
 
-A possible year-balanced pilot, after human review and rights confirmation,
-would use 12 groups from each year 2020–2025 (selecting 12 of the 13 proposed
-2021 groups and 12 of the 65 proposed 2024 groups). With three variants per
-group and seed 42, the current split algorithm projects 150/33/33 rows across
-50/11/11 train/validation/test groups.
-This is a planning projection only; it does not establish label quality,
-reuse permission, or representativeness.
+The export form now offers an explicit year-balanced pilot of 12 eligible
+groups in each reviewed year from 2020–2025. It selects deterministically from
+reviewed years with seed 42 and stores the candidate list and selection in a
+schema-v2 benchmark card. With 72 groups and three variants per group, the
+current split algorithm projects 150/33/33 rows across 50/11/11
+train/validation/test groups. This projection says nothing about the pending
+draft labels or reuse rights; the current packet cannot use this option until
+each year has 12 fully reviewed, reuse-cleared groups. Year balance alone does
+not establish label quality, reuse permission, or representativeness.
 
 For datasets with at least 30 source groups, the split keeps each group intact
 and stratifies by its event-year signature. Signatures with at least three
@@ -210,12 +212,13 @@ the 30-example / 10-source-group floor. Export does not train a model or score
 the test set; human label and rights review remain local self-attestations. The
 queue summarizes draft year and source-host coverage to make packet imbalance
 visible; those counts describe the candidate packet, not the final reviewed
-dataset. The queue now filters by proposed event year, and Previous/Next follow
-the same interleaved order as the group selector. This changes navigation only:
-it does not select a 72-group cohort, and export still includes every eligible
-group. `organization` means the named actor performing the claim. Changing
-source groups announces the selected source title and review guidance politely
-to assistive technology.
+dataset. The queue filters by proposed event year, and Previous/Next follow the
+same interleaved order as the group selector. Export can include all eligible
+groups or the explicit 12-per-year pilot based on reviewed years. The balanced
+selection is deterministic, happens before splitting, and is recorded in the
+benchmark card; it balances year counts only. `organization` means the named
+actor performing the claim. Changing source groups announces the selected
+source title and review guidance politely to assistive technology.
 
 ### Résumé and interview framing
 

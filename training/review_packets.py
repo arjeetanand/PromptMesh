@@ -108,6 +108,9 @@ def _packet(rows):
             "final_test_source_groups": 0,
             "reason": f"Reviewed labels cannot be exported safely: {exc}",
         }
+    balanced_export_preview = _balanced_export_preview(
+        rows, [group for group in group_rows if group["eligible"]]
+    )
     return {
         "total_rows": total_rows,
         "reviewed_rows": reviewed_rows,
@@ -117,6 +120,7 @@ def _packet(rows):
         "resolved_groups": sum(group["resolved_rows"] == len(group["rows"]) for group in group_rows),
         "eligible_groups": eligible_groups,
         "export_preview": export_preview,
+        "balanced_export_preview": balanced_export_preview,
         "groups": group_rows,
     }
 
@@ -188,6 +192,87 @@ def _export_preview(dataset_rows):
     return preview
 
 
+def _reviewed_group_year(group):
+    years = set()
+    for row in group["rows"]:
+        if row["review_status"] != "REVIEWED":
+            continue
+        raw_year = row["reviewed_year"].strip()
+        if not raw_year:
+            return None
+        try:
+            year = int(raw_year)
+        except ValueError:
+            return None
+        years.add(year)
+    if len(years) != 1:
+        return None
+    return next(iter(years))
+
+
+def _balanced_export_preview(rows, eligible_groups):
+    from training import datasets
+
+    candidate_group_years = {
+        group["group_id"]: _reviewed_group_year(group)
+        for group in eligible_groups
+    }
+    candidate_counts = {
+        str(year): sum(candidate_year == year for candidate_year in candidate_group_years.values())
+        for year in datasets.YEAR_BALANCED_COHORT_YEARS
+    }
+    preview = {
+        "ready": False,
+        "examples": 0,
+        "source_groups": 0,
+        "validation_examples": 0,
+        "validation_source_groups": 0,
+        "final_test_examples": 0,
+        "final_test_source_groups": 0,
+        "years": list(datasets.YEAR_BALANCED_COHORT_YEARS),
+        "groups_per_year": datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR,
+        "candidate_groups_by_year": candidate_counts,
+        "selected_group_ids": [],
+        "candidate_group_years": [
+            {"group_id": group_id, "year": candidate_group_years[group_id]}
+            for group_id in sorted(candidate_group_years)
+        ],
+    }
+    missing_years = [
+        year for year in datasets.YEAR_BALANCED_COHORT_YEARS
+        if candidate_counts[str(year)] < datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR
+    ]
+    if missing_years:
+        required = datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR
+        counts = ", ".join(
+            f"{year}: {candidate_counts[str(year)]}/{required}"
+            for year in datasets.YEAR_BALANCED_COHORT_YEARS
+        )
+        preview["reason"] = f"Balanced pilot needs {required} reviewed, rights-cleared groups per year (2020–2025). Current groups: {counts}."
+        return preview
+    try:
+        selected_group_ids = datasets.select_year_balanced_groups(candidate_group_years)
+    except ValueError as exc:
+        preview["reason"] = str(exc)
+        return preview
+
+    preview["selected_group_ids"] = selected_group_ids
+    selected_rows = _reviewed_dataset_rows(rows, set(selected_group_ids))
+    split_preview = _export_preview(selected_rows)
+    preview.update(split_preview)
+    preview.update({
+        "years": list(datasets.YEAR_BALANCED_COHORT_YEARS),
+        "groups_per_year": datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR,
+        "candidate_groups_by_year": candidate_counts,
+        "selected_group_ids": selected_group_ids,
+        "candidate_group_years": [
+            {"group_id": group_id, "year": candidate_group_years[group_id]}
+            for group_id in sorted(candidate_group_years)
+        ],
+    })
+    return preview
+
+
 def load_review_packet():
     with _WRITE_LOCK:
         _, rows = _read_rows()
@@ -248,7 +333,7 @@ def save_group_review(group_id, updates, reuse_status, reuse_evidence):
         return _packet(rows)
 
 
-def export_reviewed_dataset(dataset_id, reviewer_role):
+def export_reviewed_dataset(dataset_id, reviewer_role, cohort_mode="all_eligible"):
     from training import datasets
 
     if not isinstance(dataset_id, str) or not datasets.DATASET_ID_RE.fullmatch(dataset_id):
@@ -256,16 +341,23 @@ def export_reviewed_dataset(dataset_id, reviewer_role):
     reviewer_role = reviewer_role.strip() if isinstance(reviewer_role, str) else ""
     if not reviewer_role or len(reviewer_role) > 128:
         raise ValueError("Add the reviewer role (not a personal name; maximum 128 characters)")
+    if cohort_mode not in {"all_eligible", "balanced_year_12"}:
+        raise ValueError("Choose a supported reviewed-dataset cohort")
 
     with _WRITE_LOCK:
         _, packet_rows = _read_rows()
         packet = _packet(packet_rows)
-        preview = packet["export_preview"]
+        preview_key = "balanced_export_preview" if cohort_mode == "balanced_year_12" else "export_preview"
+        preview = packet[preview_key]
         if not preview["ready"]:
             raise ValueError(preview.get("reason") or "The reviewed packet is not ready for benchmark export")
 
-        eligible_group_ids = {group["group_id"] for group in packet["groups"] if group["eligible"]}
-        rows = _reviewed_dataset_rows(packet_rows, eligible_group_ids)
+        if cohort_mode == "balanced_year_12":
+            selected_group_ids = list(preview["selected_group_ids"])
+        else:
+            selected_group_ids = [group["group_id"] for group in packet["groups"] if group["eligible"]]
+        selected_group_id_set = set(selected_group_ids)
+        rows = _reviewed_dataset_rows(packet_rows, selected_group_id_set)
         content = "".join(
             json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n"
             for row in rows
@@ -289,7 +381,7 @@ def export_reviewed_dataset(dataset_id, reviewer_role):
         if data_path.exists() or card_path.exists():
             raise FileExistsError("A dataset or benchmark card with this id already exists")
 
-        included_groups = [group for group in packet["groups"] if group["group_id"] in eligible_group_ids]
+        included_groups = [group for group in packet["groups"] if group["group_id"] in selected_group_id_set]
         references = []
         for group in included_groups:
             references.append({
@@ -299,7 +391,7 @@ def export_reviewed_dataset(dataset_id, reviewer_role):
                 "reuse_evidence": group["reuse_evidence"].strip(),
             })
         card = {
-            "schema_version": 1,
+            "schema_version": 2 if cohort_mode == "balanced_year_12" else 1,
             "dataset_id": dataset_id,
             "dataset_sha256": digest,
             "task": "entity_extraction",
@@ -310,7 +402,12 @@ def export_reviewed_dataset(dataset_id, reviewer_role):
             },
             "grouping": {
                 "unit": "one public source document or source fact per group_id",
-                "policy": "Keep all included variants from one source fact in the same group; excluded variants are omitted.",
+                "policy": (
+                    "Select 12 source groups per reviewed year (2020–2025) using the deterministic SHA-256 year-balanced-v1 rule; "
+                    "keep each source group intact and omit eligible groups outside the selected cohort."
+                    if cohort_mode == "balanced_year_12"
+                    else "Keep all included variants from one source fact in the same group; excluded variants are omitted."
+                ),
             },
             "annotation": {
                 "guidelines_version": "entity-extraction-v1",
@@ -329,6 +426,15 @@ def export_reviewed_dataset(dataset_id, reviewer_role):
                 "Inspect source, topic, year, and writing-style coverage before generalizing results.",
             ],
         }
+        if cohort_mode == "balanced_year_12":
+            card["cohort"] = {
+                "strategy": datasets.YEAR_BALANCED_COHORT,
+                "seed": datasets.YEAR_BALANCED_COHORT_SEED,
+                "groups_per_year": datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR,
+                "years": list(datasets.YEAR_BALANCED_COHORT_YEARS),
+                "candidate_group_years": preview["candidate_group_years"],
+                "selected_group_ids": selected_group_ids,
+            }
         card_content = (json.dumps(card, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
         if len(card_content) > datasets.MAX_BENCHMARK_CARD_BYTES:
             raise ValueError("The reviewed source references exceed the 64 KB benchmark-card limit")
@@ -367,12 +473,28 @@ def export_reviewed_dataset(dataset_id, reviewer_role):
                     pass
             raise
 
+        selected_groups_by_year = {}
+        if cohort_mode == "balanced_year_12":
+            year_by_group = {
+                item["group_id"]: item["year"]
+                for item in preview["candidate_group_years"]
+            }
+            selected_groups_by_year = {
+                str(year): sum(year_by_group[group_id] == year for group_id in selected_group_ids)
+                for year in datasets.YEAR_BALANCED_COHORT_YEARS
+            }
         return {
             "dataset_id": dataset_id,
             "dataset_sha256": digest,
             "benchmark_card_sha256": status["card_sha256"],
             "examples": len(validated_rows),
             "source_groups": len({row["group_id"] for row in validated_rows}),
+            "cohort": {
+                "mode": cohort_mode,
+                "groups_per_year": datasets.YEAR_BALANCED_COHORT_GROUPS_PER_YEAR if cohort_mode == "balanced_year_12" else None,
+                "selected_groups_by_year": selected_groups_by_year,
+                "selection_seed": datasets.YEAR_BALANCED_COHORT_SEED if cohort_mode == "balanced_year_12" else None,
+            },
             "splits": split_counts,
             "benchmark": status,
         }

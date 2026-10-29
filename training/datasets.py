@@ -17,6 +17,10 @@ MIN_FINAL_TEST_GROUPS = 10
 SPLIT_SEED = 42
 GROUP_HASH_SPLIT = "group-hash-v1"
 GROUP_YEAR_SPLIT = "group-year-stratified-v1"
+YEAR_BALANCED_COHORT = "year-balanced-v1"
+YEAR_BALANCED_COHORT_SEED = 42
+YEAR_BALANCED_COHORT_YEARS = tuple(range(2020, 2026))
+YEAR_BALANCED_COHORT_GROUPS_PER_YEAR = 12
 # shortcut: fewer than 30 groups use hash splits; lower the cutoff only when small benchmark strata are useful.
 YEAR_STRATIFIED_MIN_GROUPS = 30
 DATASET_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
@@ -106,6 +110,37 @@ def _benchmark_card_path(dataset_id):
     return path
 
 
+def select_year_balanced_groups(candidate_group_years):
+    """Select the fixed 12-per-year pilot cohort from reviewed group years."""
+    if not isinstance(candidate_group_years, dict):
+        raise ValueError("Balanced cohort candidates must map source groups to reviewed years")
+    for group_id, year in candidate_group_years.items():
+        if not isinstance(group_id, str) or not group_id.strip() or len(group_id) > 128:
+            raise ValueError("Balanced cohort candidates contain an invalid source group")
+        if year is not None and (type(year) is not int or not 1000 <= year <= 9999):
+            raise ValueError("Balanced cohort candidate years must be four-digit integers or null")
+
+    selected = []
+    for year in YEAR_BALANCED_COHORT_YEARS:
+        candidates = [group_id for group_id, candidate_year in candidate_group_years.items() if candidate_year == year]
+        if len(candidates) < YEAR_BALANCED_COHORT_GROUPS_PER_YEAR:
+            raise ValueError(
+                f"Year {year} has {len(candidates)} eligible groups; "
+                f"the pilot needs {YEAR_BALANCED_COHORT_GROUPS_PER_YEAR}"
+            )
+        ranked = sorted(
+            candidates,
+            key=lambda group_id: (
+                hashlib.sha256(
+                    f"{YEAR_BALANCED_COHORT_SEED}:{YEAR_BALANCED_COHORT}:{year}:{group_id}".encode("utf-8")
+                ).hexdigest(),
+                group_id,
+            ),
+        )
+        selected.extend(ranked[:YEAR_BALANCED_COHORT_GROUPS_PER_YEAR])
+    return selected
+
+
 def _load_benchmark_card_snapshot(dataset_id, rows, dataset_digest):
     if dataset_id == "entity_extraction_demo":
         raise ValueError("The synthetic demo cannot be used as a final benchmark")
@@ -120,12 +155,16 @@ def _load_benchmark_card_snapshot(dataset_id, rows, dataset_digest):
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("Benchmark card must be valid UTF-8 JSON") from exc
 
-    expected_fields = {
+    schema_one_fields = {
         "schema_version", "dataset_id", "dataset_sha256", "task", "source", "grouping", "annotation", "limitations"
     }
-    if not isinstance(card, dict) or set(card) != expected_fields:
-        raise ValueError("Benchmark card fields do not match schema version 1")
-    if type(card["schema_version"]) is not int or card["schema_version"] != 1 or card["dataset_id"] != dataset_id or card["task"] != "entity_extraction":
+    if not isinstance(card, dict) or type(card.get("schema_version")) is not int:
+        raise ValueError("Benchmark card must be an object with a supported schema version")
+    schema_version = card["schema_version"]
+    expected_fields = schema_one_fields | ({"cohort"} if schema_version == 2 else set())
+    if schema_version not in {1, 2} or set(card) != expected_fields:
+        raise ValueError("Benchmark card fields do not match its schema version")
+    if card["dataset_id"] != dataset_id or card["task"] != "entity_extraction":
         raise ValueError("Benchmark card identity or schema version does not match the dataset")
     if not isinstance(card["dataset_sha256"], str) or not re.fullmatch(r"[a-f0-9]{64}", card["dataset_sha256"]):
         raise ValueError("Benchmark card dataset_sha256 must be a 64-character SHA-256")
@@ -149,6 +188,61 @@ def _load_benchmark_card_snapshot(dataset_id, rows, dataset_digest):
     require_text(annotation.get("reviewer_role"), "annotation.reviewer_role")
     if annotation.get("review_status") != "human_reviewed" or annotation.get("all_labels_human_reviewed") is not True:
         raise ValueError("Benchmark card labels must be marked human-reviewed")
+
+    if schema_version == 2:
+        cohort = card["cohort"]
+        cohort_fields = {
+            "strategy", "seed", "groups_per_year", "years", "candidate_group_years", "selected_group_ids"
+        }
+        if not isinstance(cohort, dict) or set(cohort) != cohort_fields:
+            raise ValueError("Balanced cohort metadata does not match schema version 2")
+        if (
+            cohort["strategy"] != YEAR_BALANCED_COHORT
+            or type(cohort["seed"]) is not int
+            or cohort["seed"] != YEAR_BALANCED_COHORT_SEED
+            or type(cohort["groups_per_year"]) is not int
+            or cohort["groups_per_year"] != YEAR_BALANCED_COHORT_GROUPS_PER_YEAR
+            or cohort["years"] != list(YEAR_BALANCED_COHORT_YEARS)
+        ):
+            raise ValueError("Balanced cohort strategy, seed, years, or group target is unsupported")
+        candidates = cohort["candidate_group_years"]
+        if not isinstance(candidates, list):
+            raise ValueError("Balanced cohort candidate group years must be a list")
+        candidate_group_years = {}
+        for item in candidates:
+            if not isinstance(item, dict) or set(item) != {"group_id", "year"}:
+                raise ValueError("Balanced cohort candidate group metadata is malformed")
+            group_id = item["group_id"]
+            if not isinstance(group_id, str) or group_id in candidate_group_years:
+                raise ValueError("Balanced cohort candidate group IDs must be unique text")
+            candidate_group_years[group_id] = item["year"]
+        if list(candidate_group_years) != sorted(candidate_group_years):
+            raise ValueError("Balanced cohort candidate group metadata must be sorted by group ID")
+        selected_group_ids = cohort["selected_group_ids"]
+        if (
+            not isinstance(selected_group_ids, list)
+            or any(not isinstance(group_id, str) for group_id in selected_group_ids)
+            or len(selected_group_ids) != len(set(selected_group_ids))
+        ):
+            raise ValueError("Balanced cohort selected group IDs must be unique text values")
+        expected_selected = select_year_balanced_groups(candidate_group_years)
+        if selected_group_ids != expected_selected:
+            raise ValueError("Balanced cohort selected groups do not match its candidate list and deterministic rule")
+        if {row["group_id"] for row in rows} != set(selected_group_ids):
+            raise ValueError("Balanced cohort selected groups do not match the dataset rows")
+        for row in rows:
+            if row["output"]["year"] != candidate_group_years[row["group_id"]]:
+                raise ValueError("Balanced cohort reviewed years differ from the recorded cohort plan")
+        references = source.get("references")
+        if not isinstance(references, list):
+            raise ValueError("Balanced cohort source references must list every selected group")
+        reference_group_ids = [item.get("group_id") for item in references if isinstance(item, dict)]
+        if (
+            len(reference_group_ids) != len(references)
+            or len(reference_group_ids) != len(set(reference_group_ids))
+            or set(reference_group_ids) != set(selected_group_ids)
+        ):
+            raise ValueError("Balanced cohort source references do not match the selected groups")
 
     groups = {row["group_id"] for row in rows}
     expected_counts = {

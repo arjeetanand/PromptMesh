@@ -351,8 +351,9 @@ function setupForms() {
     updateReviewExportControls();
   });
   $("reviewExportButton").addEventListener("click", handleExportReviewedDataset);
-  $("reviewExportDatasetId").addEventListener("input", updateReviewExportControls);
-  $("reviewExportReviewerRole").addEventListener("input", updateReviewExportControls);
+  $("reviewExportDatasetId").addEventListener("input", () => updateReviewExportControls());
+  $("reviewExportReviewerRole").addEventListener("input", () => updateReviewExportControls());
+  $("reviewExportCohort").addEventListener("change", () => updateReviewExportControls());
   $("promptSelectionForm").addEventListener("submit", handlePromptSelection);
   $("benchmarkAdapter").addEventListener("change", updateBenchmarkControls);
   $("benchmarkCandidatePrompt").addEventListener("input", updateBenchmarkControls);
@@ -471,7 +472,10 @@ function renderCandidateReviewPacket() {
 function updateReviewExportControls(packet = state.reviewPacket) {
   const button = $("reviewExportButton");
   const readiness = $("reviewExportReadiness");
-  const preview = packet?.export_preview;
+  const cohortMode = $("reviewExportCohort").value || "all_eligible";
+  const preview = cohortMode === "balanced_year_12"
+    ? packet?.balanced_export_preview
+    : packet?.export_preview;
   const datasetId = $("reviewExportDatasetId").value.trim();
   const reviewerRole = $("reviewExportReviewerRole").value.trim();
   const validDatasetId = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(datasetId);
@@ -479,7 +483,10 @@ function updateReviewExportControls(packet = state.reviewPacket) {
   if (!packet) {
     readiness.textContent = "The local review packet is unavailable.";
   } else if (preview?.ready) {
-    readiness.textContent = `${preview.examples} reviewed examples across ${preview.source_groups} eligible groups. Validation: ${preview.validation_examples} examples / ${preview.validation_source_groups} groups. Final test: ${preview.final_test_examples} examples / ${preview.final_test_source_groups} groups.`;
+    const cohortLabel = cohortMode === "balanced_year_12"
+      ? ` Balanced pilot: ${preview.groups_per_year} reviewed groups per year (2020–2025), chosen by seed 42.`
+      : " All eligible groups are included.";
+    readiness.textContent = `${preview.examples} reviewed examples across ${preview.source_groups} groups.${cohortLabel} Validation: ${preview.validation_examples} examples / ${preview.validation_source_groups} groups. Final test: ${preview.final_test_examples} examples / ${preview.final_test_source_groups} groups.`;
   } else {
     readiness.textContent = preview?.reason || "Review labels and reuse evidence before exporting.";
   }
@@ -783,6 +790,7 @@ async function handleExportReviewedDataset() {
   }
   const datasetId = $("reviewExportDatasetId").value.trim();
   const reviewerRole = $("reviewExportReviewerRole").value.trim();
+  const cohortMode = $("reviewExportCohort").value || "all_eligible";
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(datasetId)) {
     $("reviewExportDatasetId").focus();
     return showToast("Use a valid dataset ID.", "error");
@@ -798,14 +806,17 @@ async function handleExportReviewedDataset() {
   try {
     const result = await apiCall("training/review-packet/export", {
       method: "POST",
-      body: JSON.stringify({ dataset_id: datasetId, reviewer_role: reviewerRole }),
+      body: JSON.stringify({ dataset_id: datasetId, reviewer_role: reviewerRole, cohort_mode: cohortMode }),
     });
     await loadInitialData();
     $("fineTuneDataset").value = result.dataset_id;
     updateFineTuneDatasetNote();
     const validation = result.splits.validation;
     const finalTest = result.splits.test;
-    $("reviewExportResult").textContent = `Created private dataset ${result.dataset_id}: ${result.examples} examples / ${result.source_groups} groups. Validation ${validation.examples}/${validation.source_groups} groups; final test ${finalTest.examples}/${finalTest.source_groups} groups. The self-attested card is ready; no model was trained and the test set was not scored.`;
+    const cohortSummary = result.cohort?.mode === "balanced_year_12"
+      ? ` Year-balanced pilot selected ${Object.entries(result.cohort.selected_groups_by_year).map(([year, count]) => `${year}: ${count}`).join(", ")} source groups (seed ${result.cohort.selection_seed}).`
+      : " All eligible groups were included.";
+    $("reviewExportResult").textContent = `Created private dataset ${result.dataset_id}: ${result.examples} examples / ${result.source_groups} groups.${cohortSummary} Validation ${validation.examples}/${validation.source_groups} groups; final test ${finalTest.examples}/${finalTest.source_groups} groups. The self-attested card is ready; no model was trained and the test set was not scored.`;
     showToast("Reviewed dataset and benchmark card created locally.", "success");
   } catch (error) {
     $("reviewExportResult").textContent = "Export not created: " + error.message;

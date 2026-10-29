@@ -214,6 +214,16 @@
 - [x] Verify the live review workbench at 1440px, 768px, and 390px with API connected and no horizontal overflow; confirm the packet remains at 0 reviewed / 0 eligible.
 - [ ] Human-review every candidate and its reuse conditions; verify the exported year distribution before describing a cohort as balanced.
 
+## Deterministic reviewed-year cohort export — 2026-10-29
+
+- [x] Add an explicit balanced-pilot export choice while preserving the all-eligible export path.
+- [x] Select 12 source groups per 2020–2025 from human-reviewed event years with a deterministic SHA-256 seed-42 rule; fail readiness if any year lacks 12 eligible groups or either held-out split misses its example/group floor.
+- [x] Record eligible group/year candidates, the strategy, seed, and selected groups in a versioned benchmark card; validate that the dataset rows, references, and deterministic selection agree.
+- [x] Keep cohort preview/export read-only with respect to review labels and reuse decisions; add regressions for underfilled years, determinism, tampered provenance, and UI gating.
+- [x] Run the complete Python suite (92 passed), UI job suite (20 passed), Python compilation, JavaScript and launcher syntax checks, and `git diff --check`.
+- [x] Verify the export choice in the browser at desktop and 390px widths with API connected, no horizontal overflow, the correct per-cohort readiness message, and the export action disabled at zero reviewed/eligible groups; confirm there are no browser console errors.
+- [ ] Human-review labels and reuse rights, then inspect the selected cohort and actual split composition before any model or quantization claim.
+
 ## Keyboard skip navigation — 2026-10-29
 
 - [x] Add a keyboard-visible skip link to the main workspace and keep in-page fragments from redirecting the active app route.

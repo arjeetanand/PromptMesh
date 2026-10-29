@@ -350,6 +350,7 @@ class CandidateReviewPacketRequest(BaseModel):
 class ReviewedDatasetExportRequest(BaseModel):
     dataset_id: str = Field(min_length=1, max_length=64)
     reviewer_role: str = Field(min_length=1, max_length=128)
+    cohort_mode: Literal["all_eligible", "balanced_year_12"] = "all_eligible"
 
 
 class ApiSessionRequest(BaseModel):
@@ -486,7 +487,7 @@ async def export_candidate_review_packet(request: ReviewedDatasetExportRequest, 
     if not _is_loopback_request(http_request):
         raise HTTPException(status_code=403, detail="Candidate review is available only on this machine")
     try:
-        return export_reviewed_dataset(request.dataset_id, request.reviewer_role)
+        return export_reviewed_dataset(request.dataset_id, request.reviewer_role, request.cohort_mode)
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except FileNotFoundError as exc:

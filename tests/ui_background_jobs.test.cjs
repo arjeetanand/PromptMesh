@@ -236,21 +236,34 @@ test("candidate review coverage exposes draft year and source-host concentration
   assert.deepEqual(order, ["2020-a", "2021-a", "2024-a", "2025-a", "2024-b", "2024-c"]);
 });
 
-test("reviewed dataset export is gated by saved, benchmark-ready review data", () => {
+test("reviewed dataset export gates the selected all-eligible or balanced cohort", () => {
   const { context, elements } = loadApp();
   context.packet = JSON.stringify({ export_preview: {
     ready: true, examples: 239, source_groups: 80,
     validation_examples: 35, validation_source_groups: 12,
     final_test_examples: 36, final_test_source_groups: 12
+  }, balanced_export_preview: {
+    ready: false, reason: "Balanced pilot needs 12 reviewed, rights-cleared groups per year."
   } });
   vm.runInContext("state.reviewPacket = JSON.parse(packet); updateReviewExportControls()", context);
 
   assert.equal(elements.get("reviewExportButton").disabled, true, "reviewer role is required before export");
   elements.get("reviewExportDatasetId").value = "reviewed_sources_v1";
   elements.get("reviewExportReviewerRole").value = "project author";
-  vm.runInContext("updateReviewExportControls()", context);
+  elements.get("reviewExportDatasetId").listeners.input({ target: elements.get("reviewExportDatasetId") });
+  elements.get("reviewExportReviewerRole").listeners.input({ target: elements.get("reviewExportReviewerRole") });
   assert.equal(elements.get("reviewExportButton").disabled, false);
   assert.match(elements.get("reviewExportReadiness").textContent, /Validation: 35 examples \/ 12 groups/);
+
+  const cohortSelect = elements.get("reviewExportCohort");
+  cohortSelect.value = "balanced_year_12";
+  cohortSelect.listeners.change({ target: cohortSelect });
+  assert.equal(elements.get("reviewExportButton").disabled, true, "the balanced cohort stays gated when a year is underfilled");
+  assert.match(elements.get("reviewExportReadiness").textContent, /12 reviewed, rights-cleared groups per year/);
+  vm.runInContext("state.reviewPacket.balanced_export_preview = {ready:true, examples:216, source_groups:72, groups_per_year:12, validation_examples:33, validation_source_groups:11, final_test_examples:33, final_test_source_groups:11}", context);
+  cohortSelect.listeners.change({ target: cohortSelect });
+  assert.equal(elements.get("reviewExportButton").disabled, false);
+  assert.match(elements.get("reviewExportReadiness").textContent, /seed 42/);
 
   vm.runInContext("state.reviewPacketDirty = true; updateReviewExportControls()", context);
   assert.equal(elements.get("reviewExportButton").disabled, true, "unsaved decisions must not be exported");
@@ -260,6 +273,7 @@ test("reviewed dataset export creates a local dataset selection without starting
   const { context, elements } = loadApp();
   elements.get("reviewExportDatasetId").value = "reviewed_sources_v1";
   elements.get("reviewExportReviewerRole").value = "project author";
+  elements.get("reviewExportCohort").value = "all_eligible";
   vm.runInContext("state.reviewPacket = {export_preview:{ready:true}}; state.reviewPacketDirty = false; loadInitialData = async () => {}; updateFineTuneDatasetNote = () => {}; showToast = () => {}", context);
   let request;
   context.apiCall = async (endpoint, options) => {
@@ -276,10 +290,37 @@ test("reviewed dataset export creates a local dataset selection without starting
   await vm.runInContext("handleExportReviewedDataset()", context);
 
   assert.equal(request.endpoint, "training/review-packet/export");
-  assert.deepEqual(JSON.parse(request.options.body), { dataset_id: "reviewed_sources_v1", reviewer_role: "project author" });
+  assert.deepEqual(JSON.parse(request.options.body), { dataset_id: "reviewed_sources_v1", reviewer_role: "project author", cohort_mode: "all_eligible" });
   assert.equal(elements.get("fineTuneDataset").value, "reviewed_sources_v1");
   assert.match(elements.get("reviewExportResult").textContent, /no model was trained and the test set was not scored/);
   assert.equal(vm.runInContext("state.reviewPacketExporting", context), false);
+});
+
+test("balanced export sends the explicit cohort choice and reports its selected years", async () => {
+  const { context, elements } = loadApp();
+  elements.get("reviewExportDatasetId").value = "balanced_sources_v1";
+  elements.get("reviewExportReviewerRole").value = "project author";
+  elements.get("reviewExportCohort").value = "balanced_year_12";
+  vm.runInContext("state.reviewPacket = {balanced_export_preview:{ready:true}}; state.reviewPacketDirty = false; loadInitialData = async () => {}; updateFineTuneDatasetNote = () => {}; showToast = () => {}", context);
+  let request;
+  context.apiCall = async (endpoint, options) => {
+    request = { endpoint, options };
+    return {
+      dataset_id: "balanced_sources_v1", examples: 216, source_groups: 72,
+      cohort: { mode: "balanced_year_12", selection_seed: 42, selected_groups_by_year: { "2020": 12, "2021": 12, "2022": 12, "2023": 12, "2024": 12, "2025": 12 } },
+      splits: {
+        validation: { examples: 33, source_groups: 11 },
+        test: { examples: 33, source_groups: 11 }
+      }
+    };
+  };
+
+  await vm.runInContext("handleExportReviewedDataset()", context);
+
+  assert.equal(request.endpoint, "training/review-packet/export");
+  assert.equal(JSON.parse(request.options.body).cohort_mode, "balanced_year_12");
+  assert.match(elements.get("reviewExportResult").textContent, /2024: 12/);
+  assert.match(elements.get("reviewExportResult").textContent, /seed 42/);
 });
 
 for (const [type, label] of [

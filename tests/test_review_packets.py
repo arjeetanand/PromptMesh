@@ -12,6 +12,20 @@ from training import datasets
 
 
 class ReviewPacketTests(unittest.TestCase):
+    def test_balanced_group_selection_is_stable_across_candidate_order(self):
+        candidates = {
+            f"source-{year}-{index:02d}": year
+            for year in datasets.YEAR_BALANCED_COHORT_YEARS
+            for index in range(14)
+        }
+
+        selected = datasets.select_year_balanced_groups(candidates)
+        shuffled = datasets.select_year_balanced_groups(dict(reversed(list(candidates.items()))))
+
+        self.assertEqual(selected, shuffled)
+        self.assertEqual(len(selected), 72)
+        self.assertEqual(len(set(selected)), 72)
+
     def _write_packet(self, directory):
         packet = Path(directory) / "review.csv"
         with packet.open("w", encoding="utf-8", newline="") as output:
@@ -41,7 +55,7 @@ class ReviewPacketTests(unittest.TestCase):
             writer.writeheader()
             for index in range(group_count + int(include_pending)):
                 group_id = f"source-{index:03d}"
-                year = 2020 + index % 5
+                year = 2020 + index % 6
                 eligible = index < group_count
                 for variant in range(3):
                     excluded = eligible and index == 0 and variant == 0
@@ -135,6 +149,77 @@ class ReviewPacketTests(unittest.TestCase):
             self.assertFalse(preview["ready"])
             self.assertFalse((data_dir / "too_small_v1.jsonl").exists())
             self.assertFalse((data_dir / "too_small_v1.card.json").exists())
+
+    def test_balanced_preview_requires_reviewed_groups_in_each_target_year(self):
+        with tempfile.TemporaryDirectory() as directory:
+            packet = self._write_reviewable_packet(directory, group_count=72, include_pending=False)
+            with packet.open("r", encoding="utf-8", newline="") as source:
+                rows = list(csv.DictReader(source))
+            for row in rows:
+                if row["group_id"] == "source-005":
+                    row["reviewed_year"] = "2024"
+            with packet.open("w", encoding="utf-8", newline="") as output:
+                writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+                writer.writeheader()
+                writer.writerows(rows)
+
+            with patch.object(review_packets, "REVIEW_PACKET_DIR", Path(directory)), \
+                 patch.object(review_packets, "REVIEW_PACKET_PATH", packet):
+                original = packet.read_bytes()
+                preview = review_packets.load_review_packet()["balanced_export_preview"]
+                after_preview = packet.read_bytes()
+
+        self.assertFalse(preview["ready"])
+        self.assertEqual(preview["candidate_groups_by_year"]["2025"], 11)
+        self.assertIn("2025: 11/12", preview["reason"])
+        self.assertEqual(original, after_preview, "previewing a cohort does not modify human review decisions")
+
+    def test_balanced_export_is_deterministic_and_records_reviewed_year_candidates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packet = self._write_reviewable_packet(root, group_count=84, include_pending=False)
+            data_dir = root / "datasets"
+            data_dir.mkdir()
+            with patch.object(review_packets, "REVIEW_PACKET_DIR", root), \
+                 patch.object(review_packets, "REVIEW_PACKET_PATH", packet), \
+                 patch.object(datasets, "DATASET_DIR", data_dir):
+                preview = review_packets.load_review_packet()["balanced_export_preview"]
+                packet_before_export = packet.read_bytes()
+                result = review_packets.export_reviewed_dataset(
+                    "balanced_sources_v1", "project author", "balanced_year_12"
+                )
+                rows, digest = datasets.load_dataset_snapshot("balanced_sources_v1")
+                card = datasets.load_benchmark_card("balanced_sources_v1", rows, digest)
+                status = datasets.benchmark_card_status("balanced_sources_v1", rows, digest)
+                packet_after_export = packet.read_bytes()
+
+            year_group_counts = {}
+            for row in rows:
+                group_year = year_group_counts.setdefault(row["group_id"], row["output"]["year"])
+                self.assertEqual(group_year, row["output"]["year"])
+            self.assertEqual(
+                {str(year): sum(group_year == year for group_year in year_group_counts.values()) for year in range(2020, 2026)},
+                {str(year): 12 for year in range(2020, 2026)},
+            )
+            self.assertEqual(card["schema_version"], 2)
+            self.assertEqual(card["cohort"]["strategy"], datasets.YEAR_BALANCED_COHORT)
+            self.assertEqual(card["cohort"]["candidate_group_years"], preview["candidate_group_years"])
+            self.assertEqual(card["cohort"]["selected_group_ids"], preview["selected_group_ids"])
+            self.assertEqual({item["group_id"] for item in card["source"]["references"]}, set(preview["selected_group_ids"]))
+            self.assertEqual(len(card["cohort"]["candidate_group_years"]), 84)
+            self.assertEqual(len(card["cohort"]["selected_group_ids"]), 72)
+            self.assertEqual(result["cohort"]["mode"], "balanced_year_12")
+            self.assertEqual(result["cohort"]["selected_groups_by_year"], {str(year): 12 for year in range(2020, 2026)})
+            self.assertTrue(status["card_ready"] and status["validation_ready"] and status["final_test_ready"])
+            self.assertEqual(packet_before_export, packet_after_export)
+
+            card_path = data_dir / "balanced_sources_v1.card.json"
+            tampered = json.loads(card_path.read_text(encoding="utf-8"))
+            tampered["cohort"]["selected_group_ids"].reverse()
+            card_path.write_text(json.dumps(tampered), encoding="utf-8")
+            with patch.object(datasets, "DATASET_DIR", data_dir):
+                with self.assertRaisesRegex(ValueError, "do not match its candidate list"):
+                    datasets.load_benchmark_card("balanced_sources_v1", rows, digest)
 
     def test_export_rolls_back_dataset_if_card_creation_fails(self):
         with tempfile.TemporaryDirectory() as directory:
