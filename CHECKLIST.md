@@ -76,7 +76,7 @@
 - [x] Run a fixed synthetic backend canary before reserving test data; record matched test metrics, grouped intervals, load/inference time, generated-token rate, and model footprint.
 - [x] Explain that bitsandbytes methods do not use offline calibration; distinguish Quanto W8A8 post-training calibration from QLoRA training and leave AWQ/GPTQ out.
 - [x] Define `organization` as the claim actor in extraction prompt definition 1.1.0 and the annotation guide.
-- [x] Prepare a private 246-row public-source candidate review packet across 82 source groups with source URLs, draft labels, unresolved rights status, and reviewer fields; keep it outside the loadable dataset directory.
+- [x] Prepare a private 246-row public-source candidate review packet across 82 source groups with source URLs, draft labels, unresolved rights status, and review-decision fields; keep it outside the loadable dataset directory.
 - [x] Add 15 official-source candidate groups dated 2020, 2021, 2022, 2023, and 2025 to extend the packet’s year coverage.
 - [x] Add 35 more official-source candidate groups; the local review packet now has 351 draft rows across 117 groups, with 10 groups per proposed year from 2020, 2021, 2022, 2023, and 2025.
 - [x] Stratify datasets with at least 30 source groups by event-year signature; record the seed and strategy in adapter, prompt-selection, and frozen-report provenance and reject incompatible prior artifacts.
@@ -184,10 +184,12 @@
 - [x] Add ten proposed source groups for 2020–2025: WHO pandemic characterization, OpenAI GPT-3 few-shot study, GitHub Copilot technical preview, NASA Perseverance landing, OpenAI ChatGPT research preview, NASA Artemis I launch, Meta LLaMA research release, ISRO Chandrayaan-3 landing, OpenAI GPT-5 introduction, and Alibaba Qwen3 introduction.
 - [x] Keep all new rows as drafts and retain source-specific cautions for event dates, actor granularity, gated access, page updates, and company-reported model claims.
 - [x] Regenerate the ignored schema-shaped JSONL mirror and validate the current 381-row / 127-group packet, three variants per group, blank review fields, unresolved reuse states, HTTPS source URLs, and parser acceptance.
-- [x] Recompute the seed-42 projection: 267/57/57 rows across 89/19/19 groups; 2024 accounts for 10 of 19 groups in each held-out split.
-- [x] Document a possible 72-group year-balanced planning cohort (12 groups per year from 2020–2025; choose 12 of the 66 proposed 2024 groups only after review), projecting to 150/33/33 rows across 50/11/11 groups.
+- [x] Recompute the seed-42 projection: 267/57/57 rows across 89/19/19 groups; each held-out split has 2 groups from 2021 and 9 from 2024.
+- [x] Document a possible 72-group year-balanced planning cohort (12 groups per year from 2020–2025; choose 12 of 13 proposed 2021 groups and 12 of 65 proposed 2024 groups only after review), projecting to 150/33/33 rows across 50/11/11 groups.
 - [x] Refresh the review workbench at `http://127.0.0.1:4004/#finetune`; it displays 381 rows / 127 groups / 0 reviewed / 0 excluded / 0 eligible, the year counts, and a disabled export action. No decision was saved.
-- [x] Recheck the ignored packet files: the review CSV and current JSONL each contain 381 rows / 127 groups, all CSV rows still need human review, reviewer fields are blank, and no benchmark/selection report artifact exists under `training/`.
+- [x] Recheck the ignored packet files: the review CSV and current JSONL each contain 381 rows / 127 groups, all rows still need human review, reviewed-label/note fields are blank, the CSV has no per-row reviewer/timestamp columns, and no benchmark/selection report artifact exists under `training/`.
+- [x] Scan every variant for actor/year presence; source-check and correct three draft actor-name expansions and one missing input year, regenerate the ignored JSONL mirror, and keep all review/rights states pending.
+- [x] Source-audit 25 groups from the 2024-heavy batch against official pages and all three variants; correct the NASA contract event year, EPA recipient scope, and grammar/date notes without marking any row reviewed.
 - [ ] Human-review source fidelity, actor/year/claim labels, every variant, and reuse terms before exporting a dataset or making benchmark claims.
 
 ## MPS quantization smoke — 2026-10-29
