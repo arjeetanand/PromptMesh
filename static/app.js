@@ -241,14 +241,14 @@ async function loadVersionsForTask(task, targetId) {
 
 function setupNavigation() {
   document.querySelectorAll(".nav-btn[data-tab]").forEach((button) => {
-    button.addEventListener("click", () => activateTab(button.dataset.tab, true));
+    button.addEventListener("click", () => activateTab(button.dataset.tab, true, true));
   });
   document.querySelectorAll("[data-go]").forEach((button) => {
-    button.addEventListener("click", () => activateTab(button.dataset.go, true));
+    button.addEventListener("click", () => activateTab(button.dataset.go, true, true));
   });
   window.addEventListener("hashchange", () => {
     const tab = window.location.hash.slice(1);
-    if (tab !== "workspace") activateTab(validTab(tab) ? tab : "overview", false);
+    if (tab !== "workspace") activateTab(validTab(tab) ? tab : "overview", false, true);
   });
   const initial = window.location.hash.slice(1);
   activateTab(validTab(initial) ? initial : "overview", false);
@@ -257,7 +257,7 @@ function setupNavigation() {
 function validTab(tab) { return ["overview", "evaluate", "compare", "evolve", "finetune", "testcases", "history"].includes(tab); }
 function canRunInBackground(type) { return ["training", "evolution", "promptSelection", "frozenBenchmark"].includes(type); }
 
-function activateTab(tab, updateHash) {
+function activateTab(tab, updateHash, moveFocus = false) {
   if (!validTab(tab)) tab = "overview";
   state.activeTab = tab;
   $("backToOverview").hidden = tab === "overview";
@@ -273,6 +273,8 @@ function activateTab(tab, updateHash) {
   const activeButton = document.querySelector('.nav-btn[data-tab="' + tab + '"]');
   $("breadcrumbTitle").textContent = activeButton ? activeButton.textContent.trim() : "Overview";
   closeMobileNavigation();
+  const titleId = tab === "finetune" ? "fineTuneTitle" : tab + "Title";
+  if (moveFocus) $(titleId).focus();
   if (updateHash && window.location.hash !== "#" + tab) window.history.replaceState(null, "", "#" + tab);
 }
 

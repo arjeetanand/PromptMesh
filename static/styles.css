@@ -61,7 +61,7 @@ html { min-width: 320px; min-height: 100%; background: var(--ground); scroll-beh
 body { min-width: 320px; min-height: 100vh; margin: 0; background: var(--ground); color: var(--ink); line-height: 1.5; }
 button, input, select, textarea { font: inherit; }
 button { color: inherit; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid color-mix(in srgb, var(--focus) 36%, transparent); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, h1[tabindex="-1"]:focus-visible { outline: 3px solid color-mix(in srgb, var(--focus) 36%, transparent); outline-offset: 2px; }
 ::selection { color: var(--ink); background: var(--selection-bg); }
 code, .mono { font-family: var(--mono); font-size: .92em; }
 [hidden] { display: none !important; }

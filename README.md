@@ -19,6 +19,7 @@ It enables:
 * Real-time job tracking and result inspection
 * Local Qwen3-0.6B LoRA/SFT runs for structured entity extraction
 * Local inference with saved LoRA adapters
+* Keyboard-accessible workspace navigation with focus moved to each selected page heading
 
 All long-running operations execute asynchronously with progress reporting and result persistence in memory.
 

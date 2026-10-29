@@ -218,3 +218,10 @@
 - [x] Verify with 88 Python tests, 17 Node UI tests, Python/JavaScript/launcher syntax checks, and `git diff --check`.
 - [x] Restart the app on port 4004 and confirm the Fine-tune page is connected and discloses the exact-match limitation.
 - [ ] Human-review the 381-row / 127-group source packet and reuse terms before training or benchmark claims.
+
+## Workspace navigation focus — 2026-10-29
+
+- [x] Move keyboard and fragment navigation focus to the selected page heading; leave initial page load focus unchanged.
+- [x] Add a UI regression for sidebar navigation, initial load, hash changes, and focusable page headings.
+- [x] Verify in the browser that selecting Overview focuses its `h1`; API remains connected on port 4004.
+- [ ] Complete a full screen-reader and axe audit.

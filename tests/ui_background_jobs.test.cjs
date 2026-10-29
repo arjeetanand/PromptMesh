@@ -20,6 +20,7 @@ function loadApp() {
       replaceChildren(...children) { this.children = children; this.options = []; },
       setAttribute(name, value) { this.attributes[name] = value; },
       getAttribute(name) { return this.attributes[name] ?? null; },
+      focus() { this.focused = true; },
       showModal() { this.open = true; }, close() { this.open = false; }, scrollIntoView() { this.scrolled = true; },
       querySelector() { return element(id + "Submit"); },
       querySelectorAll() { return []; }
@@ -79,6 +80,38 @@ test("skip link reaches the workspace without redirecting the active app tab", (
   context.window.location.hash = "#unknown";
   onHashChange();
   assert.deepEqual(activations, [["finetune", false], ["evaluate", false], ["overview", false]]);
+});
+
+test("workspace navigation focuses the selected page heading", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "static", "index.html"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "..", "static", "styles.css"), "utf8");
+  for (const id of ["overviewTitle", "fineTuneTitle", "evaluateTitle", "compareTitle", "evolveTitle", "testcasesTitle", "historyTitle"]) {
+    assert.match(html, new RegExp(`<h1 id="${id}" tabindex="-1">`));
+  }
+  assert.match(css, /h1\[tabindex="-1"\]:focus-visible/);
+
+  const { context, elements } = loadApp();
+  context.document.getElementById("overviewTitle");
+  let hashChange;
+  const button = {
+    dataset: { tab: "finetune" }, textContent: "Fine-tune", listeners: {},
+    classList: { toggle() {} },
+    addEventListener(event, handler) { this.listeners[event] = handler; },
+    setAttribute() {}, removeAttribute() {}
+  };
+  context.document.querySelectorAll = (selector) => selector === ".nav-btn[data-tab]" ? [button] : [];
+  context.document.querySelector = (selector) => selector === '.nav-btn[data-tab="finetune"]' ? button : null;
+  context.window.addEventListener = (event, handler) => { if (event === "hashchange") hashChange = handler; };
+
+  vm.runInContext("setupNavigation()", context);
+  assert.notEqual(elements.get("overviewTitle").focused, true, "initial route setup should not steal focus");
+  button.listeners.click();
+  assert.equal(elements.get("fineTuneTitle").focused, true);
+  assert.equal(context.window.location.hash, "#finetune");
+
+  context.window.location.hash = "#evaluate";
+  hashChange();
+  assert.equal(elements.get("evaluateTitle").focused, true, "browser route changes should announce the new page");
 });
 
 test("synthetic adapter metrics keep their workflow-only context", () => {
