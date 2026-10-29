@@ -661,3 +661,11 @@
 - A read-only projection of the built-in balanced pilot selects 12 groups per year (72 groups, 216 candidate variants). With draft proposed years and no exclusions, its grouped split is 150 train / 33 validation / 33 final-test examples across 50 / 11 / 11 groups. These are planning counts only; human labels and source reuse decisions remain unresolved, and exclusions can change readiness.
 - Retried the user-authorized push; GitHub port 443 timed out after about 75 seconds. The Code Review GitHub connection was also unavailable, so PR #2's current head, base, and checks could not be refreshed. It was previously verified to target `main`; no merge occurred.
 - Remaining: update PR #2 when GitHub connectivity returns; complete human source, label, and reuse review; run the real matched benchmark and quantized comparison; finish screen-reader and axe audits.
+
+## Missing source-terms notice — 2026-10-29
+
+- The review source card now explains when no usable HTTPS terms link is recorded and directs reviewers to check the publisher's current terms or license before confirming reuse. An invalid HTTP link stays suppressed; no review labels or reuse decisions were changed.
+- Regression coverage confirms an HTTPS terms link remains informational and an invalid HTTP link displays the missing-terms notice. `node --check` for the app and UI test, all 23 UI tests, and `git diff --check` passed.
+- The app process is listening on `127.0.0.1:4004` (PID 70667). This shell could not reach loopback, and the browser-control bridge returned `browser.user is unavailable`, so the refreshed notice was not visually verified in the browser.
+- The candidate packet remains 423 draft rows / 141 groups / 0 reviewed / 0 eligible. The balanced pilot still requires 72 reviewed groups and 216 candidate variants; proposed splits are planning-only. Human label and source-specific reuse review remain the benchmark gate.
+- Next: visually verify the refreshed card when browser control is available, complete source review, then run the matched frozen benchmark. PR #2 still needs a confirmed push when GitHub connectivity returns.

@@ -349,3 +349,10 @@
 - [x] Verify the open drawer in the narrow in-app browser: background and skip link disappear from the accessibility tree, Tab wraps to Close, and Escape restores focus to the menu button.
 - [ ] Run a screen-reader session and automated axe audit.
 - [ ] Push the task branch to update the existing PR targeting `main`; GitHub timed out before confirming the push.
+
+## Missing source-terms notice — 2026-10-29
+
+- [x] Show a clear review notice when a source group has no usable HTTPS terms link; preserve the rule that links do not establish reuse permission.
+- [x] Add regression coverage for the informational HTTPS link and the invalid-HTTP fallback; all 23 UI tests, syntax checks, and `git diff --check` pass.
+- [ ] Visually verify the refreshed notice in the browser; browser control was unavailable during this check.
+- [ ] Complete human review of source labels and reuse terms before exporting a real benchmark.

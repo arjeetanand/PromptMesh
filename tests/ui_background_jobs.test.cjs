@@ -175,7 +175,7 @@ test("mobile navigation hides the closed drawer and restores focus on dismissal"
   assert.equal(context.document.activeElement, activeNav);
 });
 
-test("review source terms link stays informational and does not confirm permission", () => {
+test("review source terms link stays informational and missing terms are explicit", () => {
   const { context, elements } = loadApp();
   const group = {
     group_id: "apple-m1-announcement-2020",
@@ -205,7 +205,9 @@ test("review source terms link stays informational and does not confirm permissi
   group.reuse_terms_url = "http://www.apple.com/legal/internet-services/terms/site.html";
   context.groupJSON = JSON.stringify(group);
   vm.runInContext("renderReviewGroup(JSON.parse(groupJSON))", context);
-  assert.equal(elements.get("reviewPacketSource").children.some((child) => child.textContent === "Review source reuse terms"), false);
+  const sourceChildrenWithoutTerms = elements.get("reviewPacketSource").children;
+  assert.equal(sourceChildrenWithoutTerms.some((child) => child.textContent === "Review source reuse terms"), false);
+  assert.match(sourceChildrenWithoutTerms.at(-1).textContent, /No usable HTTPS source-terms link is recorded/);
 });
 
 test("review year filter and navigation share the interleaved queue order", () => {

@@ -642,6 +642,10 @@ function renderReviewGroup(group) {
     termsLink.rel = "noopener noreferrer";
     termsLink.textContent = "Review source reuse terms";
     source.append(note, termsLink);
+  } else {
+    const note = document.createElement("p");
+    note.textContent = "No usable HTTPS source-terms link is recorded. Check the publisher's current terms or license before confirming reuse.";
+    source.append(note);
   }
 
   const rows = $("reviewPacketRows");
