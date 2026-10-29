@@ -187,6 +187,7 @@
 - [x] Recompute the seed-42 projection: 267/57/57 rows across 89/19/19 groups; 2024 accounts for 10 of 19 groups in each held-out split.
 - [x] Document a possible 72-group year-balanced planning cohort (12 groups per year from 2020–2025; choose 12 of the 66 proposed 2024 groups only after review), projecting to 150/33/33 rows across 50/11/11 groups.
 - [x] Refresh the review workbench at `http://127.0.0.1:4004/#finetune`; it displays 381 rows / 127 groups / 0 reviewed / 0 excluded / 0 eligible, the year counts, and a disabled export action. No decision was saved.
+- [x] Recheck the ignored packet files: the review CSV and current JSONL each contain 381 rows / 127 groups, all CSV rows still need human review, reviewer fields are blank, and no benchmark/selection report artifact exists under `training/`.
 - [ ] Human-review source fidelity, actor/year/claim labels, every variant, and reuse terms before exporting a dataset or making benchmark claims.
 
 ## MPS quantization smoke — 2026-10-29

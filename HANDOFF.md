@@ -417,3 +417,10 @@
 
 - Added a current résumé line and interview talk track to the README. It describes the implemented source-grouped evaluation, validation-only selection, local Qwen3-0.6B LoRA/SFT, runtime provenance, and post-training quantization paths without claiming real-data gains.
 - The wording explicitly says the available MPS timings are one synthetic smoke, Quanto W8A8 is optional, and QLoRA training is not implemented. Real-data quality and performance claims remain gated on a reviewed, rights-cleared corpus.
+
+## Benchmark gate recheck — 2026-10-29
+
+- Current ignored review CSV: 381 rows / 127 groups; all 381 rows remain `NEEDS_HUMAN_REVIEW`, and reviewer/timestamp fields are empty. All reuse text remains unresolved or requires source-specific terms review.
+- Current draft JSONL has the same 381 rows / 127 groups; the 246-row / 82-group JSONL is historical. No benchmark or prompt-selection report JSON was found under `training/`; the artifact-name search only matched the tracked benchmark-card template.
+- Next: restore the app from the desktop terminal after unlock, review source claims and reuse terms, select a balanced rights-cleared cohort, then export the card and run validation selection before a single frozen-test comparison.
+- Delivery: commits `431cf2c` and `4ed72d6` are pushed to `origin/codex/promptmesh-validation-selection`. PR #2 is currently open and targets `main` at head `4ed72d696e37db66f65008342312c629dbef5a33`; it remains unmerged.
