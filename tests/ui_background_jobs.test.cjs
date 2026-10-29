@@ -30,6 +30,7 @@ function loadApp() {
   const window = {
     location: { origin: "http://localhost", hash: "#overview" },
     history: { replaceState(_state, _title, hash) { window.location.hash = hash; } },
+    confirm() { return true; },
     addEventListener() {},
     setInterval(callback) { const id = ++nextTimer; timers.set(id, callback); return id; },
     clearInterval(id) { timers.delete(id); }
@@ -54,6 +55,75 @@ test("candidate source changes are announced to assistive technology", () => {
 
   assert.match(sourceRegion, /aria-live="polite"/);
   assert.match(sourceRegion, /aria-atomic="true"/);
+});
+
+test("review year filter and navigation share the interleaved queue order", () => {
+  const { context, elements } = loadApp();
+  const groupSpecs = [
+    ["2024-a", 2024],
+    ["2024-b", 2024],
+    ["2020-a", 2020],
+    ["2025-a", 2025],
+    ["2021-a", 2021],
+    ["2024-c", 2024]
+  ];
+  const groups = groupSpecs.map(([group_id, proposed_year], row_index) => ({
+    group_id,
+    source_title: group_id,
+    source_url: "https://example.org/" + group_id,
+    source_date: "2024-01-01",
+    review_focus: "Check the source claim.",
+    reuse_status: "permission_unconfirmed",
+    reuse_evidence: "",
+    reviewed_rows: 0,
+    excluded_rows: 0,
+    rows: [{
+      row_index,
+      input: "Source input for " + group_id,
+      proposed_organization: "Example Organization",
+      proposed_year,
+      proposed_claim: "announced an event",
+      review_status: "NEEDS_HUMAN_REVIEW",
+      reviewed_organization: "",
+      reviewed_year: "",
+      reviewed_claim: "",
+      review_notes: ""
+    }]
+  }));
+  context.packetJSON = JSON.stringify({
+    total_rows: groups.length,
+    total_groups: groups.length,
+    reviewed_rows: 0,
+    excluded_rows: 0,
+    eligible_groups: 0,
+    export_preview: { ready: false, reason: "Review labels and reuse evidence before exporting." },
+    groups
+  });
+  vm.runInContext("state.reviewPacket = JSON.parse(packetJSON); renderCandidateReviewPacket()", context);
+
+  const yearFilter = elements.get("reviewPacketYear");
+  assert.deepEqual(yearFilter.options.map((option) => option.value), ["all", "2020", "2021", "2024", "2025"]);
+  vm.runInContext("state.reviewPacketDirty = true", context);
+  context.window.confirm = () => false;
+  yearFilter.value = "2024";
+  yearFilter.listeners.change({ target: yearFilter });
+  assert.equal(yearFilter.value, "all", "cancelling preserves the previous filter");
+  assert.equal(vm.runInContext("state.reviewPacketDirty", context), true, "cancelling preserves unsaved review changes");
+  context.window.confirm = () => true;
+  yearFilter.value = "2024";
+  yearFilter.listeners.change({ target: yearFilter });
+  assert.equal(vm.runInContext("state.reviewPacketCurrentGroupId", context), "2024-a");
+  assert.equal(vm.runInContext("state.reviewPacketDirty", context), false);
+  assert.deepEqual(
+    elements.get("reviewPacketGroup").children.map((option) => option.value),
+    ["2024-a", "2024-b", "2024-c"]
+  );
+
+  vm.runInContext("state.reviewPacketYear = 'all'; $('reviewPacketYear').value = 'all'; state.reviewPacketCurrentGroupId = '2024-b'; moveReviewGroup(-1)", context);
+  assert.equal(vm.runInContext("state.reviewPacketCurrentGroupId", context), "2025-a");
+
+  vm.runInContext("state.reviewPacketYear = '2024'; $('reviewPacketYear').value = '2024'; state.reviewPacketCurrentGroupId = '2024-b'; moveToNextUnreviewedGroup()", context);
+  assert.equal(vm.runInContext("state.reviewPacketCurrentGroupId", context), "2024-c");
 });
 
 test("skip link reaches the workspace without redirecting the active app tab", () => {

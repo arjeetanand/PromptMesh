@@ -205,6 +205,15 @@
 - [x] Assert the calibration-input fingerprint participates in the frozen configuration hash; run the 81-test Python suite and 17-test UI suite.
 - [ ] Repeat quantized quality/performance measurement on a human-reviewed, rights-cleared benchmark; the synthetic smoke is not model-quality or throughput evidence.
 
+## Year-balanced review navigation — 2026-10-29
+
+- [x] Add a proposed-event-year filter and make Previous/Next use the same interleaved order as the source-group selector.
+- [x] Keep filtering/navigation separate from label decisions, source reuse rights, cohort selection, and export eligibility.
+- [x] Reconcile the dataset README's packet counts and seed-42 split table against the current ignored draft.
+- [x] Verify 89 Python tests, 19 Node UI tests, JavaScript/launcher syntax, and `git diff --check`.
+- [x] Verify the live review workbench at 1440px, 768px, and 390px with API connected and no horizontal overflow; confirm the packet remains at 0 reviewed / 0 eligible.
+- [ ] Human-review every candidate and its reuse conditions; verify the exported year distribution before describing a cohort as balanced.
+
 ## Keyboard skip navigation — 2026-10-29
 
 - [x] Add a keyboard-visible skip link to the main workspace and keep in-page fragments from redirecting the active app route.

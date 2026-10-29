@@ -9,6 +9,7 @@ const state = {
   reviewPacket: null,
   reviewPacketError: null,
   reviewPacketCurrentGroupId: null,
+  reviewPacketYear: "all",
   reviewPacketDirty: false,
   reviewPacketSaving: false,
   reviewPacketExporting: false,
@@ -336,6 +337,7 @@ function setupForms() {
   $("fineTuneForm").addEventListener("submit", handleFineTune);
   $("fineTuneDataset").addEventListener("change", updateFineTuneDatasetNote);
   $("reviewPacketForm").addEventListener("submit", handleSaveCandidateReview);
+  $("reviewPacketYear").addEventListener("change", handleReviewYearChange);
   $("reviewPacketGroup").addEventListener("change", handleReviewGroupChange);
   $("reviewPacketPrevious").addEventListener("click", () => moveReviewGroup(-1));
   $("reviewPacketNext").addEventListener("click", moveToNextUnreviewedGroup);
@@ -428,9 +430,31 @@ function renderCandidateReviewPacket() {
   workspace.hidden = false;
   message.hidden = true;
   const selector = $("reviewPacketGroup");
+  const yearFilter = $("reviewPacketYear");
   const prior = state.reviewPacketCurrentGroupId;
-  const groups = interleaveCandidateReviewGroups(packet.groups);
-  coverage.textContent = candidateReviewCoverage(groups);
+  const allGroups = interleaveCandidateReviewGroups(packet.groups);
+  const years = [...new Set(allGroups.map(candidateReviewGroupYear))].sort((left, right) => {
+    const leftYear = Number(left);
+    const rightYear = Number(right);
+    if (Number.isFinite(leftYear) && Number.isFinite(rightYear)) return leftYear - rightYear;
+    if (Number.isFinite(leftYear)) return -1;
+    if (Number.isFinite(rightYear)) return 1;
+    return left.localeCompare(right);
+  });
+  const requestedYear = yearFilter.value || state.reviewPacketYear || "all";
+  const selectedYear = requestedYear === "all" || years.includes(requestedYear) ? requestedYear : "all";
+  yearFilter.replaceChildren();
+  yearFilter.add(new Option("All years", "all"));
+  years.forEach((year) => {
+    const label = year === "undated" ? "Undated" : year === "mixed" ? "Mixed years" : year;
+    yearFilter.add(new Option(label, year));
+  });
+  yearFilter.value = selectedYear;
+  state.reviewPacketYear = selectedYear;
+  const groups = selectedYear === "all"
+    ? allGroups
+    : allGroups.filter((group) => candidateReviewGroupYear(group) === selectedYear);
+  coverage.textContent = candidateReviewCoverage(allGroups);
   const current = groups.find((group) => group.group_id === prior)
     || groups.find((group) => group.rows.some((row) => row.review_status !== "REVIEWED" && row.review_status !== "EXCLUDED"))
     || groups[0];
@@ -489,6 +513,11 @@ function interleaveCandidateReviewGroups(groups) {
     }
   }
   return ordered;
+}
+
+function candidateReviewGroupsForYear(groups, year = "all") {
+  const ordered = interleaveCandidateReviewGroups(groups);
+  return year === "all" ? ordered : ordered.filter((group) => candidateReviewGroupYear(group) === year);
 }
 
 function candidateReviewCoverage(groups) {
@@ -651,11 +680,22 @@ function handleReviewGroupChange(event) {
   if (group) renderReviewGroup(group);
 }
 
+function handleReviewYearChange(event) {
+  if (state.reviewPacketDirty && !window.confirm("Discard unsaved changes for this source group?")) {
+    event.target.value = state.reviewPacketYear;
+    return;
+  }
+  state.reviewPacketYear = event.target.value || "all";
+  state.reviewPacketDirty = false;
+  renderCandidateReviewPacket();
+}
+
 function moveReviewGroup(offset) {
   if (state.reviewPacketDirty && !window.confirm("Discard unsaved changes for this source group?")) return;
-  const groups = state.reviewPacket?.groups || [];
+  const groups = candidateReviewGroupsForYear(state.reviewPacket?.groups || [], state.reviewPacketYear);
   const index = groups.findIndex((group) => group.group_id === state.reviewPacketCurrentGroupId);
-  const next = groups[(index + offset + groups.length) % groups.length];
+  const start = index < 0 ? 0 : index;
+  const next = groups[(start + offset + groups.length) % groups.length];
   if (next) {
     state.reviewPacketCurrentGroupId = next.group_id;
     $("reviewPacketGroup").value = next.group_id;
@@ -666,11 +706,17 @@ function moveReviewGroup(offset) {
 
 function moveToNextUnreviewedGroup() {
   if (state.reviewPacketDirty && !window.confirm("Discard unsaved changes for this source group?")) return;
-  const groups = state.reviewPacket?.groups || [];
+  const groups = candidateReviewGroupsForYear(state.reviewPacket?.groups || [], state.reviewPacketYear);
+  if (!groups.length) return;
   const currentIndex = groups.findIndex((group) => group.group_id === state.reviewPacketCurrentGroupId);
-  const ordered = groups.slice(currentIndex + 1).concat(groups.slice(0, currentIndex + 1));
+  const ordered = currentIndex < 0
+    ? groups
+    : groups.slice(currentIndex + 1).concat(groups.slice(0, currentIndex + 1));
   const next = ordered.find((group) => group.rows.some((row) => row.review_status !== "REVIEWED" && row.review_status !== "EXCLUDED"));
-  if (!next) return showToast("Every candidate row has a label decision.", "info");
+  if (!next) {
+    const scope = state.reviewPacketYear === "all" ? "Every candidate row" : "Every candidate row for " + state.reviewPacketYear;
+    return showToast(scope + " has a label decision.", "info");
+  }
   state.reviewPacketCurrentGroupId = next.group_id;
   $("reviewPacketGroup").value = next.group_id;
   state.reviewPacketDirty = false;

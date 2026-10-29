@@ -59,25 +59,29 @@ The local public-source review packet has 381 draft rows across 127 groups.
 Its current split policy yields 267 training rows and 57 rows across 19 groups
 in each held-out split. Each group has three controlled phrasings of one source
 claim; these are not independent facts. Proposed years are still imbalanced:
-66 groups are from 2024, 12 each from 2020, 2021, 2022, 2023, and 2025, and one
-is undated. The packet remains review-only and is not representative. Review
+65 groups are from 2024, 13 from 2021, 12 each from 2020, 2022, 2023, and 2025,
+and one is undated. The packet remains review-only and is not representative. Review
 each source, label, split, and reuse condition before using any examples.
 
 After curation, one year-balanced pilot target would use 12 source groups from
-each year 2020–2025, selecting 12 of the 66 proposed 2024 groups. With three
+each year 2020–2025, selecting 12 of the 13 proposed 2021 groups and 12 of the
+65 proposed 2024 groups. With three
 variants per group and seed 42, that 72-group target projects to 50/11/11
 train/validation/test groups (150/33/33 rows). This is only a planning
 projection over unreviewed labels, not a benchmark result or representativeness
-claim.
+claim. The Fine-tune review queue cycles through proposed years and can filter
+by year, but this only changes navigation: export includes every eligible
+group and does not select an exact 72-group cohort. Check the exported year
+distribution before describing a reviewed dataset as balanced.
 
 The current seed-42 split projection from those **unreviewed proposed years**
 is:
 
 | Split | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Undated |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Train groups | 8 | 9 | 9 | 8 | 46 | 8 | 1 |
-| Validation groups | 2 | 2 | 1 | 2 | 10 | 2 | 0 |
-| Test groups | 2 | 1 | 2 | 2 | 10 | 2 | 0 |
+| Train groups | 8 | 9 | 8 | 8 | 47 | 8 | 1 |
+| Validation groups | 2 | 2 | 2 | 2 | 9 | 2 | 0 |
+| Test groups | 2 | 2 | 2 | 2 | 9 | 2 | 0 |
 
 This preview is structural only, not the eventual reviewed benchmark composition.
 Both held-out sets are dominated by 2024, and some year slices contain only one

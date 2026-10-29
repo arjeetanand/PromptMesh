@@ -127,12 +127,13 @@
             <p id="candidateReviewCoverage" class="review-coverage" role="status" aria-live="polite"></p>
             <div id="candidateReviewWorkspace" class="review-workspace" hidden>
               <div class="review-toolbar">
+                <div class="field"><label for="reviewPacketYear">Proposed year</label><select id="reviewPacketYear"><option value="all">All years</option></select></div>
                 <div class="field"><label for="reviewPacketGroup">Source group</label><select id="reviewPacketGroup"></select></div>
                 <div class="review-navigation"><button id="reviewPacketPrevious" class="button button-secondary" type="button">Previous</button><button id="reviewPacketNext" class="button button-secondary" type="button">Next needing review</button></div>
               </div>
               <div id="reviewPacketSource" class="review-source" aria-live="polite" aria-atomic="true"></div>
               <form id="reviewPacketForm">
-                <p class="review-guidance">Review all variants in this group. <strong>Organization means the named claim actor</strong>; do not substitute a recipient or beneficiary. These phrasings share one source fact, so they count as one group.</p>
+                <p class="review-guidance">Review all variants in this group. <strong>Organization means the named claim actor</strong>; do not substitute a recipient or beneficiary. These phrasings share one source fact, so they count as one group. A balanced pilot can target 12 source groups per year (2020–2025); the year filter only narrows this queue, and export still includes every eligible group.</p>
                 <div id="reviewPacketRows" class="review-rows"></div>
                 <section class="review-rights" aria-labelledby="reviewRightsTitle">
                   <div><h3 id="reviewRightsTitle">Source reuse</h3><p>A public page is not automatically licensed for reuse. Keep this unresolved until you check the source terms.</p></div>
