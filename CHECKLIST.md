@@ -113,6 +113,8 @@
 - [x] Record the PromptMesh source revision and clean/dirty working-tree state in each stage's runtime metadata, and surface it in the Fine-tune UI.
 - [x] Surface training, selection, and benchmark runtime metadata in the Fine-tune UI and distinguish older runs with missing metadata.
 - [x] Pin the current Python 3.12 / macOS ARM64 LoRA/SFT and bitsandbytes dependency closure; verify every lock pin matches the active `.venv` and `pip check` passes.
+- [x] Add a repeatable read-only verifier for exact package pins and the lock's Python/platform target; test normalization, duplicates, mismatch reporting, and platform rejection.
+- [x] Run the verifier against the active `.venv`: all 47 pins match, and `pip check` reports no broken requirements.
 - [ ] Install the local training lock into a clean environment and confirm setup before treating it as a freshly reproduced environment.
 
 ## Whole-workspace UI audit — 2026-10-29

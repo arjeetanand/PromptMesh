@@ -359,11 +359,20 @@ snapshot with the app requirements:
 pip install -r requirements.txt -r requirements-training-macos-arm64.lock
 ```
 
+After installing, verify the environment with:
+
+```bash
+.venv/bin/python -m training.verify_lock
+.venv/bin/python -m pip check
+```
+
 That lock pins the training and bitsandbytes dependency closure only. It is a
 snapshot for macOS ARM64, not a cross-platform or full-application lock; the
 general application dependencies in `requirements.txt` remain unpinned. The
 standalone quantization install remains
 `pip install -r requirements-quantization.txt` on other supported environments.
+The verifier checks exact installed versions and refuses other Python/platform
+targets; it does not replace a clean-environment install check.
 
 On Windows, create the environment with `python -m venv .venv` and activate it
 with `.venv\Scripts\activate` before installing requirements.
@@ -457,7 +466,9 @@ separately and labels legacy runs when their environment was not recorded. This
 is run provenance, and the local training stack has an exact macOS ARM64 snapshot in
 `requirements-training-macos-arm64.lock`. The rest of `requirements.txt` is
 still unpinned, and the lock has not been validated by installing into a clean
-environment.
+environment. Run `python -m training.verify_lock` and `python -m pip check` to
+confirm that an existing macOS ARM64 Python 3.12 environment matches the
+snapshot; these checks do not prove a fresh installation succeeds.
 
 After reviewing labels using the versioned annotation guide, fill
 `training/datasets/<dataset_id>.card.json` from the template. Validation and

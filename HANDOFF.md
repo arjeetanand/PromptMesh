@@ -510,3 +510,11 @@
 - No review decision, rights determination, dataset export, training run, prompt selection, final benchmark, or real-data quantization measurement was performed. The ignored packet remains 381 draft rows / 127 groups / 0 reviewed labels / 0 eligible groups. Human label review and reuse clearance are still required before model-quality claims.
 - Delivery: implementation commit `19c40e1` is pushed on `codex/promptmesh-validation-selection`. Existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2) was confirmed OPEN against `main` after the push. No merge occurred.
 - Next action: review candidate labels and source reuse conditions, then inspect the exported cohort and actual split counts before training, selecting a prompt, or reserving the frozen test set.
+
+## Training lock verification helper — 2026-10-29
+
+- Added `python -m training.verify_lock` to validate that the active environment is Python 3.12 on macOS ARM64 and that every package in `requirements-training-macos-arm64.lock` is present at its exact pinned version. The helper is read-only and rejects unpinned/duplicate lock entries. README setup and provenance sections include the command; `pip check` remains a separate dependency-integrity check.
+- Verification: all 47 pins matched the current `.venv`; `pip check` reported no broken requirements. Five focused lock-verifier tests and all 97 Python tests passed; the UI suite passed all 20 tests; Python compilation, JavaScript and launcher syntax, and `git diff --check` passed.
+- This validates the existing environment only. No fresh virtual environment or packages were installed; a clean install has not been proven, and the app requirements remain unpinned.
+- Delivery: verifier, tests, README, checklist, and handoff changes are on `codex/promptmesh-validation-selection` for existing PR #2 targeting `main`; final commit and push are pending.
+- Next: after approval, create a disposable environment under `/private/tmp`, install the documented app requirements plus the training lock, and run the verifier, `pip check`, and import smoke checks. Do not replace the active `.venv` or download model weights.
