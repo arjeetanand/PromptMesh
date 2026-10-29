@@ -469,3 +469,13 @@
 - Live browser check at `http://127.0.0.1:4004/#finetune`: pressed Enter on Overview; the accessibility tree reported focus on the `Your model lab` heading, and the blue focus ring was visible. The API remained connected; no review decision was saved.
 - A full screen-reader and axe audit remains pending. This browser check verifies focus movement and accessible-tree state only.
 - Delivery: commit `6bdf60a026b5a8f0645109b0588180b856cd723c` is on `codex/promptmesh-validation-selection`; it is being pushed to existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2), which targets `main`. No merge.
+
+## Cold/warm per-request latency — 2026-10-29
+
+- Frozen benchmark report schema 7 records a cold first request for each fresh model load, then times every request in one full scored pass. It reports cold latency, median warm p50, nearest-rank warm p90, warm sample count, and total scored-pass inference time. The first test input is generated twice; only the scored pass contributes task metrics.
+- The timing protocol is included in the frozen configuration fingerprint, so a report created under the prior single-pass method cannot be reused as if it used the new protocol. The UI displays the cold/warm fields on the full-precision LoRA and quantized inference cards.
+- Verification: 88 Python tests and 18 Node UI tests passed; Python compilation, JavaScript syntax, launcher syntax, and `git diff --check` passed. Existing `datetime.utcnow()` deprecation warnings and the Torch macOS redirect note remain.
+- Live browser check at `http://127.0.0.1:4004/#finetune`: page loaded and API connected. It still shows 381 draft rows / 127 source groups / 0 reviewed; synthetic demo data remains blocked for prompt selection and final benchmark. No review or benchmark action was performed. The new result-card fields are covered by the Node UI test; a live completed report is not available to render in the browser.
+- Limitations: no real model inference or quantized comparison was run; the default synthetic demo cannot support quality claims. Peak device memory remains unmeasured, and the one-pass p50/p90 values are not repeated-run throughput estimates. Human label review and source-reuse clearance remain open.
+- Delivery: implementation commit `6c2753d` is on `codex/promptmesh-validation-selection` for existing PR [#2](https://github.com/arjeetanand/PromptMesh/pull/2), targeting `main`. The PR is not merged.
+- Next action: push this commit to PR #2, then complete human label and reuse-rights review before running the frozen benchmark.
